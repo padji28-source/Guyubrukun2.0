@@ -543,24 +543,53 @@ async function connectDB() {
   if (mongoose.connection && mongoose.connection.readyState === 2) {
     return;
   }
-  try {
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
-    });
-    isDbConnected = true;
-    console.log("Connected securely to MongoDB database system.");
-    if (!isDbInitialized) {
-      isDbInitialized = true;
-      await Promise.all([
-        initDb('rt01').catch(err => console.error(err)),
-        initDb('rt02').catch(err => console.error(err)),
-        initDb('rt03').catch(err => console.error(err))
-      ]);
-    }
-  } catch (err) {
-    console.error("MongoDB connection exception:", err);
+
+  // Define a list of candidate URIs to try
+  const candidates: string[] = [];
+  
+  if (process.env.MANGODB_URL) {
+    candidates.push(process.env.MANGODB_URL);
   }
+  if (process.env.MONGODB_URI) {
+    candidates.push(process.env.MONGODB_URI);
+    // Also try to auto-correct the known wrong password if present
+    if (process.env.MONGODB_URI.includes("22Mei1996!")) {
+      candidates.push(process.env.MONGODB_URI.replace("22Mei1996!", "28April1996!"));
+    }
+  }
+  // Standard default fallback
+  candidates.push("mongodb://127.0.0.1:27017/guyubrukun");
+
+  // Remove duplicates
+  const uniqueCandidates = Array.from(new Set(candidates));
+
+  let lastError: any = null;
+  for (const uri of uniqueCandidates) {
+    try {
+      console.log(`Attempting secure connection to MongoDB (URI length: ${uri?.length})...`);
+      await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+      });
+      isDbConnected = true;
+      console.log("Connected securely to MongoDB database system.");
+      if (!isDbInitialized) {
+        isDbInitialized = true;
+        await Promise.all([
+          initDb('rt01').catch(err => console.error(err)),
+          initDb('rt02').catch(err => console.error(err)),
+          initDb('rt03').catch(err => console.error(err))
+        ]);
+      }
+      return; // Connected successfully!
+    } catch (err: any) {
+      console.error(`Failed to connect using candidate URI (length: ${uri?.length}):`, err.message || err);
+      lastError = err;
+    }
+  }
+
+  // If all failed
+  throw lastError || new Error("All MongoDB connection candidates failed.");
 }
 
 // Audit trail injection
