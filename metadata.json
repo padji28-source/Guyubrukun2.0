@@ -1,0 +1,6 @@
+{
+  "name": "Guyub Rukun",
+  "description": "Smart Community Portal - RT/RW Management App",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
