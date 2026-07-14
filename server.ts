@@ -41,11 +41,28 @@ export const app = express();
 app.set("trust proxy", 1);
 const PORT = 3000;
 
-// Normalize Vercel Serverless Function request URLs
+// Normalize Vercel Serverless Function request URLs to match Express routes
 app.use((req, res, next) => {
-  if (process.env.VERCEL) {
+  const originalPath = (req.headers['x-matched-path'] as string) || 
+                       (req.headers['x-vercel-matched-path'] as string) ||
+                       (req.headers['x-original-url'] as string) ||
+                       (req.headers['x-forwarded-url'] as string);
+                       
+  if (originalPath) {
+    if (originalPath.startsWith('/api')) {
+      const queryIndex = req.url.indexOf('?');
+      const queryString = queryIndex !== -1 ? req.url.substring(queryIndex) : '';
+      let targetPath = originalPath;
+      if (!targetPath.includes('?') && queryString) {
+        targetPath += queryString;
+      }
+      req.url = targetPath;
+    }
+  } else if (process.env.VERCEL) {
     if (!req.url.startsWith('/api') && !req.path.startsWith('/api')) {
       req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
+    } else if (req.url.includes('/api/index.ts')) {
+      req.url = req.url.replace('/api/index.ts', '/api');
     }
   }
   next();
