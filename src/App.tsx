@@ -1,5 +1,5 @@
 import { apiFetch } from './apiInterceptor';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
 import { MobileDataWarga } from './MobileDataWarga';
@@ -1983,117 +1983,11 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
   );
 };
 
-// --- UPDATE: MobileMediaStory & MobileCalendarWidget (Widget Beranda) ---
+// --- UPDATE: MobileEvents Split (Widget Beranda) ---
 let cachedMediaList: any[] | null = null;
 let cachedBackendEvents: any[] | null = null;
 
-const MobileMediaStory = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
-  const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
-  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
-
-  useEffect(() => {
-    setLoadingMedia(!cachedMediaList);
-    apiFetch('/api/data/media').then(r => r.json()).then(json => {
-      let list = [];
-      if (json.data && json.data.length > 0) {
-        list = json.data.slice(-5).reverse();
-      } else {
-        list = [{
-          imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
-          title: "Kerja Bakti Sambut Ramadhan",
-          uploaderName: "Admin RT",
-          desc: "Keseruan warga RT 01 bergotong royong."
-        }];
-      }
-      cachedMediaList = list;
-      setMediaList(list);
-    }).catch(console.error).finally(() => setLoadingMedia(false));
-  }, []);
-
-  useEffect(() => {
-    if (mediaList.length <= 1) return;
-    const interval = setInterval(() => {
-      setActiveMediaIndex(prev => (prev + 1) % mediaList.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [mediaList.length]);
-
-  const currentMedia = mediaList[activeMediaIndex] || null;
-
-  return (
-    <section className="px-5 mb-8">
-      <motion.div 
-        whileTap={{ scale: 0.98 }}
-        className="bg-slate-900 rounded-[2rem] shadow-xl overflow-hidden relative group cursor-pointer aspect-[4/3] w-full"
-        onClick={() => onActionClick('Media')}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeMediaIndex}
-            initial={{ opacity: 0, scale: 1.05 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="absolute inset-0 w-full h-full"
-          >
-            {loadingMedia ? (
-               <div className="w-full h-full bg-slate-200 animate-pulse"></div>
-            ) : currentMedia && (
-              <img src={currentMedia.imageUrl} alt={currentMedia.title} className="w-full h-full object-cover" />
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Progress Bars ala Instagram Story */}
-        {mediaList.length > 1 && !loadingMedia && (
-          <div className="absolute top-4 left-4 right-4 flex gap-1.5 z-20">
-            {mediaList.map((_, idx) => (
-              <div key={idx} className="h-1 bg-white/30 rounded-full flex-1 overflow-hidden backdrop-blur-sm">
-                {idx === activeMediaIndex && (
-                  <motion.div 
-                    initial={{ width: 0 }} 
-                    animate={{ width: "100%" }} 
-                    transition={{ duration: 5, ease: "linear" }} 
-                    className="h-full bg-white rounded-full"
-                  />
-                )}
-                {idx < activeMediaIndex && <div className="h-full bg-white rounded-full" />}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent flex flex-col justify-end p-5 text-white z-10">
-          <div className="flex justify-between items-end w-full">
-            <div className="flex-grow pr-2">
-              <span className="px-2.5 py-1 mb-2 bg-teal-500/80 backdrop-blur-md text-[9px] font-extrabold rounded-md inline-block uppercase tracking-wider shadow-sm">Sorotan Warga</span>
-              {loadingMedia ? (
-                 <>
-                    <div className="h-5 w-3/4 bg-white/30 animate-pulse rounded mb-2"></div>
-                    <div className="h-3 w-1/2 bg-white/20 animate-pulse rounded"></div>
-                 </>
-              ) : (
-                 <>
-                    <h4 className="text-lg font-black leading-tight drop-shadow-md mb-1">{currentMedia?.title}</h4>
-                    <p className="text-[10px] text-slate-200 font-medium line-clamp-2 drop-shadow">{currentMedia?.desc || `Oleh: ${currentMedia?.uploaderName}`}</p>
-                 </>
-              )}
-            </div>
-            
-            {!loadingMedia && currentMedia && (
-              <a href={currentMedia.imageUrl} download={currentMedia.title || 'foto'} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer" className="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex-shrink-0" title="Unduh">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              </a>
-            )}
-          </div>
-        </div>
-      </motion.div>
-    </section>
-  );
-};
-
-const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
+const MobileHomeCalendar = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState<number | null>(today.getDate());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -2101,6 +1995,7 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showYearPicker, setShowYearPicker] = useState(false);
   const [backendEvents, setBackendEvents] = useState<any[]>(cachedBackendEvents || []);
+
   const [reminders, setReminders] = useState<string[]>(() => {
     const saved = localStorage.getItem('event_reminders');
     return saved ? JSON.parse(saved) : [];
@@ -2145,8 +2040,9 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
   });
 
   return (
-    <section className="px-5 mb-8">
-      <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 p-6 relative">
+    <section className="px-5 mb-5">
+      {/* Mobile Calendar Widget */}
+      <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 p-6 relative text-left">
         <div className="flex justify-between items-center mb-6">
            <div className="flex flex-col">
              <div className="flex items-center gap-2">
@@ -2222,7 +2118,7 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
                  </AnimatePresence>
                </div>
              </div>
-             <p className="text-[10px] text-slate-400 font-extrabold mt-1.5 uppercase tracking-[0.2em]">Jadwal RT</p>
+             <p className="text-[10px] text-slate-400 font-extrabold mt-1.5 uppercase tracking-[0.2em]">Agenda Warga & Kegiatan</p>
            </div>
            
            <motion.button 
@@ -2230,7 +2126,7 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
              onClick={() => onActionClick('Acara')}
              className="w-10 h-10 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-full flex items-center justify-center transition-colors shadow-[0_2px_10px_-3px_rgba(20,184,166,0.3)]"
            >
-             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
+             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4"/></svg>
            </motion.button>
         </div>
 
@@ -2320,6 +2216,111 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
            )}
         </div>
       </div>
+    </section>
+  );
+};
+
+const MobileMediaSlider = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
+  const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
+
+  useEffect(() => {
+    setLoadingMedia(!cachedMediaList);
+    apiFetch('/api/data/media').then(r => r.json()).then(json => {
+      let list = [];
+      if (json.data && json.data.length > 0) {
+        list = json.data.slice(-5).reverse();
+      } else {
+        list = [{
+          imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
+          title: "Kerja Bakti Sambut Ramadhan",
+          uploaderName: "Admin RT",
+          desc: "Keseruan warga RT 01 bergotong royong."
+        }];
+      }
+      cachedMediaList = list;
+      setMediaList(list);
+    }).catch(console.error).finally(() => setLoadingMedia(false));
+  }, []);
+
+  useEffect(() => {
+    if (mediaList.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveMediaIndex(prev => (prev + 1) % mediaList.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [mediaList.length]);
+
+  const currentMedia = mediaList[activeMediaIndex] || null;
+
+  return (
+    <section className="px-5 mb-8">
+      <motion.div 
+        whileTap={{ scale: 0.98 }}
+        className="bg-slate-900 rounded-[2rem] shadow-xl overflow-hidden relative group cursor-pointer aspect-[4/3] w-full"
+        onClick={() => onActionClick('Media')}
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeMediaIndex}
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="absolute inset-0 w-full h-full"
+          >
+            {loadingMedia ? (
+               <div className="w-full h-full bg-slate-200 animate-pulse"></div>
+            ) : currentMedia && (
+              <img src={currentMedia.imageUrl} alt={currentMedia.title} className="w-full h-full object-cover" />
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {mediaList.length > 1 && !loadingMedia && (
+          <div className="absolute top-4 left-4 right-4 flex gap-1.5 z-20">
+            {mediaList.map((_, idx) => (
+              <div key={idx} className="h-1 bg-white/30 rounded-full flex-1 overflow-hidden backdrop-blur-sm">
+                {idx === activeMediaIndex && (
+                  <motion.div 
+                    initial={{ width: 0 }} 
+                    animate={{ width: "100%" }} 
+                    transition={{ duration: 5, ease: "linear" }} 
+                    className="h-full bg-white rounded-full"
+                  />
+                )}
+                {idx < activeMediaIndex && <div className="h-full bg-white rounded-full" />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent flex flex-col justify-end p-5 text-white z-10 text-left">
+          <div className="flex justify-between items-end w-full">
+            <div className="flex-grow pr-2">
+              <span className="px-2.5 py-1 mb-2 bg-teal-500/80 backdrop-blur-md text-[9px] font-extrabold rounded-md inline-block uppercase tracking-wider shadow-sm">Sorotan Warga</span>
+              {loadingMedia ? (
+                 <>
+                    <div className="h-5 w-3/4 bg-white/30 animate-pulse rounded mb-2"></div>
+                    <div className="h-3 w-1/2 bg-white/20 animate-pulse rounded"></div>
+                 </>
+              ) : (
+                 <>
+                    <h4 className="text-lg font-black leading-tight drop-shadow-md mb-1">{currentMedia?.title}</h4>
+                    <p className="text-[10px] text-slate-200 font-medium line-clamp-2 drop-shadow">{currentMedia?.desc || `Oleh: ${currentMedia?.uploaderName}`}</p>
+                 </>
+              )}
+            </div>
+            
+            {!loadingMedia && currentMedia && (
+              <a href={currentMedia.imageUrl} download={currentMedia.title || 'foto'} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer" className="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex-shrink-0" title="Unduh">
+                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              </a>
+            )}
+          </div>
+        </div>
+      </motion.div>
     </section>
   );
 };
@@ -2965,145 +2966,6 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
   const [recentDonations, setRecentDonations] = useState<any[]>([]);
   const [lastTx, setLastTx] = useState<any | null>(null);
 
-  // --- State & Handlers for Jadwal Sholat & Alarms ---
-  const [city, setCity] = useState<string>(() => localStorage.getItem('prayer_city') || 'Jakarta');
-  const [prayerTimes, setPrayerTimes] = useState<any>({
-    Imsak: '04:25',
-    Subuh: '04:35',
-    Dzuhur: '11:55',
-    Ashar: '15:15',
-    Maghrib: '17:55',
-    Isya: '19:07'
-  });
-  const [loadingPrayers, setLoadingPrayers] = useState<boolean>(false);
-  const [alarms, setAlarms] = useState<{ [key: string]: boolean }>(() => {
-    const saved = localStorage.getItem('prayer_alarms');
-    return saved ? JSON.parse(saved) : {
-      Subuh: false,
-      Dzuhur: false,
-      Ashar: false,
-      Maghrib: false,
-      Isya: false
-    };
-  });
-  const [activeAlarmModal, setActiveAlarmModal] = useState<{ name: string; time: string } | null>(null);
-
-  // Play a beautiful notification arpeggio using Web Audio API
-  const playChime = () => {
-    try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15); // E5
-      osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3); // G5
-      osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.45); // C6
-      
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
-      
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      osc.start();
-      osc.stop(ctx.currentTime + 1.2);
-    } catch (e) {
-      console.error('Audio play failed:', e);
-    }
-  };
-
-  const triggerAlarm = (prayerName: string, prayerTime: string) => {
-    playChime();
-    let count = 0;
-    const interval = setInterval(() => {
-      if (count < 2) {
-        playChime();
-        count++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 1500);
-
-    setActiveAlarmModal({ name: prayerName, time: prayerTime });
-
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(`Waktu Sholat ${prayerName} Telah Tiba!`, {
-        body: `Pukul ${prayerTime}. Mari bersiap untuk menunaikan ibadah sholat ${prayerName}.`,
-        icon: '/guyubrukun2.png'
-      });
-    }
-  };
-
-  useEffect(() => {
-    localStorage.setItem('prayer_city', city);
-    setLoadingPrayers(true);
-    fetch(`https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=Indonesia&method=2`)
-      .then(res => res.json())
-      .then(json => {
-        if (json.data && json.data.timings) {
-          const t = json.data.timings;
-          setPrayerTimes({
-            Imsak: t.Imsak,
-            Subuh: t.Fajr,
-            Dzuhur: t.Dhuhr,
-            Ashar: t.Asr,
-            Maghrib: t.Maghrib,
-            Isya: t.Isha
-          });
-        }
-      })
-      .catch(err => {
-        console.error('Gagal memuat jadwal sholat:', err);
-      })
-      .finally(() => {
-        setLoadingPrayers(false);
-      });
-  }, [city]);
-
-  const toggleAlarm = (prayer: string) => {
-    const updated = { ...alarms, [prayer]: !alarms[prayer] };
-    setAlarms(updated);
-    localStorage.setItem('prayer_alarms', JSON.stringify(updated));
-    
-    if (updated[prayer] && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-  };
-
-  // Monitor time to trigger active alarms
-  useEffect(() => {
-    const checkInterval = setInterval(() => {
-      const now = new Date();
-      const currentHourStr = String(now.getHours()).padStart(2, '0');
-      const currentMinStr = String(now.getMinutes()).padStart(2, '0');
-      const currentTimeStr = `${currentHourStr}:${currentMinStr}`;
-      
-      Object.keys(alarms).forEach((prayerName) => {
-        if (alarms[prayerName]) {
-          const prayerTime = prayerTimes[prayerName];
-          if (prayerTime === currentTimeStr) {
-            const alarmKey = `${prayerName}-${currentTimeStr}`;
-            const triggeredToday = localStorage.getItem('last_triggered_alarm');
-            
-            if (triggeredToday !== alarmKey) {
-              localStorage.setItem('last_triggered_alarm', alarmKey);
-              triggerAlarm(prayerName, prayerTime);
-            }
-          }
-        }
-      });
-    }, 10000); // Check every 10 seconds
-    
-    return () => clearInterval(checkInterval);
-  }, [alarms, prayerTimes]);
-
   const fetchRecentDonations = async () => {
     try {
       const res = await apiFetch('/api/data/kas');
@@ -3502,86 +3364,6 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
 
         {/* RIGHT COLUMN: Recent Donations feed & Manual bank Transfer */}
         <div className="lg:col-span-5 space-y-6">
-
-          {/* Jadwal Sholat Widget */}
-          <div className="bg-gradient-to-br from-emerald-800 via-teal-900 to-slate-900 text-white p-5 rounded-3xl border border-emerald-500/20 shadow-md space-y-4 relative overflow-hidden">
-            {/* Elegant Background Art */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl -translate-y-10 translate-x-10 pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-teal-500/10 rounded-full blur-xl translate-y-10 -translate-x-10 pointer-events-none"></div>
-            
-            <div className="flex items-center justify-between gap-3 relative z-10 border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🕌</span>
-                <div>
-                  <h4 className="font-extrabold text-xs tracking-wider uppercase text-emerald-300">Jadwal Sholat</h4>
-                  <p className="text-[10px] text-teal-100/75 font-medium">Aktifkan Notifikasi & Alarm</p>
-                </div>
-              </div>
-              
-              {/* City Selection */}
-              <select
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="bg-white/10 text-white font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-xl border border-white/20 outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"
-              >
-                {['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Semarang', 'Makassar', 'Yogyakarta'].map((c) => (
-                  <option key={c} value={c} className="text-gray-800 uppercase font-bold text-[10px]">{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {loadingPrayers ? (
-              <div className="py-4 flex flex-col items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-[10px] font-mono tracking-widest text-teal-200 uppercase">MEMUAT JADWAL...</span>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 relative z-10">
-                {[
-                  { name: 'Imsak', time: prayerTimes.Imsak, hasAlarm: false },
-                  { name: 'Subuh', time: prayerTimes.Subuh, hasAlarm: true },
-                  { name: 'Dzuhur', time: prayerTimes.Dzuhur, hasAlarm: true },
-                  { name: 'Ashar', time: prayerTimes.Ashar, hasAlarm: true },
-                  { name: 'Maghrib', time: prayerTimes.Maghrib, hasAlarm: true },
-                  { name: 'Isya', time: prayerTimes.Isya, hasAlarm: true },
-                ].map((p) => {
-                  const isAlarmActive = p.hasAlarm && alarms[p.name];
-                  return (
-                    <div
-                      key={p.name}
-                      className="bg-white/5 backdrop-blur-xs border border-white/10 p-2 rounded-2xl text-center flex flex-col justify-between items-center relative hover:bg-white/10 transition-colors"
-                    >
-                      <span className="text-[9px] font-bold text-teal-300 uppercase tracking-wider">{p.name}</span>
-                      <span className="text-xs font-extrabold tracking-tight my-1 font-mono text-white">{p.time}</span>
-                      
-                      {p.hasAlarm ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleAlarm(p.name)}
-                          className={`w-7 h-7 flex items-center justify-center rounded-full border transition-all cursor-pointer ${
-                            isAlarmActive
-                              ? 'bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/25 animate-[pulse_2s_infinite]'
-                              : 'bg-white/5 text-gray-400 border-white/10 hover:text-white hover:bg-white/10'
-                          }`}
-                          title={isAlarmActive ? `Alarm ${p.name} Aktif` : `Aktifkan Alarm ${p.name}`}
-                        >
-                          <svg className="w-3.5 h-3.5" fill={isAlarmActive ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                          </svg>
-                        </button>
-                      ) : (
-                        <span className="w-7 h-7 flex items-center justify-center rounded-full text-white/25 text-[9px] font-mono uppercase font-bold">-</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            
-            <p className="text-[9px] text-teal-100/60 leading-normal text-center mt-1">
-              * Aplikasi akan membunyikan audio chime dan memunculkan pop-up saat waktu sholat tiba jika alarm aktif.
-            </p>
-          </div>
           
           {/* Recent Live Donors Feed */}
           <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-xs space-y-4">
@@ -3758,39 +3540,6 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                 className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black shadow-md transition-all active:scale-[0.98] cursor-pointer"
               >
                 Kembali ke Alms
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Alarm Sholat Pop-up Modal */}
-      <AnimatePresence>
-        {activeAlarmModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white rounded-3xl p-6 shadow-2xl border border-teal-100 text-center max-w-sm w-full space-y-4"
-            >
-              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-3xl animate-[bounce_1.5s_infinite]">
-                🕌
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-gray-900 tracking-tight">Waktu Sholat Telah Tiba</h3>
-                <p className="text-xs text-emerald-600 font-extrabold uppercase tracking-widest font-sans">Sholat {activeAlarmModal.name}</p>
-                <p className="text-xs text-gray-500 font-semibold font-mono">Pukul {activeAlarmModal.time}</p>
-              </div>
-              <p className="text-xs text-gray-500 leading-relaxed font-medium">
-                "Sesungguhnya sholat itu atas orang-orang yang beriman adalah fardhu yang ditentukan waktunya." (QS. An-Nisa: 103)
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveAlarmModal(null)}
-                className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black tracking-wider shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
-              >
-                MATIKAN ALARM & SELESAI
               </button>
             </motion.div>
           </div>
@@ -4259,9 +4008,9 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         </div>
                       )}
                       <MobileQuickActions onActionClick={setActiveMobileTab} visibleMenus={visibleMenus}/>
-                      <MobileCalendarWidget onActionClick={setActiveMobileTab} />
+                      <MobileHomeCalendar onActionClick={setActiveMobileTab} />
+                      <MobileMediaSlider onActionClick={setActiveMobileTab} />
                       <MobileUMKMAds />
-                      <MobileMediaStory onActionClick={setActiveMobileTab} />
                     </>
                   )}
 
@@ -4566,6 +4315,7 @@ export default function App() {
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [showSplash, setShowSplash] = useState(false);
   const [showAuthFlow, setShowAuthFlow] = useState(false);
+  const [inactivityAlert, setInactivityAlert] = useState(false);
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth < 768;
@@ -4684,7 +4434,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [globalEvents]);
 
-  const handleLogout = async () => {
+  const handleLogout = async (isAuto = false) => {
     if (user?.id) {
       try {
         await apiFetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id }) });
@@ -4692,7 +4442,52 @@ export default function App() {
     }
     setUser(null);
     localStorage.removeItem('auth_user');
+    if (isAuto === true) {
+      setInactivityAlert(true);
+    }
   };
+
+  // Auto-logout after 30 minutes of inactivity
+  const logoutTimerRef = useRef<any>(null);
+  const handleLogoutRef = useRef<any>(null);
+  
+  useEffect(() => {
+    handleLogoutRef.current = handleLogout;
+  }, [handleLogout]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
+
+    const resetTimer = () => {
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+      }
+      logoutTimerRef.current = setTimeout(() => {
+        if (handleLogoutRef.current) {
+          handleLogoutRef.current(true);
+        }
+      }, INACTIVITY_LIMIT);
+    };
+
+    // Initialize timer
+    resetTimer();
+
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    return () => {
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+      }
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [user?.id]);
 
   return (
     <>
@@ -4729,6 +4524,37 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </motion.div>
+        )}
+        {inactivityAlert && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-teal-100 flex flex-col items-center text-center"
+            >
+              <div className="w-16 h-16 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mb-4">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m0-8V5m0 16a9 9 0 110-18 9 9 0 010 18z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-black text-slate-800 tracking-tight">Sesi Berakhir</h3>
+              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                Anda telah otomatis keluar karena tidak ada aktivitas selama 30 menit. Silakan masuk kembali untuk melanjutkan.
+              </p>
+              <button
+                onClick={() => setInactivityAlert(false)}
+                className="mt-6 w-full py-3.5 bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-teal-100 transition-all active:scale-95 uppercase tracking-wider"
+              >
+                Masuk Kembali
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -4779,9 +4605,9 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4 relative"
+              className="w-full min-h-screen flex flex-col items-center justify-start bg-gray-50 p-4 pt-16 md:pt-4 md:justify-center overflow-y-auto relative pb-12"
             >
-              <div className="absolute top-6 left-6 flex gap-3">
+              <div className="absolute top-4 left-4 flex gap-3 z-50">
                 <button 
                   onClick={() => handleSelectRt('')}
                   className="text-sm font-bold text-slate-600 hover:text-slate-800 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
@@ -4797,7 +4623,9 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <Login onLogin={handleLogin} onNavRegister={() => setAuthView('register')} />
+              <div className="w-full max-w-md space-y-6 mt-10 md:mt-0">
+                <Login onLogin={handleLogin} onNavRegister={() => setAuthView('register')} />
+              </div>
             </motion.div>
           ) : (
              <motion.div
@@ -4806,9 +4634,9 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4 py-8 relative"
+              className="w-full min-h-screen flex flex-col items-center justify-start bg-gray-50 p-4 pt-16 md:pt-4 md:justify-center overflow-y-auto relative pb-12"
             >
-              <div className="absolute top-6 left-6 flex gap-3">
+              <div className="absolute top-4 left-4 flex gap-3 z-50">
                 <button 
                   onClick={() => handleSelectRt('')}
                   className="text-sm font-bold text-slate-600 hover:text-slate-800 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
@@ -4824,7 +4652,9 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <Register onRegister={handleLogin} onNavLogin={() => setAuthView('login')} />
+              <div className="w-full max-w-md space-y-6 mt-10 md:mt-0">
+                <Register onRegister={handleLogin} onNavLogin={() => setAuthView('login')} />
+              </div>
             </motion.div>
           )
         ) : (

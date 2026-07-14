@@ -62,6 +62,11 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   if (publicRoutes.includes(pathName) || pathName.startsWith("/api/tangerang-logo-proxy") || pathName.startsWith("/api/stream")) {
     return next();
   }
+
+  // Allow public GET requests to view events and media highlights
+  if (req.method === "GET" && (pathName === "/api/data/acara" || pathName === "/api/data/media")) {
+    return next();
+  }
   
   const authHeader = req.headers['authorization'];
   let token = "";
