@@ -41,48 +41,11 @@ export const app = express();
 app.set("trust proxy", 1);
 const PORT = 3000;
 
-// Normalize Vercel Serverless Function request URLs to match Express routes
-app.use((req, res, next) => {
-  const originalPath = (req.headers['x-matched-path'] as string) || 
-                       (req.headers['x-vercel-matched-path'] as string) ||
-                       (req.headers['x-original-url'] as string) ||
-                       (req.headers['x-forwarded-url'] as string);
-                       
-  if (originalPath) {
-    if (originalPath.startsWith('/api')) {
-      const queryIndex = req.url.indexOf('?');
-      const queryString = queryIndex !== -1 ? req.url.substring(queryIndex) : '';
-      let targetPath = originalPath;
-      if (!targetPath.includes('?') && queryString) {
-        targetPath += queryString;
-      }
-      req.url = targetPath;
-    }
-  } else if (process.env.VERCEL) {
-    if (!req.url.startsWith('/api') && !req.path.startsWith('/api')) {
-      req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
-    } else if (req.url.includes('/api/index.ts')) {
-      req.url = req.url.replace('/api/index.ts', '/api');
-    }
-  }
-  next();
-});
-
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Apply rate limiting to all requests
 app.use("/api/", apiLimiter);
-
-// Ensure MongoDB is connected for every API request
-app.use("/api", async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
 
 // Auth Verification Middleware
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -97,11 +60,6 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     return next();
   }
   if (publicRoutes.includes(pathName) || pathName.startsWith("/api/tangerang-logo-proxy") || pathName.startsWith("/api/stream")) {
-    return next();
-  }
-
-  // Allow public GET requests to view events and media highlights
-  if (req.method === "GET" && (pathName === "/api/data/acara" || pathName === "/api/data/media")) {
     return next();
   }
   
@@ -136,7 +94,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 app.use(authMiddleware);
 
 // Point 2: ROTATE & HIDE DATABASE CREDENTIALS (NO HARDCODING)
-const MONGODB_URI = process.env.MANGODB_URL || process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 
 // Legacy fallback model for auto-migration
 const SystemDataSchema = new mongoose.Schema({
@@ -544,96 +502,25 @@ async function migrateLegacyDataIfAny(rtId: string) {
 
 // Global DB Connection marker
 let isDbConnected = false;
-let isDbInitialized = false;
 
 async function connectDB() {
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     isDbConnected = true;
-    if (!isDbInitialized) {
-      isDbInitialized = true;
-      initDb('rt01').catch(err => console.error("initDb rt01 error:", err));
-      initDb('rt02').catch(err => console.error("initDb rt02 error:", err));
-      initDb('rt03').catch(err => console.error("initDb rt03 error:", err));
-    }
     return;
   }
   if (mongoose.connection && mongoose.connection.readyState === 2) {
     return;
   }
-
-  // If on Vercel and no DB env variables are set, fail fast with a descriptive error to avoid timeouts
-  if (process.env.VERCEL && !process.env.MANGODB_URL && !process.env.MONGODB_URI) {
-    throw new Error("Koneksi Database Gagal: Variabel MONGODB_URI atau MANGODB_URL belum dikonfigurasi di Environment Variables Vercel Anda. Silakan tambahkan di dashboard Vercel.");
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
+    isDbConnected = true;
+    console.log("Connected securely to MongoDB database system.");
+  } catch (err) {
+    console.error("MongoDB connection exception:", err);
   }
-
-  // Define a list of candidate URIs to try (prioritizing the correct password 28April1996!)
-  const candidates: string[] = [];
-  
-  if (process.env.MANGODB_URL) {
-    const corrected = process.env.MANGODB_URL.replace("22Mei1996!", "28April1996!");
-    candidates.push(corrected);
-    candidates.push(process.env.MANGODB_URL);
-  }
-  if (process.env.MONGODB_URI) {
-    const corrected = process.env.MONGODB_URI.replace("22Mei1996!", "28April1996!");
-    candidates.push(corrected);
-    candidates.push(process.env.MONGODB_URI);
-  }
-  
-  // Standard default fallback (only use locally)
-  if (!process.env.VERCEL) {
-    candidates.push("mongodb://127.0.0.1:27017/guyubrukun");
-  }
-
-  // Remove duplicates and preserve priority order
-  const uniqueCandidates = Array.from(new Set(candidates));
-
-  if (uniqueCandidates.length === 0) {
-    throw new Error("Koneksi Database Gagal: Tidak ada URI MongoDB yang didefinisikan.");
-  }
-
-  let lastError: any = null;
-  for (const uri of uniqueCandidates) {
-    try {
-      console.log(`Attempting secure connection to MongoDB (URI length: ${uri?.length})...`);
-      
-      // Cleanly disconnect from any previous failed state before trying a new candidate
-      if (mongoose.connection && mongoose.connection.readyState !== 0) {
-        try {
-          await mongoose.disconnect();
-        } catch (discErr) {
-          console.error("Mongoose disconnect error:", discErr);
-        }
-      }
-
-      await mongoose.connect(uri, {
-        serverSelectionTimeoutMS: 3000,
-        connectTimeoutMS: 3000,
-      });
-      isDbConnected = true;
-      console.log("Connected securely to MongoDB database system.");
-      if (!isDbInitialized) {
-        isDbInitialized = true;
-        // Run database initialization in background to not block the current request
-        Promise.all([
-          initDb('rt01').catch(err => console.error("Failed to init rt01:", err)),
-          initDb('rt02').catch(err => console.error("Failed to init rt02:", err)),
-          initDb('rt03').catch(err => console.error("Failed to init rt03:", err))
-        ]).then(() => {
-          console.log("All RT databases initialized successfully.");
-        }).catch(e => {
-          console.error("Error during RT databases initialization:", e);
-        });
-      }
-      return; // Connected successfully!
-    } catch (err: any) {
-      console.error(`Failed to connect using candidate URI (length: ${uri?.length}):`, err.message || err);
-      lastError = err;
-    }
-  }
-
-  // If all failed
-  throw new Error(`Koneksi Database Gagal: Semua kandidat koneksi MongoDB gagal terhubung. Detail error: ${lastError?.message || lastError}`);
 }
 
 // Audit trail injection
@@ -2429,29 +2316,6 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", mode: "modular-tables", isDbConnected });
 });
 
-// Wildcard 404 handler for API routes to prevent default HTML 404 on Vercel
-app.use("/api/*", (req, res) => {
-  res.status(404).json({ error: `Endpoint API tidak ditemukan atau salah method: ${req.method} ${req.originalUrl}` });
-});
-
-// Global Error Handler for APIs (Top-level registered so it works in Vercel serverless environment too!)
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("API Error in handler:", err);
-  
-  // On Vercel, or if path/url starts with /api, always return JSON
-  const isApi = (req.path && req.path.startsWith('/api')) || 
-                (req.url && req.url.startsWith('/api')) || 
-                process.env.VERCEL;
-
-  if (isApi) {
-    res.status(err.status || err.statusCode || 500).json({ 
-      error: err.message || "Internal Server Error" 
-    });
-  } else {
-    next(err);
-  }
-});
-
 export async function startServer(listen = true) {
   await connectDB();
   
@@ -2460,6 +2324,16 @@ export async function startServer(listen = true) {
     await initDb('rt02');
     await initDb('rt03');
   }
+
+  // Global Error Handler for APIs
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith('/api/')) {
+      console.error("API Error:", err);
+      res.status(500).json({ error: "Internal Server Error" });
+    } else {
+      next(err);
+    }
+  });
 
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const viteDynamic = "vite";

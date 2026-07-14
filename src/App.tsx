@@ -1,5 +1,5 @@
 import { apiFetch } from './apiInterceptor';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
 import { MobileDataWarga } from './MobileDataWarga';
@@ -580,7 +580,7 @@ const WebStatsCards = () => {
   const [showKasDetail, setShowKasDetail] = useState(false);
   
   // Tambahkan state ini untuk kontrol menyembunyikan saldo di Web
-  const [isMasked, setIsMasked] = useState(true);
+  const [isMasked, setIsMasked] = useState(false);
 
   useEffect(() => {
     // ... (Biarkan kode useEffect kamu sebelumnya apa adanya) ...
@@ -1983,23 +1983,28 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
   );
 };
 
-// --- UPDATE: MobileEvents Split (Widget Beranda) ---
+// --- UPDATE: MobileEvents (Widget Beranda) ---
 let cachedMediaList: any[] | null = null;
 let cachedBackendEvents: any[] | null = null;
 
-const MobileHomeCalendar = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
+const MobileEvents = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState<number | null>(today.getDate());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showYearPicker, setShowYearPicker] = useState(false);
+
+  const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [backendEvents, setBackendEvents] = useState<any[]>(cachedBackendEvents || []);
+  const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
 
   const [reminders, setReminders] = useState<string[]>(() => {
     const saved = localStorage.getItem('event_reminders');
     return saved ? JSON.parse(saved) : [];
   });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('event_reminders', JSON.stringify(reminders));
@@ -2016,11 +2021,38 @@ const MobileHomeCalendar = ({ onActionClick }: { onActionClick: (action: string)
   }, []);
 
   useEffect(() => {
+    setLoadingMedia(!cachedMediaList);
+    apiFetch('/api/data/media').then(r => r.json()).then(json => {
+      let list = [];
+      if (json.data && json.data.length > 0) {
+        list = json.data.slice(-5).reverse();
+      } else {
+        list = [{
+          imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
+          title: "Kerja Bakti Sambut Ramadhan",
+          uploaderName: "Admin RT",
+          desc: "Keseruan warga RT 01 bergotong royong."
+        }];
+      }
+      cachedMediaList = list;
+      setMediaList(list);
+    }).catch(console.error).finally(() => setLoadingMedia(false));
+
     apiFetch('/api/data/acara').then(r => r.json()).then(json => {
       cachedBackendEvents = json.data || [];
       setBackendEvents(cachedBackendEvents);
     }).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (mediaList.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveMediaIndex(prev => (prev + 1) % mediaList.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [mediaList.length]);
+
+  const currentMedia = mediaList[activeMediaIndex] || null;
 
   // Calendar Logic
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -2040,9 +2072,77 @@ const MobileHomeCalendar = ({ onActionClick }: { onActionClick: (action: string)
   });
 
   return (
-    <section className="px-5 mb-5">
-      {/* Mobile Calendar Widget */}
-      <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 p-6 relative text-left">
+    <section className="px-5 mb-8 space-y-6">
+      {/* 1. Mobile Media Slider (Modern Story Style) */}
+      <motion.div 
+        whileTap={{ scale: 0.98 }}
+        className="bg-slate-900 rounded-[2rem] shadow-xl overflow-hidden relative group cursor-pointer aspect-[4/3] w-full"
+        onClick={() => onActionClick('Media')}
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeMediaIndex}
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="absolute inset-0 w-full h-full"
+          >
+            {loadingMedia ? (
+               <div className="w-full h-full bg-slate-200 animate-pulse"></div>
+            ) : currentMedia && (
+              <img src={currentMedia.imageUrl} alt={currentMedia.title} className="w-full h-full object-cover" />
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Progress Bars ala Instagram Story */}
+        {mediaList.length > 1 && !loadingMedia && (
+          <div className="absolute top-4 left-4 right-4 flex gap-1.5 z-20">
+            {mediaList.map((_, idx) => (
+              <div key={idx} className="h-1 bg-white/30 rounded-full flex-1 overflow-hidden backdrop-blur-sm">
+                {idx === activeMediaIndex && (
+                  <motion.div 
+                    initial={{ width: 0 }} 
+                    animate={{ width: "100%" }} 
+                    transition={{ duration: 5, ease: "linear" }} 
+                    className="h-full bg-white rounded-full"
+                  />
+                )}
+                {idx < activeMediaIndex && <div className="h-full bg-white rounded-full" />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent flex flex-col justify-end p-5 text-white z-10">
+          <div className="flex justify-between items-end w-full">
+            <div className="flex-grow pr-2">
+              <span className="px-2.5 py-1 mb-2 bg-teal-500/80 backdrop-blur-md text-[9px] font-extrabold rounded-md inline-block uppercase tracking-wider shadow-sm">Sorotan Warga</span>
+              {loadingMedia ? (
+                 <>
+                    <div className="h-5 w-3/4 bg-white/30 animate-pulse rounded mb-2"></div>
+                    <div className="h-3 w-1/2 bg-white/20 animate-pulse rounded"></div>
+                 </>
+              ) : (
+                 <>
+                    <h4 className="text-lg font-black leading-tight drop-shadow-md mb-1">{currentMedia?.title}</h4>
+                    <p className="text-[10px] text-slate-200 font-medium line-clamp-2 drop-shadow">{currentMedia?.desc || `Oleh: ${currentMedia?.uploaderName}`}</p>
+                 </>
+              )}
+            </div>
+            
+            {!loadingMedia && currentMedia && (
+              <a href={currentMedia.imageUrl} download={currentMedia.title || 'foto'} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer" className="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex-shrink-0" title="Unduh">
+                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              </a>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* 2. Mobile Calendar Widget */}
+      <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 p-6 relative">
         <div className="flex justify-between items-center mb-6">
            <div className="flex flex-col">
              <div className="flex items-center gap-2">
@@ -2118,7 +2218,7 @@ const MobileHomeCalendar = ({ onActionClick }: { onActionClick: (action: string)
                  </AnimatePresence>
                </div>
              </div>
-             <p className="text-[10px] text-slate-400 font-extrabold mt-1.5 uppercase tracking-[0.2em]">Agenda Warga & Kegiatan</p>
+             <p className="text-[10px] text-slate-400 font-extrabold mt-1.5 uppercase tracking-[0.2em]">Jadwal RT</p>
            </div>
            
            <motion.button 
@@ -2216,111 +2316,6 @@ const MobileHomeCalendar = ({ onActionClick }: { onActionClick: (action: string)
            )}
         </div>
       </div>
-    </section>
-  );
-};
-
-const MobileMediaSlider = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
-  const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
-  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
-
-  useEffect(() => {
-    setLoadingMedia(!cachedMediaList);
-    apiFetch('/api/data/media').then(r => r.json()).then(json => {
-      let list = [];
-      if (json.data && json.data.length > 0) {
-        list = json.data.slice(-5).reverse();
-      } else {
-        list = [{
-          imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
-          title: "Kerja Bakti Sambut Ramadhan",
-          uploaderName: "Admin RT",
-          desc: "Keseruan warga RT 01 bergotong royong."
-        }];
-      }
-      cachedMediaList = list;
-      setMediaList(list);
-    }).catch(console.error).finally(() => setLoadingMedia(false));
-  }, []);
-
-  useEffect(() => {
-    if (mediaList.length <= 1) return;
-    const interval = setInterval(() => {
-      setActiveMediaIndex(prev => (prev + 1) % mediaList.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [mediaList.length]);
-
-  const currentMedia = mediaList[activeMediaIndex] || null;
-
-  return (
-    <section className="px-5 mb-8">
-      <motion.div 
-        whileTap={{ scale: 0.98 }}
-        className="bg-slate-900 rounded-[2rem] shadow-xl overflow-hidden relative group cursor-pointer aspect-[4/3] w-full"
-        onClick={() => onActionClick('Media')}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeMediaIndex}
-            initial={{ opacity: 0, scale: 1.05 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="absolute inset-0 w-full h-full"
-          >
-            {loadingMedia ? (
-               <div className="w-full h-full bg-slate-200 animate-pulse"></div>
-            ) : currentMedia && (
-              <img src={currentMedia.imageUrl} alt={currentMedia.title} className="w-full h-full object-cover" />
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {mediaList.length > 1 && !loadingMedia && (
-          <div className="absolute top-4 left-4 right-4 flex gap-1.5 z-20">
-            {mediaList.map((_, idx) => (
-              <div key={idx} className="h-1 bg-white/30 rounded-full flex-1 overflow-hidden backdrop-blur-sm">
-                {idx === activeMediaIndex && (
-                  <motion.div 
-                    initial={{ width: 0 }} 
-                    animate={{ width: "100%" }} 
-                    transition={{ duration: 5, ease: "linear" }} 
-                    className="h-full bg-white rounded-full"
-                  />
-                )}
-                {idx < activeMediaIndex && <div className="h-full bg-white rounded-full" />}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent flex flex-col justify-end p-5 text-white z-10 text-left">
-          <div className="flex justify-between items-end w-full">
-            <div className="flex-grow pr-2">
-              <span className="px-2.5 py-1 mb-2 bg-teal-500/80 backdrop-blur-md text-[9px] font-extrabold rounded-md inline-block uppercase tracking-wider shadow-sm">Sorotan Warga</span>
-              {loadingMedia ? (
-                 <>
-                    <div className="h-5 w-3/4 bg-white/30 animate-pulse rounded mb-2"></div>
-                    <div className="h-3 w-1/2 bg-white/20 animate-pulse rounded"></div>
-                 </>
-              ) : (
-                 <>
-                    <h4 className="text-lg font-black leading-tight drop-shadow-md mb-1">{currentMedia?.title}</h4>
-                    <p className="text-[10px] text-slate-200 font-medium line-clamp-2 drop-shadow">{currentMedia?.desc || `Oleh: ${currentMedia?.uploaderName}`}</p>
-                 </>
-              )}
-            </div>
-            
-            {!loadingMedia && currentMedia && (
-              <a href={currentMedia.imageUrl} download={currentMedia.title || 'foto'} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer" className="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex-shrink-0" title="Unduh">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              </a>
-            )}
-          </div>
-        </div>
-      </motion.div>
     </section>
   );
 };
@@ -2439,7 +2434,7 @@ const MobileSaldoCard = () => {
   const [loading, setLoading] = useState(!cachedSaldoResult);
   
   // State untuk menyembunyikan saldo
-  const [isMasked, setIsMasked] = useState(true);
+  const [isMasked, setIsMasked] = useState(false);
 
   useEffect(() => {
     setLoading(!cachedSaldoResult);
@@ -4008,9 +4003,8 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         </div>
                       )}
                       <MobileQuickActions onActionClick={setActiveMobileTab} visibleMenus={visibleMenus}/>
-                      <MobileHomeCalendar onActionClick={setActiveMobileTab} />
-                      <MobileMediaSlider onActionClick={setActiveMobileTab} />
                       <MobileUMKMAds />
+                      <MobileEvents onActionClick={setActiveMobileTab} />
                     </>
                   )}
 
@@ -4315,7 +4309,6 @@ export default function App() {
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [showSplash, setShowSplash] = useState(false);
   const [showAuthFlow, setShowAuthFlow] = useState(false);
-  const [inactivityAlert, setInactivityAlert] = useState(false);
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth < 768;
@@ -4434,7 +4427,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [globalEvents]);
 
-  const handleLogout = async (isAuto = false) => {
+  const handleLogout = async () => {
     if (user?.id) {
       try {
         await apiFetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id }) });
@@ -4442,52 +4435,7 @@ export default function App() {
     }
     setUser(null);
     localStorage.removeItem('auth_user');
-    if (isAuto === true) {
-      setInactivityAlert(true);
-    }
   };
-
-  // Auto-logout after 30 minutes of inactivity
-  const logoutTimerRef = useRef<any>(null);
-  const handleLogoutRef = useRef<any>(null);
-  
-  useEffect(() => {
-    handleLogoutRef.current = handleLogout;
-  }, [handleLogout]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
-
-    const resetTimer = () => {
-      if (logoutTimerRef.current) {
-        clearTimeout(logoutTimerRef.current);
-      }
-      logoutTimerRef.current = setTimeout(() => {
-        if (handleLogoutRef.current) {
-          handleLogoutRef.current(true);
-        }
-      }, INACTIVITY_LIMIT);
-    };
-
-    // Initialize timer
-    resetTimer();
-
-    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-    events.forEach(event => {
-      window.addEventListener(event, resetTimer);
-    });
-
-    return () => {
-      if (logoutTimerRef.current) {
-        clearTimeout(logoutTimerRef.current);
-      }
-      events.forEach(event => {
-        window.removeEventListener(event, resetTimer);
-      });
-    };
-  }, [user?.id]);
 
   return (
     <>
@@ -4524,37 +4472,6 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-          </motion.div>
-        )}
-        {inactivityAlert && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-teal-100 flex flex-col items-center text-center"
-            >
-              <div className="w-16 h-16 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mb-4">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m0-8V5m0 16a9 9 0 110-18 9 9 0 010 18z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-black text-slate-800 tracking-tight">Sesi Berakhir</h3>
-              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                Anda telah otomatis keluar karena tidak ada aktivitas selama 30 menit. Silakan masuk kembali untuk melanjutkan.
-              </p>
-              <button
-                onClick={() => setInactivityAlert(false)}
-                className="mt-6 w-full py-3.5 bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-teal-100 transition-all active:scale-95 uppercase tracking-wider"
-              >
-                Masuk Kembali
-              </button>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -4605,9 +4522,9 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="w-full min-h-screen flex flex-col items-center justify-start bg-gray-50 p-4 pt-16 md:pt-4 md:justify-center overflow-y-auto relative pb-12"
+              className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4 relative"
             >
-              <div className="absolute top-4 left-4 flex gap-3 z-50">
+              <div className="absolute top-6 left-6 flex gap-3">
                 <button 
                   onClick={() => handleSelectRt('')}
                   className="text-sm font-bold text-slate-600 hover:text-slate-800 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
@@ -4623,9 +4540,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <div className="w-full max-w-md space-y-6 mt-10 md:mt-0">
-                <Login onLogin={handleLogin} onNavRegister={() => setAuthView('register')} />
-              </div>
+              <Login onLogin={handleLogin} onNavRegister={() => setAuthView('register')} />
             </motion.div>
           ) : (
              <motion.div
@@ -4634,9 +4549,9 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="w-full min-h-screen flex flex-col items-center justify-start bg-gray-50 p-4 pt-16 md:pt-4 md:justify-center overflow-y-auto relative pb-12"
+              className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4 py-8 relative"
             >
-              <div className="absolute top-4 left-4 flex gap-3 z-50">
+              <div className="absolute top-6 left-6 flex gap-3">
                 <button 
                   onClick={() => handleSelectRt('')}
                   className="text-sm font-bold text-slate-600 hover:text-slate-800 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
@@ -4652,9 +4567,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <div className="w-full max-w-md space-y-6 mt-10 md:mt-0">
-                <Register onRegister={handleLogin} onNavLogin={() => setAuthView('login')} />
-              </div>
+              <Register onRegister={handleLogin} onNavLogin={() => setAuthView('login')} />
             </motion.div>
           )
         ) : (
