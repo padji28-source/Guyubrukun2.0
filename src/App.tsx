@@ -1,18 +1,19 @@
 import { apiFetch } from './apiInterceptor';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { MobileDataWarga } from './MobileDataWarga';
-import { MobileScanQR } from './MobileScanQR';
-import { MobileSuratPengantar } from './MobileSuratPengantar';
-import { MobileLaporRT } from './MobileLaporRT';
-import { MobileLaporan } from './MobileLaporan';
-import { WebSuratOnlinePage } from './components/WebSuratOnlinePage';
 
-import { MobileDarurat } from './MobileDarurat';
-import { MobileDokumen } from './MobileDokumen';
-import { MobileTamu } from './MobileTamu';
-import { MobileVoting } from './MobileVoting';
+const MobileDataWarga = React.lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
+const MobileScanQR = React.lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
+const MobileSuratPengantar = React.lazy(() => import('./MobileSuratPengantar').then(m => ({ default: m.MobileSuratPengantar })));
+const MobileLaporRT = React.lazy(() => import('./MobileLaporRT').then(m => ({ default: m.MobileLaporRT })));
+const MobileLaporan = React.lazy(() => import('./MobileLaporan').then(m => ({ default: m.MobileLaporan })));
+const WebSuratOnlinePage = React.lazy(() => import('./components/WebSuratOnlinePage').then(m => ({ default: m.WebSuratOnlinePage })));
+
+const MobileDarurat = React.lazy(() => import('./MobileDarurat').then(m => ({ default: m.MobileDarurat })));
+const MobileDokumen = React.lazy(() => import('./MobileDokumen').then(m => ({ default: m.MobileDokumen })));
+const MobileTamu = React.lazy(() => import('./MobileTamu').then(m => ({ default: m.MobileTamu })));
+const MobileVoting = React.lazy(() => import('./MobileVoting').then(m => ({ default: m.MobileVoting })));
 
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
   const [activeVotings, setActiveVotings] = useState<any[]>([]);
@@ -50,17 +51,17 @@ const MobileVotingNotification = ({ onActionClick, notifications }: { onActionCl
     </section>
   );
 };
-import { MobileAcaraPage } from './MobileAcara';
-import { MobileIuran } from './MobileIuran';
-import { MobileKas } from './MobileKas';
-import { MobileUMKM } from './MobileUMKM';
-import { MobileUMKMAds } from './components/MobileUMKMAds';
-import { WebSmartRtAiPage } from './components/WebSmartRtAiPage';
-import { WebDashboardRtView } from './components/WebDashboardRtView';
-import { WebInventarisPage } from './components/WebInventarisPage';
-import { WebNotulenPage } from './components/WebNotulenPage';
-import { WebMenuAccessPage } from './components/WebMenuAccessPage';
-import { LandingPage } from './components/LandingPage';
+const MobileAcaraPage = React.lazy(() => import('./MobileAcara').then(m => ({ default: m.MobileAcaraPage })));
+const MobileIuran = React.lazy(() => import('./MobileIuran').then(m => ({ default: m.MobileIuran })));
+const MobileKas = React.lazy(() => import('./MobileKas').then(m => ({ default: m.MobileKas })));
+const MobileUMKM = React.lazy(() => import('./MobileUMKM').then(m => ({ default: m.MobileUMKM })));
+const MobileUMKMAds = React.lazy(() => import('./components/MobileUMKMAds').then(m => ({ default: m.MobileUMKMAds })));
+const WebSmartRtAiPage = React.lazy(() => import('./components/WebSmartRtAiPage').then(m => ({ default: m.WebSmartRtAiPage })));
+const WebDashboardRtView = React.lazy(() => import('./components/WebDashboardRtView').then(m => ({ default: m.WebDashboardRtView })));
+const WebInventarisPage = React.lazy(() => import('./components/WebInventarisPage').then(m => ({ default: m.WebInventarisPage })));
+const WebNotulenPage = React.lazy(() => import('./components/WebNotulenPage').then(m => ({ default: m.WebNotulenPage })));
+const WebMenuAccessPage = React.lazy(() => import('./components/WebMenuAccessPage').then(m => ({ default: m.WebMenuAccessPage })));
+const LandingPage = React.lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
 
 // --- Modern Icons Set ---
 export const icons = {
@@ -2324,7 +2325,7 @@ const MobileBottomNav = ({ activeTab, onTabChange, user }: { activeTab: string, 
   );
 };
 
-import { MobileMedia } from './MobileMedia';
+const MobileMedia = React.lazy(() => import('./MobileMedia').then(m => ({ default: m.MobileMedia })));
 
 // --- Simplified Inline Illustrations (as functional components) ---
 
@@ -4105,37 +4106,41 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                     <p className="text-sm text-gray-500 leading-relaxed mb-8">Akun Anda sedang diverifikasi atau dinonaktifkan oleh Ketua RT. Harap hubungi Ketua RT untuk akses fitur dalam aplikasi.</p>
                     <button onClick={() => window.open(`https://wa.me/`, '_blank')} className="px-8 py-3 bg-teal-600 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-teal-700 transition">Hubungi Pengurus / RT</button>
                   </div>
-                ) : activeWebTab === 'Dashboard' ? (
-                  <>
-                    <WebDashboardRtView/>
-                    <div className="px-6 pb-6">
-                      <WebMediaSlider/>
-                    </div>
-                  </>
                 ) : (
-                  <>
-                    {user.isApproved && activeWebTab === 'Warga' && <WebWargaPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Iuran' && <WebIuranPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Kas' && <WebKasPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Surat Online' && (
-                      <WebSuratOnlinePage 
-                        user={user} 
-                        hittedSuratId={selectedSuratId} 
-                        clearHighlight={() => setSelectedSuratId(null)} 
-                      />
+                  <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-8 text-teal-600"><div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+                    {activeWebTab === 'Dashboard' ? (
+                      <>
+                        <WebDashboardRtView/>
+                        <div className="px-6 pb-6">
+                          <WebMediaSlider/>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {user.isApproved && activeWebTab === 'Warga' && <WebWargaPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Iuran' && <WebIuranPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Kas' && <WebKasPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Surat Online' && (
+                          <WebSuratOnlinePage 
+                            user={user} 
+                            hittedSuratId={selectedSuratId} 
+                            clearHighlight={() => setSelectedSuratId(null)} 
+                          />
+                        )}
+                        {user.isApproved && activeWebTab === 'Dokumen' && <WebDokumenPage user={user} onUpdateUser={onUpdateUser} />}
+                        {user.isApproved && activeWebTab === 'Laporan' && <WebLaporanPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Notulen Rapat' && <WebNotulenPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Pengumuman' && <WebPengumumanPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Media' && <WebMediaPage user={user} />}
+                        {user.isApproved && activeWebTab === 'UMKM' && <WebUMKMPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Tamu' && <WebTamuPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Inventaris' && <WebInventarisPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Smart RT AI' && <WebSmartRtAiPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Akses Menu' && <WebMenuAccessPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Pengaturan' && <WebPengaturanPage user={user} onLogout={onLogout} />}
+                      </>
                     )}
-                    {user.isApproved && activeWebTab === 'Dokumen' && <WebDokumenPage user={user} onUpdateUser={onUpdateUser} />}
-                    {user.isApproved && activeWebTab === 'Laporan' && <WebLaporanPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Notulen Rapat' && <WebNotulenPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Pengumuman' && <WebPengumumanPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Media' && <WebMediaPage user={user} />}
-                    {user.isApproved && activeWebTab === 'UMKM' && <WebUMKMPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Tamu' && <WebTamuPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Inventaris' && <WebInventarisPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Smart RT AI' && <WebSmartRtAiPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Akses Menu' && <WebMenuAccessPage user={user} />}
-                    {user.isApproved && activeWebTab === 'Pengaturan' && <WebPengaturanPage user={user} onLogout={onLogout} />}
-                  </>
+                  </Suspense>
                 )}
               </motion.div>
             </AnimatePresence>
@@ -4167,7 +4172,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                   <button onClick={() => window.open(`https://wa.me/`, '_blank')} className="w-full max-w-[200px] py-3 bg-teal-600 text-white rounded-xl text-xs font-bold shadow-sm hover:bg-teal-700 transition">Hubungi Pengurus / RT</button>
                 </div>
               ) : (
-                <>
+                <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-8 text-teal-600"><div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
                   {activeMobileTab === 'Beranda' && (
                     <>
                       <section className="px-4 mb-4 mt-2 relative z-10 transition-all hidden">
@@ -4313,7 +4318,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                       <button className="px-4 py-2 border rounded-full text-xs text-gray-600" onClick={() => setActiveMobileTab('Beranda')}>Kembali</button>
                     </div>
                   )}
-                </>
+                </Suspense>
               )}
             </motion.div>
           </AnimatePresence>
@@ -4394,7 +4399,9 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   );
 }
 
-import { Login, Register, CuteMascot } from './Auth';
+const Login = React.lazy(() => import('./Auth').then(m => ({ default: m.Login })));
+const Register = React.lazy(() => import('./Auth').then(m => ({ default: m.Register })));
+const CuteMascot = React.lazy(() => import('./Auth').then(m => ({ default: m.CuteMascot })));
 
 const RtSelection = ({ onSelectRt }: { onSelectRt: (rt: string) => void }) => {
   const rts = ['RT 01', 'RT 02', 'RT 03'];
@@ -4545,7 +4552,7 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
   );
 };
 
-import { InstallPrompt } from './components/InstallPrompt';
+const InstallPrompt = React.lazy(() => import('./components/InstallPrompt').then(m => ({ default: m.InstallPrompt })));
 
 export default function App() {
   const [user, setUser] = useState<any>(() => {
