@@ -78,7 +78,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     define: {
-      "process.env.GEMINI_API_KEY": JSON.stringify(env.GEMINI_API_KEY),
+      "process.env.APP_VERSION": JSON.stringify("1.0.0"),
     },
     resolve: {
       alias: {
@@ -91,10 +91,9 @@ export default defineConfig(({ mode }) => {
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR === "true" ? false : {
-        protocol: "wss",
-        clientPort: 443,
-      },
+      hmr: false,
+      host: "0.0.0.0",
+      port: 3000,
     },
   };
 });

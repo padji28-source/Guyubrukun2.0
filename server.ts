@@ -8,6 +8,7 @@ import { z } from "zod";
 import { GoogleGenAI } from "@google/genai";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import cors from "cors";
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ const apiLimiter = rateLimit({
 });
 
 export const app = express();
+app.use(cors());
 app.set("trust proxy", 1);
 const PORT = 3000;
 
@@ -100,6 +102,10 @@ app.use(authMiddleware);
 
 // Point 2: ROTATE & HIDE DATABASE CREDENTIALS (NO HARDCODING)
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
+
+if (process.env.VERCEL && (!process.env.MONGODB_URI || process.env.MONGODB_URI.includes('127.0.0.1') || process.env.MONGODB_URI.includes('localhost'))) {
+  console.warn("WARNING: Running on Vercel but MONGODB_URI is not set or pointing to localhost. Database connection will likely fail.");
+}
 
 // Legacy fallback model for auto-migration
 const SystemDataSchema = new mongoose.Schema({
@@ -522,7 +528,7 @@ async function connectDB() {
       connectTimeoutMS: 5000,
     });
     isDbConnected = true;
-    console.log("Connected securely to MongoDB database system.");
+    console.log(`Connected securely to MongoDB: ${MONGODB_URI.split('@').pop()}`);
   } catch (err) {
     console.error("MongoDB connection exception:", err);
   }
@@ -2341,13 +2347,17 @@ export async function startServer(listen = true) {
   });
 
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const viteDynamic = "vite";
-    const viteModule = await import(viteDynamic);
-    const vite = await viteModule.createServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer } = await import("vite");
+      const vite = await createServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite middleware integrated successfully.");
+    } catch (e) {
+      console.error("Vite integration error:", e);
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

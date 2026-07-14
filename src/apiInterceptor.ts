@@ -88,16 +88,21 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     } catch(e) {}
   }
 
-  // Handle relative URLs for Capacitor
+  // Handle relative URLs
   let finalInput = input;
-  if (Capacitor.isNativePlatform() && typeof input === 'string' && input.startsWith('/')) {
-    // In production, this should be the deployed URL.
-    // For now, we use the current environment's URL as a default.
-    const baseUrl = window.location.origin.includes('localhost') || window.location.origin.includes('ais-dev') || window.location.origin.includes('ais-pre')
-      ? window.location.origin 
-      : 'https://ais-pre-4cyexyaiz2lrevpvgr7rkp-47019996628.asia-east1.run.app';
+  if (typeof input === 'string' && input.startsWith('/')) {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
     
-    finalInput = `${baseUrl}${input}`;
+    if (apiBaseUrl) {
+      finalInput = `${apiBaseUrl}${input}`;
+    } else if (Capacitor.isNativePlatform()) {
+      // On native platforms, we must use a full URL.
+      const prodUrl = 'https://ais-pre-4cyexyaiz2lrevpvgr7rkp-47019996628.asia-east1.run.app';
+      const currentOrigin = window.location.origin;
+      const isLocalOrDev = currentOrigin.includes('ais-dev') || currentOrigin.includes('ais-pre');
+      const baseUrl = isLocalOrDev ? currentOrigin : prodUrl;
+      finalInput = `${baseUrl}${input}`;
+    }
   }
 
   const fetchPromise = fetch(finalInput, modifiedInit).then(async (res) => {

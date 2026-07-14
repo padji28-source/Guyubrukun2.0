@@ -44,6 +44,7 @@ var import_zod = require("zod");
 var import_genai = require("@google/genai");
 var import_bcryptjs = __toESM(require("bcryptjs"), 1);
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"), 1);
+var import_cors = __toESM(require("cors"), 1);
 var import_express_rate_limit = __toESM(require("express-rate-limit"), 1);
 import_dotenv.default.config();
 var JWT_SECRET = process.env.JWT_SECRET || "guyubrukunsecretkey_for_jwt2026";
@@ -65,6 +66,7 @@ var apiLimiter = (0, import_express_rate_limit.default)({
   validate: { trustProxy: false, xForwardedForHeader: false }
 });
 var app = (0, import_express.default)();
+app.use((0, import_cors.default)());
 app.set("trust proxy", 1);
 var PORT = 3e3;
 app.use(import_express.default.json({ limit: "50mb" }));
@@ -113,6 +115,9 @@ function authMiddleware(req, res, next) {
 }
 app.use(authMiddleware);
 var MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
+if (process.env.VERCEL && (!process.env.MONGODB_URI || process.env.MONGODB_URI.includes("127.0.0.1") || process.env.MONGODB_URI.includes("localhost"))) {
+  console.warn("WARNING: Running on Vercel but MONGODB_URI is not set or pointing to localhost. Database connection will likely fail.");
+}
 var SystemDataSchema = new import_mongoose.default.Schema({
   _id: String,
   data: import_mongoose.default.Schema.Types.Mixed
@@ -467,7 +472,7 @@ async function connectDB() {
       connectTimeoutMS: 5e3
     });
     isDbConnected = true;
-    console.log("Connected securely to MongoDB database system.");
+    console.log(`Connected securely to MongoDB: ${MONGODB_URI.split("@").pop()}`);
   } catch (err) {
     console.error("MongoDB connection exception:", err);
   }
@@ -1936,13 +1941,17 @@ async function startServer(listen = true) {
     }
   });
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const viteDynamic = "vite";
-    const viteModule = await import(viteDynamic);
-    const vite = await viteModule.createServer({
-      server: { middlewareMode: true },
-      appType: "spa"
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer } = await import("vite");
+      const vite = await createServer({
+        server: { middlewareMode: true },
+        appType: "spa"
+      });
+      app.use(vite.middlewares);
+      console.log("Vite middleware integrated successfully.");
+    } catch (e) {
+      console.error("Vite integration error:", e);
+    }
   } else {
     const distPath = import_path.default.join(process.cwd(), "dist");
     app.use(import_express.default.static(distPath));
