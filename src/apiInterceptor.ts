@@ -2,6 +2,42 @@ const cache = new Map<string, { data: string, timestamp: number }>();
 const inflight = new Map<string, Promise<Response>>();
 const CACHE_TTL = 5 * 60 * 1000;
 
+const handleJsonResponse = async (res: Response, input: any, originalJsonFn: () => Promise<any>): Promise<any> => {
+  const cloned = res.clone();
+  try {
+    const text = await cloned.text();
+    const trimmed = text.trim();
+    if (trimmed.startsWith('<')) {
+      console.error('API Error: Expected JSON but got HTML for', input, trimmed.substring(0, 150));
+      let errorMsg = 'Gagal memproses data dari server (Respons bukan JSON).';
+      if (text.includes('MONGODB_URI') || text.includes('MANGODB_URL') || text.includes('Database Gagal')) {
+        errorMsg = 'Koneksi database gagal. Silakan periksa konfigurasi MONGODB_URI di Vercel Anda.';
+      } else if (text.includes('502') || text.includes('Bad Gateway') || text.includes('504') || text.includes('Gateway Timeout')) {
+        errorMsg = 'Server sedang offline atau mengalami gangguan (502/504).';
+      } else if (text.includes('404') || text.includes('Not Found')) {
+        errorMsg = 'Endpoint API tidak ditemukan (404). Silakan hubungi admin atau periksa routing.';
+      } else if (text.includes('Cannot POST') || text.includes('Cannot GET')) {
+        const routeMatch = text.match(/Cannot\s+[A-Z]+\s+\S+/i);
+        errorMsg = `Endpoint API salah: ${routeMatch ? routeMatch[0] : 'tidak terdaftar'}.`;
+      }
+      return { data: [], users: [], notifications: [], error: errorMsg, raw: text };
+    }
+    
+    if (!trimmed) {
+      return { data: [], users: [], notifications: [] };
+    }
+    
+    try {
+      return JSON.parse(trimmed);
+    } catch (e) {
+      return await originalJsonFn();
+    }
+  } catch (err) {
+    console.error('API Error: Expecting JSON but failed to parse for', input, err);
+    return { data: [], users: [], notifications: [], error: 'Failed to parse JSON' };
+  }
+};
+
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
   const url = typeof input === 'string' ? input : input.toString();
@@ -32,18 +68,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       // apply custom json parser to cloned res
       const originalJsonCloned = finalRes.json.bind(finalRes);
       finalRes.json = async () => {
-        const cloned = finalRes.clone();
-        const text = await cloned.text();
-        if (text.trim().startsWith('<')) {
-          console.error('API Error: Expected JSON but got HTML for', url, text.substring(0, 100));
-          return { data: [], users: [], notifications: [], error: 'Failed to parse JSON' };
-        }
-        try {
-          return await originalJsonCloned();
-        } catch (err) {
-          console.error('API Error: Expecting JSON but failed to parse for', url, err);
-          return { data: [], users: [], notifications: [], error: 'Failed to parse JSON', raw: text };
-        }
+        return handleJsonResponse(finalRes, url, originalJsonCloned);
       };
       return finalRes;
     }
@@ -99,18 +124,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
     const originalJson = res.json.bind(res);
     res.json = async () => {
-      const cloned = res.clone();
-      const text = await cloned.text();
-      if (text.trim().startsWith('<')) {
-        console.error('API Error: Expected JSON but got HTML for', input, text.substring(0, 100));
-        return { data: [], users: [], notifications: [], error: 'Failed to parse JSON' };
-      }
-      try {
-        return await originalJson();
-      } catch (err) {
-        console.error('API Error: Expecting JSON but failed to parse for', input, err);
-        return { data: [], users: [], notifications: [], error: 'Failed to parse JSON', raw: text };
-      }
+      return handleJsonResponse(res, input, originalJson);
     };
     return res;
   }).finally(() => {
