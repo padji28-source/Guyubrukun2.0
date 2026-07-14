@@ -580,7 +580,7 @@ const WebStatsCards = () => {
   const [showKasDetail, setShowKasDetail] = useState(false);
   
   // Tambahkan state ini untuk kontrol menyembunyikan saldo di Web
-  const [isMasked, setIsMasked] = useState(false);
+  const [isMasked, setIsMasked] = useState(true);
 
   useEffect(() => {
     // ... (Biarkan kode useEffect kamu sebelumnya apa adanya) ...
@@ -2434,7 +2434,7 @@ const MobileSaldoCard = () => {
   const [loading, setLoading] = useState(!cachedSaldoResult);
   
   // State untuk menyembunyikan saldo
-  const [isMasked, setIsMasked] = useState(false);
+  const [isMasked, setIsMasked] = useState(true);
 
   useEffect(() => {
     setLoading(!cachedSaldoResult);
@@ -2961,6 +2961,145 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
   const [recentDonations, setRecentDonations] = useState<any[]>([]);
   const [lastTx, setLastTx] = useState<any | null>(null);
 
+  // --- State & Handlers for Jadwal Sholat & Alarms ---
+  const [city, setCity] = useState<string>(() => localStorage.getItem('prayer_city') || 'Jakarta');
+  const [prayerTimes, setPrayerTimes] = useState<any>({
+    Imsak: '04:25',
+    Subuh: '04:35',
+    Dzuhur: '11:55',
+    Ashar: '15:15',
+    Maghrib: '17:55',
+    Isya: '19:07'
+  });
+  const [loadingPrayers, setLoadingPrayers] = useState<boolean>(false);
+  const [alarms, setAlarms] = useState<{ [key: string]: boolean }>(() => {
+    const saved = localStorage.getItem('prayer_alarms');
+    return saved ? JSON.parse(saved) : {
+      Subuh: false,
+      Dzuhur: false,
+      Ashar: false,
+      Maghrib: false,
+      Isya: false
+    };
+  });
+  const [activeAlarmModal, setActiveAlarmModal] = useState<{ name: string; time: string } | null>(null);
+
+  // Play a beautiful notification arpeggio using Web Audio API
+  const playChime = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15); // E5
+      osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3); // G5
+      osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.45); // C6
+      
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + 1.2);
+    } catch (e) {
+      console.error('Audio play failed:', e);
+    }
+  };
+
+  const triggerAlarm = (prayerName: string, prayerTime: string) => {
+    playChime();
+    let count = 0;
+    const interval = setInterval(() => {
+      if (count < 2) {
+        playChime();
+        count++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 1500);
+
+    setActiveAlarmModal({ name: prayerName, time: prayerTime });
+
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(`Waktu Sholat ${prayerName} Telah Tiba!`, {
+        body: `Pukul ${prayerTime}. Mari bersiap untuk menunaikan ibadah sholat ${prayerName}.`,
+        icon: '/guyubrukun2.png'
+      });
+    }
+  };
+
+  useEffect(() => {
+    localStorage.setItem('prayer_city', city);
+    setLoadingPrayers(true);
+    fetch(`https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=Indonesia&method=2`)
+      .then(res => res.json())
+      .then(json => {
+        if (json.data && json.data.timings) {
+          const t = json.data.timings;
+          setPrayerTimes({
+            Imsak: t.Imsak,
+            Subuh: t.Fajr,
+            Dzuhur: t.Dhuhr,
+            Ashar: t.Asr,
+            Maghrib: t.Maghrib,
+            Isya: t.Isha
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Gagal memuat jadwal sholat:', err);
+      })
+      .finally(() => {
+        setLoadingPrayers(false);
+      });
+  }, [city]);
+
+  const toggleAlarm = (prayer: string) => {
+    const updated = { ...alarms, [prayer]: !alarms[prayer] };
+    setAlarms(updated);
+    localStorage.setItem('prayer_alarms', JSON.stringify(updated));
+    
+    if (updated[prayer] && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+  };
+
+  // Monitor time to trigger active alarms
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      const now = new Date();
+      const currentHourStr = String(now.getHours()).padStart(2, '0');
+      const currentMinStr = String(now.getMinutes()).padStart(2, '0');
+      const currentTimeStr = `${currentHourStr}:${currentMinStr}`;
+      
+      Object.keys(alarms).forEach((prayerName) => {
+        if (alarms[prayerName]) {
+          const prayerTime = prayerTimes[prayerName];
+          if (prayerTime === currentTimeStr) {
+            const alarmKey = `${prayerName}-${currentTimeStr}`;
+            const triggeredToday = localStorage.getItem('last_triggered_alarm');
+            
+            if (triggeredToday !== alarmKey) {
+              localStorage.setItem('last_triggered_alarm', alarmKey);
+              triggerAlarm(prayerName, prayerTime);
+            }
+          }
+        }
+      });
+    }, 10000); // Check every 10 seconds
+    
+    return () => clearInterval(checkInterval);
+  }, [alarms, prayerTimes]);
+
   const fetchRecentDonations = async () => {
     try {
       const res = await apiFetch('/api/data/kas');
@@ -3359,6 +3498,86 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
 
         {/* RIGHT COLUMN: Recent Donations feed & Manual bank Transfer */}
         <div className="lg:col-span-5 space-y-6">
+
+          {/* Jadwal Sholat Widget */}
+          <div className="bg-gradient-to-br from-emerald-800 via-teal-900 to-slate-900 text-white p-5 rounded-3xl border border-emerald-500/20 shadow-md space-y-4 relative overflow-hidden">
+            {/* Elegant Background Art */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl -translate-y-10 translate-x-10 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-teal-500/10 rounded-full blur-xl translate-y-10 -translate-x-10 pointer-events-none"></div>
+            
+            <div className="flex items-center justify-between gap-3 relative z-10 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🕌</span>
+                <div>
+                  <h4 className="font-extrabold text-xs tracking-wider uppercase text-emerald-300">Jadwal Sholat</h4>
+                  <p className="text-[10px] text-teal-100/75 font-medium">Aktifkan Notifikasi & Alarm</p>
+                </div>
+              </div>
+              
+              {/* City Selection */}
+              <select
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="bg-white/10 text-white font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-xl border border-white/20 outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"
+              >
+                {['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Semarang', 'Makassar', 'Yogyakarta'].map((c) => (
+                  <option key={c} value={c} className="text-gray-800 uppercase font-bold text-[10px]">{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {loadingPrayers ? (
+              <div className="py-4 flex flex-col items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-[10px] font-mono tracking-widest text-teal-200 uppercase">MEMUAT JADWAL...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 relative z-10">
+                {[
+                  { name: 'Imsak', time: prayerTimes.Imsak, hasAlarm: false },
+                  { name: 'Subuh', time: prayerTimes.Subuh, hasAlarm: true },
+                  { name: 'Dzuhur', time: prayerTimes.Dzuhur, hasAlarm: true },
+                  { name: 'Ashar', time: prayerTimes.Ashar, hasAlarm: true },
+                  { name: 'Maghrib', time: prayerTimes.Maghrib, hasAlarm: true },
+                  { name: 'Isya', time: prayerTimes.Isya, hasAlarm: true },
+                ].map((p) => {
+                  const isAlarmActive = p.hasAlarm && alarms[p.name];
+                  return (
+                    <div
+                      key={p.name}
+                      className="bg-white/5 backdrop-blur-xs border border-white/10 p-2 rounded-2xl text-center flex flex-col justify-between items-center relative hover:bg-white/10 transition-colors"
+                    >
+                      <span className="text-[9px] font-bold text-teal-300 uppercase tracking-wider">{p.name}</span>
+                      <span className="text-xs font-extrabold tracking-tight my-1 font-mono text-white">{p.time}</span>
+                      
+                      {p.hasAlarm ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleAlarm(p.name)}
+                          className={`w-7 h-7 flex items-center justify-center rounded-full border transition-all cursor-pointer ${
+                            isAlarmActive
+                              ? 'bg-emerald-500 text-white border-emerald-400 shadow-md shadow-emerald-500/25 animate-[pulse_2s_infinite]'
+                              : 'bg-white/5 text-gray-400 border-white/10 hover:text-white hover:bg-white/10'
+                          }`}
+                          title={isAlarmActive ? `Alarm ${p.name} Aktif` : `Aktifkan Alarm ${p.name}`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill={isAlarmActive ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <span className="w-7 h-7 flex items-center justify-center rounded-full text-white/25 text-[9px] font-mono uppercase font-bold">-</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            
+            <p className="text-[9px] text-teal-100/60 leading-normal text-center mt-1">
+              * Aplikasi akan membunyikan audio chime dan memunculkan pop-up saat waktu sholat tiba jika alarm aktif.
+            </p>
+          </div>
           
           {/* Recent Live Donors Feed */}
           <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-xs space-y-4">
@@ -3535,6 +3754,39 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                 className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black shadow-md transition-all active:scale-[0.98] cursor-pointer"
               >
                 Kembali ke Alms
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Alarm Sholat Pop-up Modal */}
+      <AnimatePresence>
+        {activeAlarmModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl border border-teal-100 text-center max-w-sm w-full space-y-4"
+            >
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-3xl animate-[bounce_1.5s_infinite]">
+                🕌
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-gray-900 tracking-tight">Waktu Sholat Telah Tiba</h3>
+                <p className="text-xs text-emerald-600 font-extrabold uppercase tracking-widest font-sans">Sholat {activeAlarmModal.name}</p>
+                <p className="text-xs text-gray-500 font-semibold font-mono">Pukul {activeAlarmModal.time}</p>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed font-medium">
+                "Sesungguhnya sholat itu atas orang-orang yang beriman adalah fardhu yang ditentukan waktunya." (QS. An-Nisa: 103)
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveAlarmModal(null)}
+                className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black tracking-wider shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+              >
+                MATIKAN ALARM & SELESAI
               </button>
             </motion.div>
           </div>
