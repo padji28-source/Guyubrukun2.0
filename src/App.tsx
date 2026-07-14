@@ -1383,7 +1383,7 @@ const WebPengaturanPage = ({ user, onLogout }: { user: any, onLogout: () => void
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`Kawasan: Rukun Tetangga ${selectedRt.toUpperCase()} - RW 21, Kompleks Rukun, Jakarta`, 14, 26);
+      doc.text(`Kawasan: Rukun Tetangga ${selectedRt.toUpperCase()} - RW 21, Wisma Garden, Tangerang`, 14, 26);
       doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 31);
       
       // Divider line
@@ -1798,7 +1798,7 @@ const MobileHeader = ({ notifications, onShowNotifications }: { notifications: a
 const MobileProfile = ({ user, onClick }: { user: any; onClick?: () => void }) => {
   const shortName = user?.nama ? user.nama.split(' ').slice(0, 2).join(' ') : 'Warga';
   // Use a fallback so it matches original data visually if unavailable
-  const displayAlamat = user?.alamat || 'Jl. Bahagia No. 12, Kompleks Rukun';
+  const displayAlamat = user?.alamat || 'Wisma Garden, Kutajaya, Pasarkemis, Tangerang';
   
   return (
   <motion.section 
@@ -2522,6 +2522,7 @@ const mobileNavItems = [
 
 const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogout: () => void; onUpdateUser: (data: any) => void }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [showQrZoom, setShowQrZoom] = useState(false);
   const [isChangingPass, setIsChangingPass] = useState(false);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -2537,7 +2538,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const [profile, setProfile] = useState({
     name: user?.nama || 'Admin RT',
     address: user?.alamat || '',
-    phone: user?.noHp || '0812-3456-7890',
+    phone: user?.noHp || '0812-1400-7871',
     role: user?.role === 'admin' ? 'Ketua RT 01 / RW 21' : (user?.status || 'Warga Tetap'),
     photo: user?.photo || null as string | null,
     umur: user?.umur || '',
@@ -2849,13 +2850,16 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
 
           <div className="mt-6 flex gap-4 items-center bg-white/5 border border-white/10 p-3.5 rounded-2xl">
             {/* QR Code Container */}
-            <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
+            <button 
+              onClick={() => setShowQrZoom(true)}
+              className="bg-white p-2 rounded-xl shrink-0 shadow-md cursor-pointer hover:ring-2 hover:ring-teal-400 transition-all active:scale-95"
+            >
               <img 
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(JSON.stringify({ id: user?.id, nama: profile.name, alamat: profile.address, status: profile.role }))}`}
                 alt="QR Code Warga" 
-                className="w-[72px] h-[72px] object-contain"
+                className="w-[72px] h-[72px] object-contain pointer-events-none"
               />
-            </div>
+            </button>
             <div className="flex-grow min-w-0">
               <p className="text-[9px] font-bold text-teal-400 uppercase tracking-wider">Verifikasi Warga</p>
               <p className="text-[11px] font-extrabold text-slate-200 mt-1 truncate">{profile.address || 'Alamat RT 01'}</p>
@@ -2945,6 +2949,48 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
           Keluar Aplikasi
         </button>
       </div>
+
+      {/* QR Code Zoom Modal */}
+      <AnimatePresence>
+        {showQrZoom && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" onClick={() => setShowQrZoom(false)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col border border-white/20 p-6 relative max-w-sm w-full"
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setShowQrZoom(false)} 
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-slate-50 border border-slate-100 rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-500 transition-all cursor-pointer"
+              >
+                ✕
+              </button>
+              
+              <div className="flex flex-col items-center pt-2">
+                <div className="bg-teal-50 p-3 rounded-2xl mb-4">
+                  <LogoCommunityIcon size="28" colorAccent="#14b8a6" colorPrimary="#14b8a6" />
+                </div>
+                <h3 className="font-black text-slate-800 text-xl mb-1 text-center">{profile.name}</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Kartu Warga RT 01</p>
+                
+                <div className="bg-white p-4 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-100">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(JSON.stringify({ id: user?.id, nama: profile.name, alamat: profile.address, status: profile.role }))}`}
+                    alt="QR Code Warga Zoomed" 
+                    className="w-[240px] h-[240px] object-contain pointer-events-none"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium mt-8 text-center max-w-[220px] leading-relaxed">
+                  Tunjukkan QR Code ini kepada pengurus RT untuk kemudahan verifikasi data secara instan.
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </motion.div>
   );

@@ -1109,21 +1109,21 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 <div className="space-y-4 text-[11px] font-extrabold text-slate-200">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><MapPin className="w-4 h-4 text-teal-400" /></div>
-                    <span>Sekretariat RT 01, RW 21, Kompleks Rukun, Sleman, DIY</span>
+                    <span>Sekretariat RT 01, RW 21, Wisma Garden, Kutajaya, Pasarkemis, Tangerang</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><Phone className="w-4 h-4 text-teal-400" /></div>
-                    <span>+62 812-3456-7890 (Ketua RT)</span>
+                    <span>+62 812-1400-7871 (Ketua RT)</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><MessageSquare className="w-4 h-4 text-teal-400" /></div>
-                    <span>info@guyubrukun-rt01.or.id</span>
+                    <span>muhammad.adjiprasetyo28@gmail.com</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/10 text-[10px] font-extrabold text-slate-400">
-                Layanan Digital dikelola secara mandiri oleh tim pengurus RT 01 Sleman.
+                Layanan Digital dikelola secara mandiri oleh tim pengurus RT 01 Tangerang.
               </div>
             </div>
 
@@ -1223,7 +1223,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               </span>
             </div>
             <p className="text-slate-400 text-xs font-medium leading-relaxed max-w-sm">
-              Sistem Portal Balai Warga Digital RT 01 / RW 21, Sleman, DIY. Membawa kemudahan administrasi kependudukan, keterbukaan laporan kas, siskamling, dan perekonomian warga lokal.
+              Sistem Portal Balai Warga Digital RT 01 / RW 21, Tangerang, Banten. Membawa kemudahan administrasi kependudukan, keterbukaan laporan kas, siskamling, dan perekonomian warga lokal.
             </p>
           </div>
 
