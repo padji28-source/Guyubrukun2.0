@@ -5,7 +5,7 @@ import path from "path";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { z } from "zod";
-import { GoogleGenAI, SchemaType } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -381,42 +381,58 @@ const MenuAccessModel: mongoose.Model<any> = mongoose.models.MenuAccess || mongo
 // DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE)
 // ==========================================
 UserSchema.index({ username: 1 });
+UserSchema.index({ id: 1 }, { unique: true });
 UserSchema.index({ rtId: 1, role: 1 });
 UserSchema.index({ rtId: 1, nama: 1 });
 UserSchema.index({ rtId: 1, isApproved: 1 });
 
+IuranSchema.index({ id: 1 }, { unique: true });
 IuranSchema.index({ rtId: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 
+KasSchema.index({ id: 1 }, { unique: true });
 KasSchema.index({ rtId: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, type: 1, createdAt: -1 });
 
+VotingSchema.index({ id: 1 }, { unique: true });
 VotingSchema.index({ rtId: 1, createdAt: -1 });
 
+AcaraSchema.index({ id: 1 }, { unique: true });
 AcaraSchema.index({ rtId: 1, date: -1 });
 
+LaporanSchema.index({ id: 1 }, { unique: true });
 LaporanSchema.index({ rtId: 1, createdAt: -1 });
 
+SuratSchema.index({ id: 1 }, { unique: true });
 SuratSchema.index({ rtId: 1, createdAt: -1 });
 
+UmkmSchema.index({ id: 1 }, { unique: true });
 UmkmSchema.index({ rtId: 1, createdAt: -1 });
 
+TamuSchema.index({ id: 1 }, { unique: true });
 TamuSchema.index({ rtId: 1, createdAt: -1 });
 
+MediaSchema.index({ id: 1 }, { unique: true });
 MediaSchema.index({ rtId: 1, createdAt: -1 });
 
+AuditLogSchema.index({ id: 1 }, { unique: true });
 AuditLogSchema.index({ rtId: 1, timestamp: -1 });
 
+NotificationSchema.index({ id: 1 }, { unique: true });
 NotificationSchema.index({ rtId: 1, time: -1 });
 
+DokumenSchema.index({ id: 1 }, { unique: true });
 DokumenSchema.index({ rtId: 1, createdAt: -1 });
 
+InventarisSchema.index({ id: 1 }, { unique: true });
 InventarisSchema.index({ rtId: 1, createdAt: -1 });
 
+NotulenSchema.index({ id: 1 }, { unique: true });
 NotulenSchema.index({ rtId: 1, date: -1 });
 
+MenuAccessSchema.index({ role: 1 }, { unique: true });
 
 
 
@@ -2201,40 +2217,6 @@ app.post("/api/gemini/action", async (req, res) => {
       prompt = `Buatlah draf surat formal tingkat Rukun Tetangga (RT) berdasarkan informasi berikut dalam Bahasa Indonesia:\n\nKategori Surat: ${payload.jenis}\nNama Warga: ${payload.nama || "................"}\nKeperluan: ${payload.keperluan || "................"}\nKeterangan Tambahan: ${payload.keterangan || "Tidak ada"}\n\nSurat harus mengikuti format resmi surat pengantar/keterangan RT di Indonesia (termasuk KOP Surat RT, nomor surat placeholder, isi surat yang santun, paragraf penutup, serta bagian tanda tangan Ketua RT). Gunakan format Markdown yang presisi dan profesional.`;
     } else if (action === "klasifikasi_laporan") {
       prompt = `Klasifikasikan laporan keluhan warga berikut ke dalam kategori yang sesuai (Keamananan / Kebersihan / Infrastruktur / Sosial / Lainnya) serta tingkat prioritas (Tinggi / Sedang / Rendah) dengan penjelasan singkat dan usulan langkah penanganan konkret pertama dari pengurus RT:\n\nJudul: ${payload.judul}\nDeskripsi: ${payload.deskripsi}\n\nBerikan keluaran dalam format teks Markdown terstruktur dengan bagian Kategori, Prioritas, Alasan Klasifikasi, dan Rekomendasi Penanganan.`;
-    } else if (action === "extract_kk") {
-      const { imageBase64, wargaNama } = payload;
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-      const mimeTypeMatch = imageBase64.match(/^data:(image\/\w+);base64,/);
-      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType
-            }
-          },
-          `Extract the family members from this Kartu Keluarga (KK). Exclude the 'Kepala Keluarga' if it matches the current user's name (${wargaNama}) already. Return a JSON Array containing the other family members.`
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: SchemaType.ARRAY,
-            items: {
-               type: SchemaType.OBJECT,
-               properties: {
-                  name: { type: SchemaType.STRING, description: "Nama Lengkap" },
-                  role: { type: SchemaType.STRING, description: "Hubungan Keluarga (e.g. Suami, Istri, Anak, Orang Tua, Kerabat)" },
-                  age: { type: SchemaType.STRING, description: "Usia (e.g. '25' atau '10 Tahun')" },
-               },
-               required: ["name", "role", "age"]
-            }
-          }
-        }
-      });
-      return res.json({ membersList: JSON.parse(response.text) });
     } else {
       return res.status(400).json({ error: "Aksi tidak dikenal" });
     }
@@ -2354,10 +2336,12 @@ export async function startServer(listen = true) {
   });
 
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const vite = await import("vite").then(m => m.createServer({
+    const viteDynamic = "vite";
+    const viteModule = await import(viteDynamic);
+    const vite = await viteModule.createServer({
       server: { middlewareMode: true },
       appType: "spa",
-    }));
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
