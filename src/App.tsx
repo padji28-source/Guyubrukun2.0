@@ -4109,12 +4109,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                 ) : (
                   <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-8 text-teal-600"><div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
                     {activeWebTab === 'Dashboard' ? (
-                      <>
-                        <WebDashboardRtView/>
-                        <div className="px-6 pb-6">
-                          <WebMediaSlider/>
-                        </div>
-                      </>
+                      <WebDashboardRtView/>
                     ) : (
                       <>
                         {user.isApproved && activeWebTab === 'Warga' && <WebWargaPage user={user} />}
@@ -4258,7 +4253,6 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                       <MobileQuickActions onActionClick={setActiveMobileTab} visibleMenus={visibleMenus}/>
                       <MobileCalendarWidget onActionClick={setActiveMobileTab} />
                       <MobileUMKMAds />
-                      <MobileMediaStory onActionClick={setActiveMobileTab} />
                     </>
                   )}
 
