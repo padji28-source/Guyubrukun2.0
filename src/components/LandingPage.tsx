@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldCheck, 
@@ -31,6 +31,27 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onEnterPortal }: LandingPageProps) {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choice: any) => {
+        if (choice.outcome === 'accepted') {
+          setDeferredPrompt(null);
+        }
+      });
+    }
+  };
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' });
@@ -314,6 +335,14 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               >
                 <span>Pelajari Fitur</span>
               </button>
+              {deferredPrompt && (
+                <button 
+                  onClick={handleInstall}
+                  className="w-full sm:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm rounded-2xl shadow-xl shadow-amber-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-400"
+                >
+                  <span>📥 Pasang Aplikasi</span>
+                </button>
+              )}
             </motion.div>
 
             {/* Quick Badges of benefits */}

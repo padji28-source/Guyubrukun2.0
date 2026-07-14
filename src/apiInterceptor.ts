@@ -1,6 +1,6 @@
 const cache = new Map<string, { data: string, timestamp: number }>();
 const inflight = new Map<string, Promise<Response>>();
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 10 * 60 * 1000;
 
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
