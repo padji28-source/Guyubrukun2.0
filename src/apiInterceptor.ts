@@ -1,6 +1,26 @@
-const cache = new Map<string, { data: string, timestamp: number }>();
-const inflight = new Map<string, Promise<Response>>();
+const CACHE_KEY_PREFIX = 'api_cache_';
 const CACHE_TTL = 10 * 60 * 1000;
+const inflight = new Map<string, Promise<Response>>();
+
+const getCache = (url: string) => {
+  const cached = localStorage.getItem(CACHE_KEY_PREFIX + url);
+  if (cached) {
+    return JSON.parse(cached) as { data: string, timestamp: number };
+  }
+  return null;
+};
+
+const setCache = (url: string, data: string) => {
+  localStorage.setItem(CACHE_KEY_PREFIX + url, JSON.stringify({ data, timestamp: Date.now() }));
+};
+
+const clearCache = () => {
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith(CACHE_KEY_PREFIX)) {
+      localStorage.removeItem(key);
+    }
+  });
+};
 
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
@@ -8,10 +28,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
   // Clear cache on mutations (POST, PUT, DELETE)
   if (!isGet) {
-    cache.clear();
+    clearCache();
   } else {
     // 1. Check cache
-    const cached = cache.get(url);
+    const cached = getCache(url);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       const mockRes = new Response(cached.data, {
         status: 200,
@@ -92,7 +112,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       try {
         const text = await clonedForCache.text();
         if (!text.trim().startsWith('<')) {
-          cache.set(url, { data: text, timestamp: Date.now() });
+          setCache(url, text);
         }
       } catch (e) {}
     }
