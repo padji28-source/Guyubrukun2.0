@@ -38,6 +38,7 @@ export default defineConfig(({ mode }) => {
           ],
         },
         manifest: {
+          id: "/",
           orientation: "portrait",
           name: "Guyub Rukun RT 01",
           short_name: "Guyub Rukun",
