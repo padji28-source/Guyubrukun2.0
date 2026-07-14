@@ -2241,12 +2241,13 @@ app.post("/api/gemini/action", async (req, res) => {
 app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
-    const [users, kas, iuran, laporan, acara] = await Promise.all([
+    const [users, kas, iuran, laporan, acara, media] = await Promise.all([
       UserModel.find({ rtId, role: { $ne: 'developer' } }).select('members').lean(),
-      KasModel.find({ rtId }).select('type amount status category').lean(),
+      KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
       IuranModel.find({ rtId }).select('bulan status nominal').lean(),
       LaporanModel.find({ rtId }).lean(),
-      AcaraModel.find({ rtId }).lean()
+      AcaraModel.find({ rtId }).lean(),
+      MediaModel.find({ rtId }).lean()
     ]);
 
     const jumlahKK = users.length;
@@ -2303,7 +2304,11 @@ app.get("/api/dashboard", async (req, res) => {
         pengaduanAktif,
         agendaUpcoming,
         wargaList: limitedUsers
-      }
+      },
+      kas: kas,
+      laporan: laporan,
+      acara: acara,
+      media: media
     });
   } catch (error) {
     console.error("Dashboard fetch error:", error);

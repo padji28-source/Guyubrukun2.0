@@ -588,76 +588,22 @@ const WebStatsCards = () => {
 
     const fetchStats = async () => {
       try {
-        const [wargaRes, laporanRes, kasRes, iuranRes] = await Promise.all([
-          apiFetch('/api/warga'),
-          apiFetch('/api/data/laporan'),
-          apiFetch('/api/data/kas'),
-          apiFetch('/api/data/iuran')
-        ]);
-        const wData = await wargaRes.json();
-        const lData = await laporanRes.json();
-        const kData = await kasRes.json();
-        const iData = await iuranRes.json();
+        const res = await apiFetch('/api/dashboard');
+        const json = await res.json();
+        const metrics = json.metrics;
 
-        // calc warga
-        const totalWarga = wData.users?.length || 0;
-        let totalWargaPerson = totalWarga;
-        let docUploaded = 0;
-        let docNotUploaded = 0;
-        (wData.users || []).forEach((u: any) => {
-          totalWargaPerson += (u.members?.length || 0);
-          if (u.dokumenKk || (Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : u.dokumenKtp)) {
-            docUploaded++;
-          } else {
-            docNotUploaded++;
-          }
-        });
-        
-        // calc laporan baru
-        const laporanBaru = (lData.data || []).filter((l: any) => l.status === 'menunggu').length;
-        // calc saldo (Kas RT + Dana Kematian + Dana Sosial)
-        const items = kData.data || [];
-        const m = items.filter((d: any) => d.type === 'Masuk').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-        const k = items.filter((d: any) => d.type === 'Keluar').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-        const saldo = m - k;
-
-        const getSaldo = (cat: string) => {
-          const catItems = items.filter((d: any) => (d.category || 'Kas RT') === cat);
-          const catM = catItems.filter((d: any) => d.type === 'Masuk').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-          const catK = catItems.filter((d: any) => d.type === 'Keluar').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-          return catM - catK;
-        };
-        const kasRT = getSaldo('Kas RT');
-        const danaKematian = getSaldo('Dana Kematian');
-        const danaSosial = getSaldo('Dana Sosial');
-        
-        // iuran bulan ini
-        const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-        let iuranTotal = 0;
-        let lunas = 0;
-        const currentIuran = (iData.data || []).filter((i: any) => i.bulan === currentMonth);
-        if (currentIuran.length > 0) {
-           iuranTotal = currentIuran.length;
-           lunas = currentIuran.filter((i: any) => i.status === 'verifikasi').length;
-        } else {
-           // fallback to overall if no iuran this month generated yet
-           const allIuran = iData.data || [];
-           iuranTotal = allIuran.length || 1;
-           lunas = allIuran.filter((i: any) => i.status === 'verifikasi').length;
-        }
-        
         setStats({
-          warga: totalWarga,
-          totalWarga: totalWargaPerson,
-          laporan: laporanBaru,
-          saldo,
-          iuranRef: lunas,
-          iuranTotal,
-          kasRT,
-          danaKematian,
-          danaSosial,
-          docUploaded,
-          docNotUploaded
+          warga: metrics.jumlahKK || 0,
+          totalWarga: metrics.jumlahWarga || 0,
+          laporan: (metrics.pengaduanAktif || []).length,
+          saldo: metrics.saldoKas || 0,
+          iuranRef: metrics.iuranBulanIni?.lunasCount || 0,
+          iuranTotal: metrics.iuranBulanIni?.totalIuranCount || 1,
+          kasRT: metrics.kasDetail?.kasRT || 0,
+          danaKematian: metrics.kasDetail?.danaKematian || 0,
+          danaSosial: metrics.kasDetail?.danaSosial || 0,
+          docUploaded: 0,
+          docNotUploaded: 0
         });
 
       } catch (e) {
@@ -784,8 +730,8 @@ const WebDateWidget = () => {
   }, []);
 
   useEffect(() => {
-    apiFetch('/api/data/acara').then(r => r.json()).then(json => {
-      setEvents(json.data || []);
+    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
+      setEvents(json.acara || []);
     }).catch(console.error);
   }, []);
 
@@ -989,8 +935,8 @@ const WebMediaSlider = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    apiFetch('/api/data/media').then(r => r.json()).then(d => {
-      setMedia(d.data || []);
+    apiFetch('/api/dashboard').then(r => r.json()).then(d => {
+      setMedia(d.media || []);
     }).catch(console.error);
   }, []);
 
@@ -1086,8 +1032,8 @@ const WebMediaSlider = () => {
 const WebLaporanTable = () => {
   const [laporanWargaData, setLaporanWargaData] = useState<any[]>([]);
   useEffect(() => {
-    apiFetch('/api/data/laporan').then(r => r.json()).then(d => {
-      setLaporanWargaData(d.data?.slice(-5).reverse() || []);
+    apiFetch('/api/dashboard').then(r => r.json()).then(d => {
+      setLaporanWargaData(d.laporan?.slice(-5).reverse() || []);
     }).catch(console.error);
   }, []);
 
@@ -1130,8 +1076,8 @@ const WebLaporanTable = () => {
 const WebIuranChart = () => {
   const [chartData, setChartData] = useState<{bulan: string, value: number}[]>([]);
   useEffect(() => {
-    apiFetch('/api/data/kas').then(res => res.json()).then(data => {
-      const items = data.data || [];
+    apiFetch('/api/dashboard').then(res => res.json()).then(data => {
+      const items = data.kas || [];
       const stats: Record<string, number> = {};
       items.forEach((i: any) => {
         if (i.type === 'Masuk') {
@@ -1994,10 +1940,10 @@ const MobileMediaStory = ({ onActionClick }: { onActionClick: (action: string) =
 
   useEffect(() => {
     setLoadingMedia(!cachedMediaList);
-    apiFetch('/api/data/media').then(r => r.json()).then(json => {
+    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
       let list = [];
-      if (json.data && json.data.length > 0) {
-        list = json.data.slice(-5).reverse();
+      if (json.media && json.media.length > 0) {
+        list = json.media.slice(-5).reverse();
       } else {
         list = [{
           imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
@@ -2121,8 +2067,8 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
   }, []);
 
   useEffect(() => {
-    apiFetch('/api/data/acara').then(r => r.json()).then(json => {
-      cachedBackendEvents = json.data || [];
+    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
+      cachedBackendEvents = json.acara || [];
       setBackendEvents(cachedBackendEvents);
     }).catch(console.error);
   }, []);
@@ -4667,11 +4613,11 @@ export default function App() {
     if (!user?.id) return;
     
     const fetchGlobalEvents = () => {
-      apiFetch('/api/data/acara')
+      apiFetch('/api/dashboard')
         .then(res => res.json())
         .then(json => {
-          if (json.data) {
-            setGlobalEvents(json.data);
+          if (json.acara) {
+            setGlobalEvents(json.acara);
           }
         })
         .catch(err => console.error('Error loading events for reminders:', err));
