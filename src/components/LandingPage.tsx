@@ -189,6 +189,12 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <button onClick={() => scrollToId('alur')} className="hover:text-teal-600 transition-colors cursor-pointer">Alur Pelayanan</button>
             <button onClick={() => scrollToId('faq')} className="hover:text-teal-600 transition-colors cursor-pointer">FAQ</button>
             <button onClick={() => scrollToId('hubungi')} className="hover:text-teal-600 transition-colors cursor-pointer">Hubungi Kami</button>
+            <button 
+              onClick={() => window.dispatchEvent(new Event('trigger-pwa-install'))}
+              className="hover:text-teal-600 transition-colors cursor-pointer text-amber-600 font-extrabold bg-amber-50 px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0 text-xs shadow-sm hover:bg-amber-100/50"
+            >
+              📥 Install App
+            </button>
           </nav>
 
           {/* Action CTA Buttons */}
@@ -234,6 +240,12 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 <button onClick={() => { scrollToId('alur'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Alur Pelayanan</button>
                 <button onClick={() => { scrollToId('faq'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">FAQ</button>
                 <button onClick={() => { scrollToId('hubungi'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Hubungi Kami</button>
+                <button 
+                  onClick={() => { window.dispatchEvent(new Event('trigger-pwa-install')); setMobileMenuOpen(false); }} 
+                  className="text-left py-1 hover:text-teal-600 cursor-pointer text-amber-600 font-extrabold bg-amber-50 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 w-fit"
+                >
+                  📥 Install Aplikasi HP 📱
+                </button>
                 <div className="h-px bg-slate-100 my-2"></div>
                 <div className="flex gap-4">
                   <button 
@@ -307,6 +319,12 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               >
                 <span>Masuk Portal Warga</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+              <button 
+                onClick={() => window.dispatchEvent(new Event('trigger-pwa-install'))}
+                className="w-full sm:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm rounded-2xl shadow-xl shadow-amber-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-400"
+              >
+                <span>📥 Install Aplikasi HP</span>
               </button>
               <button 
                 onClick={() => scrollToId('fitur')}
@@ -504,6 +522,72 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                         </div>
                         <span className="text-[7.5px] font-black text-slate-600 leading-tight">Data Warga</span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Simulated Calendar Section */}
+                  <div className="bg-white rounded-2xl p-3 border border-slate-100 shadow-[0_2px_12px_rgba(0,0,0,0.01)] text-left space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-black text-slate-800">Kalender Kegiatan RT</span>
+                        <span className="text-[6.5px] font-bold text-slate-400">Juli 2026</span>
+                      </div>
+                      <span className="text-[6px] font-extrabold bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">Lihat Semua</span>
+                    </div>
+
+                    {/* Mini Calendar Days */}
+                    <div className="grid grid-cols-7 gap-0.5 text-center font-bold text-[6px] text-slate-400">
+                      <span>S</span><span>S</span><span>R</span><span>K</span><span>J</span><span>S</span><span>M</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-1 gap-x-0.5 text-center font-black text-[7px] text-slate-700">
+                      <span className="text-slate-200">29</span>
+                      <span className="text-slate-200">30</span>
+                      <span>1</span>
+                      <span>2</span>
+                      <span>3</span>
+                      <span>4</span>
+                      <span className="text-teal-600">5</span>
+                      <span>6</span>
+                      <span>7</span>
+                      <span>8</span>
+                      <span>9</span>
+                      <span>10</span>
+                      <span>11</span>
+                      <span className="text-teal-600">12</span>
+                      <span className="bg-teal-500 text-white rounded-full flex items-center justify-center w-3.5 h-3.5 mx-auto relative text-[6px]">
+                        13
+                      </span>
+                      <span>14</span>
+                      <span>15</span>
+                      <span>16</span>
+                      <span>17</span>
+                      <span className="text-teal-600">18</span>
+                      <span className="relative text-rose-500">
+                        19
+                        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 bg-rose-500 rounded-full"></span>
+                      </span>
+                      <span>20</span>
+                      <span>21</span>
+                      <span>22</span>
+                      <span>23</span>
+                      <span>24</span>
+                      <span className="text-teal-600">25</span>
+                      <span className="relative text-emerald-600">
+                        26
+                        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 bg-emerald-500 rounded-full"></span>
+                      </span>
+                    </div>
+
+                    {/* Upcoming Simulated Event */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] shrink-0">📅</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[7.5px] font-black text-slate-800 truncate leading-none">Rapat Evaluasi Triwulan</span>
+                          <span className="text-[6px] font-bold text-slate-400 mt-0.5">Minggu, 19 Juli • 19:30 WIB</span>
+                        </div>
+                      </div>
+                      <span className="text-[5.5px] font-black text-rose-500 bg-rose-50 px-1 py-0.5 rounded shrink-0">Musyawarah</span>
                     </div>
                   </div>
                 </div>

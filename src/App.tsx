@@ -1983,42 +1983,14 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
   );
 };
 
-// --- UPDATE: MobileEvents (Widget Beranda) ---
+// --- UPDATE: MobileMediaStory & MobileCalendarWidget (Widget Beranda) ---
 let cachedMediaList: any[] | null = null;
 let cachedBackendEvents: any[] | null = null;
 
-const MobileEvents = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
-  const today = new Date();
-  const [selectedDate, setSelectedDate] = useState<number | null>(today.getDate());
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-  const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [showYearPicker, setShowYearPicker] = useState(false);
-
+const MobileMediaStory = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
   const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const [backendEvents, setBackendEvents] = useState<any[]>(cachedBackendEvents || []);
   const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
-
-  const [reminders, setReminders] = useState<string[]>(() => {
-    const saved = localStorage.getItem('event_reminders');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('event_reminders', JSON.stringify(reminders));
-    window.dispatchEvent(new Event('storage'));
-  }, [reminders]);
-
-  useEffect(() => {
-    const handleStorage = () => {
-      const saved = localStorage.getItem('event_reminders');
-      setReminders(saved ? JSON.parse(saved) : []);
-    };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, []);
 
   useEffect(() => {
     setLoadingMedia(!cachedMediaList);
@@ -2037,11 +2009,6 @@ const MobileEvents = ({ onActionClick }: { onActionClick: (action: string) => vo
       cachedMediaList = list;
       setMediaList(list);
     }).catch(console.error).finally(() => setLoadingMedia(false));
-
-    apiFetch('/api/data/acara').then(r => r.json()).then(json => {
-      cachedBackendEvents = json.data || [];
-      setBackendEvents(cachedBackendEvents);
-    }).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -2054,26 +2021,8 @@ const MobileEvents = ({ onActionClick }: { onActionClick: (action: string) => vo
 
   const currentMedia = mediaList[activeMediaIndex] || null;
 
-  // Calendar Logic
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
-  const blanks = Array.from({ length: firstDay }, (_, i) => null);
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const totalSlots = [...blanks, ...days];
-  const weeks = [];
-  for (let i = 0; i < totalSlots.length; i += 7) weeks.push(totalSlots.slice(i, i + 7));
-
-  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-  const selectedDateEvents = backendEvents.filter(e => {
-    if (!selectedDate) return false;
-    const d = new Date(e.date);
-    return d.getDate() === selectedDate && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-
   return (
-    <section className="px-5 mb-8 space-y-6">
-      {/* 1. Mobile Media Slider (Modern Story Style) */}
+    <section className="px-5 mb-8">
       <motion.div 
         whileTap={{ scale: 0.98 }}
         className="bg-slate-900 rounded-[2rem] shadow-xl overflow-hidden relative group cursor-pointer aspect-[4/3] w-full"
@@ -2140,8 +2089,63 @@ const MobileEvents = ({ onActionClick }: { onActionClick: (action: string) => vo
           </div>
         </div>
       </motion.div>
+    </section>
+  );
+};
 
-      {/* 2. Mobile Calendar Widget */}
+const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
+  const today = new Date();
+  const [selectedDate, setSelectedDate] = useState<number | null>(today.getDate());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showYearPicker, setShowYearPicker] = useState(false);
+  const [backendEvents, setBackendEvents] = useState<any[]>(cachedBackendEvents || []);
+  const [reminders, setReminders] = useState<string[]>(() => {
+    const saved = localStorage.getItem('event_reminders');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('event_reminders', JSON.stringify(reminders));
+    window.dispatchEvent(new Event('storage'));
+  }, [reminders]);
+
+  useEffect(() => {
+    const handleStorage = () => {
+      const saved = localStorage.getItem('event_reminders');
+      setReminders(saved ? JSON.parse(saved) : []);
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/data/acara').then(r => r.json()).then(json => {
+      cachedBackendEvents = json.data || [];
+      setBackendEvents(cachedBackendEvents);
+    }).catch(console.error);
+  }, []);
+
+  // Calendar Logic
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const blanks = Array.from({ length: firstDay }, (_, i) => null);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const totalSlots = [...blanks, ...days];
+  const weeks = [];
+  for (let i = 0; i < totalSlots.length; i += 7) weeks.push(totalSlots.slice(i, i + 7));
+
+  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+  const selectedDateEvents = backendEvents.filter(e => {
+    if (!selectedDate) return false;
+    const d = new Date(e.date);
+    return d.getDate() === selectedDate && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+
+  return (
+    <section className="px-5 mb-8">
       <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 p-6 relative">
         <div className="flex justify-between items-center mb-6">
            <div className="flex flex-col">
@@ -2226,7 +2230,7 @@ const MobileEvents = ({ onActionClick }: { onActionClick: (action: string) => vo
              onClick={() => onActionClick('Acara')}
              className="w-10 h-10 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-full flex items-center justify-center transition-colors shadow-[0_2px_10px_-3px_rgba(20,184,166,0.3)]"
            >
-             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4"/></svg>
+             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
            </motion.button>
         </div>
 
@@ -4255,8 +4259,9 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         </div>
                       )}
                       <MobileQuickActions onActionClick={setActiveMobileTab} visibleMenus={visibleMenus}/>
+                      <MobileCalendarWidget onActionClick={setActiveMobileTab} />
                       <MobileUMKMAds />
-                      <MobileEvents onActionClick={setActiveMobileTab} />
+                      <MobileMediaStory onActionClick={setActiveMobileTab} />
                     </>
                   )}
 
