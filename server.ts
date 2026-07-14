@@ -5,7 +5,7 @@ import path from "path";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { z } from "zod";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, SchemaType } from "@google/genai";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -2201,6 +2201,40 @@ app.post("/api/gemini/action", async (req, res) => {
       prompt = `Buatlah draf surat formal tingkat Rukun Tetangga (RT) berdasarkan informasi berikut dalam Bahasa Indonesia:\n\nKategori Surat: ${payload.jenis}\nNama Warga: ${payload.nama || "................"}\nKeperluan: ${payload.keperluan || "................"}\nKeterangan Tambahan: ${payload.keterangan || "Tidak ada"}\n\nSurat harus mengikuti format resmi surat pengantar/keterangan RT di Indonesia (termasuk KOP Surat RT, nomor surat placeholder, isi surat yang santun, paragraf penutup, serta bagian tanda tangan Ketua RT). Gunakan format Markdown yang presisi dan profesional.`;
     } else if (action === "klasifikasi_laporan") {
       prompt = `Klasifikasikan laporan keluhan warga berikut ke dalam kategori yang sesuai (Keamananan / Kebersihan / Infrastruktur / Sosial / Lainnya) serta tingkat prioritas (Tinggi / Sedang / Rendah) dengan penjelasan singkat dan usulan langkah penanganan konkret pertama dari pengurus RT:\n\nJudul: ${payload.judul}\nDeskripsi: ${payload.deskripsi}\n\nBerikan keluaran dalam format teks Markdown terstruktur dengan bagian Kategori, Prioritas, Alasan Klasifikasi, dan Rekomendasi Penanganan.`;
+    } else if (action === "extract_kk") {
+      const { imageBase64, wargaNama } = payload;
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const mimeTypeMatch = imageBase64.match(/^data:(image\/\w+);base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: mimeType
+            }
+          },
+          `Extract the family members from this Kartu Keluarga (KK). Exclude the 'Kepala Keluarga' if it matches the current user's name (${wargaNama}) already. Return a JSON Array containing the other family members.`
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: SchemaType.ARRAY,
+            items: {
+               type: SchemaType.OBJECT,
+               properties: {
+                  name: { type: SchemaType.STRING, description: "Nama Lengkap" },
+                  role: { type: SchemaType.STRING, description: "Hubungan Keluarga (e.g. Suami, Istri, Anak, Orang Tua, Kerabat)" },
+                  age: { type: SchemaType.STRING, description: "Usia (e.g. '25' atau '10 Tahun')" },
+               },
+               required: ["name", "role", "age"]
+            }
+          }
+        }
+      });
+      return res.json({ membersList: JSON.parse(response.text) });
     } else {
       return res.status(400).json({ error: "Aksi tidak dikenal" });
     }

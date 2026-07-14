@@ -13,39 +13,21 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: "autoUpdate",
         injectRegister: "auto",
+        includeAssets: ["guyubrukun.png", "favicon.ico", "apple-touch-icon.png"],
         devOptions: {
           enabled: true,
           type: "module",
         },
-        workbox: {
-          cleanupOutdatedCaches: true,
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: "CacheFirst",
-              options: {
-                cacheName: "google-fonts",
-              },
-            },
-            {
-              urlPattern: /^https:\/\/.*firebaseio\.com\/.*/i,
-              handler: "NetworkFirst",
-              options: {
-                cacheName: "firebase-api",
-              },
-            },
-          ],
-        },
         manifest: {
-          orientation: "portrait",
           name: "Guyub Rukun RT 01",
           short_name: "Guyub Rukun",
+          description: "Aplikasi Guyub Rukun untuk warga RT 01",
+          theme_color: "#0d9488",
+          background_color: "#ffffff",
+          display: "standalone",
+          orientation: "portrait",
           start_url: "/",
           scope: "/",
-          display: "standalone",
-          background_color: "#ffffff",
-          theme_color: "#0d9488",
-          description: "Aplikasi Guyub Rukun untuk warga RT 01",
           icons: [
             {
               src: "/icon-192.png",

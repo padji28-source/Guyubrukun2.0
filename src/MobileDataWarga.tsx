@@ -2,7 +2,6 @@ import { apiFetch } from './apiInterceptor';
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProfileAvatar } from './App'; 
-import { GoogleGenAI, Type } from '@google/genai';
 
 // Icon Set - Diperbarui dan ditambah beberapa icon untuk mendukung UI baru
 const icons = {
@@ -150,82 +149,6 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     } catch(e) { console.error(e); }
   };
 
-  const handleExtractKK = async (wargaId: string) => {
-    setExtractingId(wargaId);
-    try {
-      const user = wargaData.find(w => w.id === wargaId);
-      if (!user || !user.dokumenKk) {
-        console.log("Warga ini belum mengunggah Kartu Keluarga.");
-        setExtractingId(null);
-        return;
-      }
-
-      if (!process.env.GEMINI_API_KEY) {
-        console.log("API Key Gemini belum dikonfigurasi.");
-        setExtractingId(null);
-        return;
-      }
-
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-      const base64Data = user.dokumenKk.replace(/^data:image\/\w+;base64,/, "");
-      const mimeTypeMatch = user.dokumenKk.match(/^data:(image\/\w+);base64,/);
-      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType
-            }
-          },
-          "Extract the family members from this Kartu Keluarga (KK). Exclude the 'Kepala Keluarga' if it matches the current user's name already. Return a JSON Array containing the other family members."
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-               type: Type.OBJECT,
-               properties: {
-                  name: { type: Type.STRING, description: "Nama Lengkap" },
-                  role: { type: Type.STRING, description: "Hubungan Keluarga (e.g. Suami, Istri, Anak, Orang Tua, Kerabat)" },
-                  age: { type: Type.STRING, description: "Usia (e.g. '25' atau '10 Tahun')" },
-               },
-               required: ["name", "role", "age"]
-            }
-          }
-        }
-      });
-
-      const parsedText = response.text?.trim() || "[]";
-      const membersList = JSON.parse(parsedText);
-      
-      let addedCount = 0;
-      for (const m of membersList) {
-        if (m.name.toLowerCase() !== user.nama.toLowerCase() && !user.members?.find((extM: any) => extM.name.toLowerCase() === m.name.toLowerCase())) {
-          const res = await apiFetch(`/api/warga/${user.id}/members`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: m.name, role: m.role, age: m.age })
-          });
-          if (res.ok) {
-            addedCount++;
-          }
-        }
-      }
-
-      console.log(`✨ Berhasil menambahkan ${addedCount} anggota keluarga baru secara otomatis dari KK!`);
-      fetchWarga();
-    } catch (e) {
-      console.error("Extraction error:", e);
-      console.log('Terjadi kesalahan saat mengekstrak data dari KK.');
-    } finally {
-      setExtractingId(null);
-    }
-  };
 
   const isDeveloper = currentUser?.role === 'developer';
   const isAdmin = currentUser?.role === 'admin' || isDeveloper;
@@ -555,7 +478,51 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                             <div className="flex gap-2">
                               {canEditFamily && warga.dokumenKk && (
                                 <button 
-                                  onClick={() => handleExtractKK(warga.id)} 
+                                  onClick={async () => {
+                                    setExtractingId(warga.id);
+                                    try {
+                                      const res = await apiFetch('/api/gemini/action', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          action: 'extract_kk',
+                                          payload: {
+                                            imageBase64: warga.dokumenKk,
+                                            wargaNama: warga.nama
+                                          }
+                                        })
+                                      });
+
+                                      if (!res.ok) {
+                                        const err = await res.json();
+                                        throw new Error(err.error || 'Gagal mengekstrak data KK');
+                                      }
+
+                                      const { membersList } = await res.json();
+                                      
+                                      let addedCount = 0;
+                                      for (const m of membersList) {
+                                        if (m.name.toLowerCase() !== warga.nama.toLowerCase() && !members.find((extM: any) => extM.name.toLowerCase() === m.name.toLowerCase())) {
+                                          const addRes = await apiFetch(`/api/warga/${warga.id}/members`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ name: m.name, role: m.role, age: m.age })
+                                          });
+                                          if (addRes.ok) {
+                                            addedCount++;
+                                          }
+                                        }
+                                      }
+
+                                      console.log(`✨ Berhasil menambahkan ${addedCount} anggota keluarga baru secara otomatis dari KK!`);
+                                      fetchWarga();
+                                    } catch (e: any) {
+                                      console.error("Extraction error:", e);
+                                      console.log(e.message || 'Terjadi kesalahan saat mengekstrak data dari KK.');
+                                    } finally {
+                                      setExtractingId(null);
+                                    }
+                                  }} 
                                   disabled={extractingId === warga.id} 
                                   className="flex items-center gap-1.5 text-xs text-indigo-700 font-bold bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100 hover:bg-indigo-100 disabled:opacity-50 transition-all shadow-sm"
                                 >
