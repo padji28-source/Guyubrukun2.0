@@ -189,12 +189,6 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <button onClick={() => scrollToId('alur')} className="hover:text-teal-600 transition-colors cursor-pointer">Alur Pelayanan</button>
             <button onClick={() => scrollToId('faq')} className="hover:text-teal-600 transition-colors cursor-pointer">FAQ</button>
             <button onClick={() => scrollToId('hubungi')} className="hover:text-teal-600 transition-colors cursor-pointer">Hubungi Kami</button>
-            <button 
-              onClick={() => window.dispatchEvent(new Event('trigger-pwa-install'))}
-              className="hover:text-teal-600 transition-colors cursor-pointer text-amber-600 font-extrabold bg-amber-50 px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0 text-xs shadow-sm hover:bg-amber-100/50"
-            >
-              📥 Install App
-            </button>
           </nav>
 
           {/* Action CTA Buttons */}
@@ -240,12 +234,6 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 <button onClick={() => { scrollToId('alur'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Alur Pelayanan</button>
                 <button onClick={() => { scrollToId('faq'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">FAQ</button>
                 <button onClick={() => { scrollToId('hubungi'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Hubungi Kami</button>
-                <button 
-                  onClick={() => { window.dispatchEvent(new Event('trigger-pwa-install')); setMobileMenuOpen(false); }} 
-                  className="text-left py-1 hover:text-teal-600 cursor-pointer text-amber-600 font-extrabold bg-amber-50 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 w-fit"
-                >
-                  📥 Install Aplikasi HP 📱
-                </button>
                 <div className="h-px bg-slate-100 my-2"></div>
                 <div className="flex gap-4">
                   <button 
@@ -319,12 +307,6 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               >
                 <span>Masuk Portal Warga</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
-              <button 
-                onClick={() => window.dispatchEvent(new Event('trigger-pwa-install'))}
-                className="w-full sm:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm rounded-2xl shadow-xl shadow-amber-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-400"
-              >
-                <span>📥 Install Aplikasi HP</span>
               </button>
               <button 
                 onClick={() => scrollToId('fitur')}
