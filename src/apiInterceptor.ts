@@ -91,7 +91,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
   // Handle relative URLs
   let finalInput = input;
   if (typeof input === 'string' && input.startsWith('/')) {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+    const apiBaseUrl = (import.meta as any).env.VITE_API_BASE_URL;
     
     if (apiBaseUrl) {
       finalInput = `${apiBaseUrl}${input}`;
