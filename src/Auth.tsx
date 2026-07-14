@@ -104,8 +104,8 @@ export function Login({ onLogin, onNavRegister }: any) {
         setError(data.error || `Error ${res.status}: ${res.statusText}`);
       }
     } catch (err: any) {
-      console.error('Login error:', err);
-      setError('Gagal menghubungi server. Pastikan koneksi internet stabil dan database terkonfigurasi.');
+      console.error('Login error details:', err);
+      setError(`Gagal menghubungi server: ${err?.message || 'Unknown Error'}. Periksa koneksi internet atau status hosting.`);
     }
     setLoading(false);
   };
