@@ -1,8 +1,6 @@
-import { Capacitor } from '@capacitor/core';
-
 const cache = new Map<string, { data: string, timestamp: number }>();
 const inflight = new Map<string, Promise<Response>>();
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 10 * 60 * 1000;
 
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
@@ -88,24 +86,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     } catch(e) {}
   }
 
-  // Handle relative URLs
-  let finalInput = input;
-  if (typeof input === 'string' && input.startsWith('/')) {
-    const apiBaseUrl = (import.meta as any).env.VITE_API_BASE_URL;
-    
-    if (apiBaseUrl) {
-      finalInput = `${apiBaseUrl}${input}`;
-    } else if (Capacitor.isNativePlatform()) {
-      // On native platforms, we must use a full URL.
-      const prodUrl = 'https://ais-pre-4cyexyaiz2lrevpvgr7rkp-47019996628.asia-east1.run.app';
-      const currentOrigin = window.location.origin;
-      const isLocalOrDev = currentOrigin.includes('ais-dev') || currentOrigin.includes('ais-pre');
-      const baseUrl = isLocalOrDev ? currentOrigin : prodUrl;
-      finalInput = `${baseUrl}${input}`;
-    }
-  }
-
-  const fetchPromise = fetch(finalInput, modifiedInit).then(async (res) => {
+  const fetchPromise = fetch(input, modifiedInit).then(async (res) => {
     if (isGet && res.ok) {
       const clonedForCache = res.clone();
       try {

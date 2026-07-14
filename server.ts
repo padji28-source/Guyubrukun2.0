@@ -8,7 +8,6 @@ import { z } from "zod";
 import { GoogleGenAI } from "@google/genai";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import cors from "cors";
 
 dotenv.config();
 
@@ -39,7 +38,6 @@ const apiLimiter = rateLimit({
 });
 
 export const app = express();
-app.use(cors());
 app.set("trust proxy", 1);
 const PORT = 3000;
 
@@ -62,11 +60,6 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     return next();
   }
   if (publicRoutes.includes(pathName) || pathName.startsWith("/api/tangerang-logo-proxy") || pathName.startsWith("/api/stream")) {
-    return next();
-  }
-
-  // Allow public GET requests to view events and media highlights
-  if (req.method === "GET" && (pathName === "/api/data/acara" || pathName === "/api/data/media")) {
     return next();
   }
   
@@ -102,10 +95,6 @@ app.use(authMiddleware);
 
 // Point 2: ROTATE & HIDE DATABASE CREDENTIALS (NO HARDCODING)
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
-
-if (process.env.VERCEL && (!process.env.MONGODB_URI || process.env.MONGODB_URI.includes('127.0.0.1') || process.env.MONGODB_URI.includes('localhost'))) {
-  console.warn("WARNING: Running on Vercel but MONGODB_URI is not set or pointing to localhost. Database connection will likely fail.");
-}
 
 // Legacy fallback model for auto-migration
 const SystemDataSchema = new mongoose.Schema({
@@ -392,58 +381,42 @@ const MenuAccessModel: mongoose.Model<any> = mongoose.models.MenuAccess || mongo
 // DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE)
 // ==========================================
 UserSchema.index({ username: 1 });
-UserSchema.index({ id: 1 }, { unique: true });
 UserSchema.index({ rtId: 1, role: 1 });
 UserSchema.index({ rtId: 1, nama: 1 });
 UserSchema.index({ rtId: 1, isApproved: 1 });
 
-IuranSchema.index({ id: 1 }, { unique: true });
 IuranSchema.index({ rtId: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 
-KasSchema.index({ id: 1 }, { unique: true });
 KasSchema.index({ rtId: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, type: 1, createdAt: -1 });
 
-VotingSchema.index({ id: 1 }, { unique: true });
 VotingSchema.index({ rtId: 1, createdAt: -1 });
 
-AcaraSchema.index({ id: 1 }, { unique: true });
 AcaraSchema.index({ rtId: 1, date: -1 });
 
-LaporanSchema.index({ id: 1 }, { unique: true });
 LaporanSchema.index({ rtId: 1, createdAt: -1 });
 
-SuratSchema.index({ id: 1 }, { unique: true });
 SuratSchema.index({ rtId: 1, createdAt: -1 });
 
-UmkmSchema.index({ id: 1 }, { unique: true });
 UmkmSchema.index({ rtId: 1, createdAt: -1 });
 
-TamuSchema.index({ id: 1 }, { unique: true });
 TamuSchema.index({ rtId: 1, createdAt: -1 });
 
-MediaSchema.index({ id: 1 }, { unique: true });
 MediaSchema.index({ rtId: 1, createdAt: -1 });
 
-AuditLogSchema.index({ id: 1 }, { unique: true });
 AuditLogSchema.index({ rtId: 1, timestamp: -1 });
 
-NotificationSchema.index({ id: 1 }, { unique: true });
 NotificationSchema.index({ rtId: 1, time: -1 });
 
-DokumenSchema.index({ id: 1 }, { unique: true });
 DokumenSchema.index({ rtId: 1, createdAt: -1 });
 
-InventarisSchema.index({ id: 1 }, { unique: true });
 InventarisSchema.index({ rtId: 1, createdAt: -1 });
 
-NotulenSchema.index({ id: 1 }, { unique: true });
 NotulenSchema.index({ rtId: 1, date: -1 });
 
-MenuAccessSchema.index({ role: 1 }, { unique: true });
 
 
 
@@ -528,7 +501,7 @@ async function connectDB() {
       connectTimeoutMS: 5000,
     });
     isDbConnected = true;
-    console.log(`Connected securely to MongoDB: ${MONGODB_URI.split('@').pop()}`);
+    console.log("Connected securely to MongoDB database system.");
   } catch (err) {
     console.error("MongoDB connection exception:", err);
   }
@@ -2347,17 +2320,11 @@ export async function startServer(listen = true) {
   });
 
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    try {
-      const { createServer } = await import("vite");
-      const vite = await createServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
-      console.log("Vite middleware integrated successfully.");
-    } catch (e) {
-      console.error("Vite integration error:", e);
-    }
+    const vite = await import("vite").then(m => m.createServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    }));
+    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

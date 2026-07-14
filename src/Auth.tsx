@@ -101,11 +101,10 @@ export function Login({ onLogin, onNavRegister }: any) {
       if (res.ok) {
         onLogin(data.user);
       } else {
-        setError(data.error || `Error ${res.status}: ${res.statusText}`);
+        setError(data.error);
       }
     } catch (err: any) {
-      console.error('Login error details:', err);
-      setError(`Gagal menghubungi server: ${err?.message || 'Unknown Error'}. Periksa koneksi internet atau status hosting.`);
+      setError(err?.message || 'Terjadi kesalahan jaringan.');
     }
     setLoading(false);
   };

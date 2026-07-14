@@ -31,122 +31,33 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onEnterPortal }: LandingPageProps) {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choice: any) => {
+        if (choice.outcome === 'accepted') {
+          setDeferredPrompt(null);
+        }
+      });
+    }
+  };
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [contactLoading, setContactLoading] = useState(false);
   const [guideTab, setGuideTab] = useState<'warga' | 'pengurus'>('warga');
-  const [selectedDateMock, setSelectedDateMock] = useState<number | null>(12);
-
-  const [showPrayerSettings, setShowPrayerSettings] = useState(false);
-  const [selectedCity, setSelectedCity] = useState('Jakarta');
-
-  const prayerTimesByCity: Record<string, {name: string, time: string}[]> = {
-    'Jakarta': [
-      { name: 'Subuh', time: '04:30' },
-      { name: 'Dzuhur', time: '11:55' },
-      { name: 'Ashar', time: '15:15' },
-      { name: 'Maghrib', time: '17:50' },
-      { name: 'Isya', time: '19:05' }
-    ],
-    'Bandung': [
-      { name: 'Subuh', time: '04:27' },
-      { name: 'Dzuhur', time: '11:52' },
-      { name: 'Ashar', time: '15:12' },
-      { name: 'Maghrib', time: '17:47' },
-      { name: 'Isya', time: '19:02' }
-    ],
-    'Surabaya': [
-      { name: 'Subuh', time: '04:06' },
-      { name: 'Dzuhur', time: '11:31' },
-      { name: 'Ashar', time: '14:51' },
-      { name: 'Maghrib', time: '17:26' },
-      { name: 'Isya', time: '18:41' }
-    ],
-    'Medan': [
-      { name: 'Subuh', time: '05:00' },
-      { name: 'Dzuhur', time: '12:25' },
-      { name: 'Ashar', time: '15:45' },
-      { name: 'Maghrib', time: '18:20' },
-      { name: 'Isya', time: '19:35' }
-    ],
-    'Makassar': [
-      { name: 'Subuh', time: '04:38' },
-      { name: 'Dzuhur', time: '12:03' },
-      { name: 'Ashar', time: '15:23' },
-      { name: 'Maghrib', time: '17:58' },
-      { name: 'Isya', time: '19:13' }
-    ]
-  };
-
-  const jadwalShalat = prayerTimesByCity[selectedCity] || prayerTimesByCity['Jakarta'];
-
-  const [nextPrayer, setNextPrayer] = useState<{name: string, remaining: string, time: string, isApproaching: boolean} | null>(null);
-
-  useEffect(() => {
-    // Request notification permission if not granted
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
-    const calculateNextPrayer = () => {
-      const now = new Date();
-      const currentHours = now.getHours();
-      const currentMinutes = now.getMinutes();
-      const currentSeconds = now.getSeconds();
-      const currentTimeInMinutes = currentHours * 60 + currentMinutes;
-
-      let upcomingPrayer = null;
-      let minDiff = Infinity;
-      const currentJadwal = prayerTimesByCity[selectedCity] || prayerTimesByCity['Jakarta'];
-
-      for (const prayer of currentJadwal) {
-        const [hours, minutes] = prayer.time.split(':').map(Number);
-        const prayerTimeInMinutes = hours * 60 + minutes;
-
-        if (prayerTimeInMinutes > currentTimeInMinutes) {
-          const diff = prayerTimeInMinutes - currentTimeInMinutes;
-          if (diff < minDiff) {
-            minDiff = diff;
-            upcomingPrayer = prayer;
-          }
-        } else if (prayerTimeInMinutes === currentTimeInMinutes && currentSeconds === 0) {
-           if ("Notification" in window && Notification.permission === "granted") {
-              new Notification(`Waktu Shalat ${prayer.name}`, {
-                body: `Telah masuk waktu shalat ${prayer.name} (${prayer.time}) di wilayah ${selectedCity}`,
-              });
-           }
-        }
-      }
-
-      // If no prayer left today, next prayer is Subuh tomorrow
-      if (!upcomingPrayer) {
-        upcomingPrayer = currentJadwal[0];
-        const [hours, minutes] = upcomingPrayer.time.split(':').map(Number);
-        const diff = (24 * 60 - currentTimeInMinutes) + (hours * 60 + minutes);
-        minDiff = diff;
-      }
-
-      if (upcomingPrayer) {
-         const hoursLeft = Math.floor(minDiff / 60);
-         const minutesLeft = minDiff % 60;
-         let remainingStr = '';
-         if (hoursLeft > 0) remainingStr += `${hoursLeft}j `;
-         remainingStr += `${minutesLeft}m`;
-         setNextPrayer({ 
-           name: upcomingPrayer.name, 
-           time: upcomingPrayer.time, 
-           remaining: remainingStr,
-           isApproaching: minDiff <= 15
-         });
-      }
-    };
-
-    calculateNextPrayer();
-    const interval = setInterval(calculateNextPrayer, 1000); // Check every second for exact notification
-    return () => clearInterval(interval);
-  }, [selectedCity]);
 
   const stats = [
     { label: 'Kepala Keluarga', value: '142+', sub: 'Warga Terverifikasi', icon: Users, color: 'text-teal-600 bg-teal-50' },
@@ -424,6 +335,14 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               >
                 <span>Pelajari Fitur</span>
               </button>
+              {deferredPrompt && (
+                <button 
+                  onClick={handleInstall}
+                  className="w-full sm:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm rounded-2xl shadow-xl shadow-amber-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer border border-amber-400"
+                >
+                  <span>📥 Pasang Aplikasi</span>
+                </button>
+              )}
             </motion.div>
 
             {/* Quick Badges of benefits */}
@@ -617,162 +536,69 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                     </div>
                   </div>
 
-                  {/* Calendar Widget Section */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 text-left space-y-2 mt-2">
+                  {/* Simulated Calendar Section */}
+                  <div className="bg-white rounded-2xl p-3 border border-slate-100 shadow-[0_2px_12px_rgba(0,0,0,0.01)] text-left space-y-2">
                     <div className="flex justify-between items-center">
                       <div className="flex flex-col">
-                        <span className="text-[9px] font-extrabold text-slate-800">Juli 2026</span>
-                        <span className="text-[6px] font-bold text-slate-400 uppercase tracking-wider">Agenda Warga & Kegiatan</span>
+                        <span className="text-[9px] font-black text-slate-800">Kalender Kegiatan RT</span>
+                        <span className="text-[6.5px] font-bold text-slate-400">Juli 2026</span>
                       </div>
-                      <div className="w-5 h-5 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center text-[10px]">
-                        📅
-                      </div>
+                      <span className="text-[6px] font-extrabold bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">Lihat Semua</span>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-1 text-center text-[6px] font-black text-slate-400 uppercase mb-1">
-                      <span className="text-orange-500">Min</span>
-                      <span>Sen</span>
-                      <span>Sel</span>
-                      <span>Rab</span>
-                      <span>Kam</span>
-                      <span>Jum</span>
-                      <span>Sab</span>
+                    {/* Mini Calendar Days */}
+                    <div className="grid grid-cols-7 gap-0.5 text-center font-bold text-[6px] text-slate-400">
+                      <span>S</span><span>S</span><span>R</span><span>K</span><span>J</span><span>S</span><span>M</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-1 gap-x-0.5 text-center font-black text-[7px] text-slate-700">
+                      <span className="text-slate-200">29</span>
+                      <span className="text-slate-200">30</span>
+                      <span>1</span>
+                      <span>2</span>
+                      <span>3</span>
+                      <span>4</span>
+                      <span className="text-teal-600">5</span>
+                      <span>6</span>
+                      <span>7</span>
+                      <span>8</span>
+                      <span>9</span>
+                      <span>10</span>
+                      <span>11</span>
+                      <span className="text-teal-600">12</span>
+                      <span className="bg-teal-500 text-white rounded-full flex items-center justify-center w-3.5 h-3.5 mx-auto relative text-[6px]">
+                        13
+                      </span>
+                      <span>14</span>
+                      <span>15</span>
+                      <span>16</span>
+                      <span>17</span>
+                      <span className="text-teal-600">18</span>
+                      <span className="relative text-rose-500">
+                        19
+                        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 bg-rose-500 rounded-full"></span>
+                      </span>
+                      <span>20</span>
+                      <span>21</span>
+                      <span>22</span>
+                      <span>23</span>
+                      <span>24</span>
+                      <span className="text-teal-600">25</span>
+                      <span className="relative text-emerald-600">
+                        26
+                        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-0.5 bg-emerald-500 rounded-full"></span>
+                      </span>
                     </div>
 
-                    <div className="space-y-1">
-                      {[
-                        [null, null, null, 1, 2, 3, 4],
-                        [5, 6, 7, 8, 9, 10, 11],
-                        [12, 13, 14, 15, 16, 17, 18],
-                        [19, 20, 21, 22, 23, 24, 25],
-                        [26, 27, 28, 29, 30, 31, null]
-                      ].map((week, idx) => (
-                        <div key={idx} className="grid grid-cols-7 gap-1 text-center">
-                          {week.map((date, j) => {
-                            if (!date) return <div key={j} className="aspect-square"></div>;
-                            const isEvent = [12, 17, 24].includes(date);
-                            const isSelected = selectedDateMock === date;
-                            const isToday = date === 12;
-
-                            return (
-                              <button
-                                key={j}
-                                onClick={() => setSelectedDateMock(date)}
-                                className={`relative aspect-square rounded-full text-[7.5px] font-bold flex items-center justify-center transition-all cursor-pointer border
-                                  ${isSelected ? 'bg-teal-600 text-white border-teal-600 shadow-[0_2px_6px_rgba(13,148,136,0.3)]' :
-                                    isToday ? 'bg-teal-50 text-teal-700 border-teal-200' :
-                                    'border-transparent text-slate-700 hover:bg-slate-50'}`}
-                              >
-                                {date}
-                                {isEvent && (
-                                  <span className={`absolute bottom-0.5 w-0.5 h-0.5 rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`}></span>
-                                )}
-                              </button>
-                            );
-                          })}
+                    {/* Upcoming Simulated Event */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] shrink-0">📅</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[7.5px] font-black text-slate-800 truncate leading-none">Rapat Evaluasi Triwulan</span>
+                          <span className="text-[6px] font-bold text-slate-400 mt-0.5">Minggu, 19 Juli • 19:30 WIB</span>
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Selected Date Event Details */}
-                    <div className="pt-2 border-t border-slate-100/60">
-                      {selectedDateMock && [
-                        { id: 1, date: 12, title: "Rapat Bulanan RT 01", time: "19:30 WIB", loc: "Balai Warga" },
-                        { id: 2, date: 17, title: "Kerja Bakti Lingkungan", time: "07:00 WIB", loc: "Blok F - H" },
-                        { id: 3, date: 24, title: "Posyandu Cempaka", time: "08:30 WIB", loc: "Posyandu" }
-                      ].find(e => e.date === selectedDateMock) ? (
-                        (() => {
-                          const selectedEvent = [
-                            { id: 1, date: 12, title: "Rapat Bulanan RT 01", time: "19:30 WIB", loc: "Balai Warga" },
-                            { id: 2, date: 17, title: "Kerja Bakti Lingkungan", time: "07:00 WIB", loc: "Blok F - H" },
-                            { id: 3, date: 24, title: "Posyandu Cempaka", time: "08:30 WIB", loc: "Posyandu" }
-                          ].find(e => e.date === selectedDateMock)!;
-                          return (
-                            <div className="flex gap-2 items-center p-1.5 rounded-lg bg-teal-50/40 border border-teal-100/20 text-left">
-                              <div className="w-6 h-6 rounded-md bg-teal-500 text-white flex flex-col items-center justify-center shrink-0">
-                                <span className="text-[5px] font-black uppercase">JUL</span>
-                                <span className="text-[9px] font-black leading-none">{selectedDateMock}</span>
-                              </div>
-                              <div className="flex-grow min-w-0 font-medium">
-                                <h6 className="text-[8px] font-extrabold text-slate-800 truncate leading-none mb-0.5">{selectedEvent.title}</h6>
-                                <p className="text-[6.5px] text-slate-400 font-bold leading-none flex items-center gap-1">
-                                  <span>🕒 {selectedEvent.time}</span>
-                                  <span>•</span>
-                                  <span>📍 {selectedEvent.loc}</span>
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <div className="text-center py-1.5 rounded-lg bg-slate-50 border border-slate-100/50 text-[7px] text-slate-400 font-bold">
-                          Tidak ada agenda kegiatan warga
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Jadwal Shalat Widget */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 text-left space-y-2 mt-2">
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex flex-col">
-                         <div className="flex items-center gap-1.5">
-                           <span className="text-[9px] font-extrabold text-slate-800">Jadwal Shalat</span>
-                           <button onClick={() => setShowPrayerSettings(!showPrayerSettings)} className="text-[6px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full border border-teal-100/50 flex items-center gap-0.5 cursor-pointer hover:bg-teal-100 transition-colors">
-                             ⚙️ {selectedCity}
-                           </button>
-                         </div>
-                         {nextPrayer ? (
-                           <span className={`text-[6px] font-bold uppercase tracking-wider ${nextPrayer.isApproaching ? 'text-orange-500 animate-pulse' : 'text-teal-600'}`}>
-                             {nextPrayer.name} dalam {nextPrayer.remaining}
-                           </span>
-                         ) : (
-                           <span className="text-[6px] font-bold text-slate-400 uppercase tracking-wider">Memuat...</span>
-                         )}
                       </div>
-                      <div className="w-5 h-5 bg-orange-50 text-orange-600 rounded-full flex items-center justify-center text-[10px]">
-                        🕌
-                      </div>
-                    </div>
-
-                    <AnimatePresence>
-                      {showPrayerSettings && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="flex flex-wrap gap-1 mb-2 pt-1 border-t border-slate-50">
-                            {Object.keys(prayerTimesByCity).map(city => (
-                              <button
-                                key={city}
-                                onClick={() => { setSelectedCity(city); setShowPrayerSettings(false); }}
-                                className={`text-[6px] font-bold px-2 py-1 rounded-md transition-colors ${selectedCity === city ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                              >
-                                {city}
-                              </button>
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    <div className="flex justify-between items-center text-[7.5px] font-black text-slate-600">
-                      {jadwalShalat.map((prayer, i) => {
-                        const isNext = nextPrayer?.name === prayer.name;
-                        const isApproaching = isNext && nextPrayer?.isApproaching;
-                        return (
-                          <div key={i} className={`flex flex-col items-center px-1.5 py-1 rounded-md transition-colors relative
-                            ${isNext ? 'bg-teal-50 text-teal-700 shadow-sm border border-teal-100/50' : 'border border-transparent'}`}>
-                            {isApproaching && (
-                              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-orange-500 rounded-full animate-ping"></span>
-                            )}
-                            <span className={`uppercase text-[5.5px] mb-0.5 ${isNext ? 'text-teal-600' : 'text-slate-400'}`}>{prayer.name}</span>
-                            <span>{prayer.time}</span>
-                          </div>
-                        );
-                      })}
+                      <span className="text-[5.5px] font-black text-rose-500 bg-rose-50 px-1 py-0.5 rounded shrink-0">Musyawarah</span>
                     </div>
                   </div>
                 </div>
@@ -1283,21 +1109,21 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 <div className="space-y-4 text-[11px] font-extrabold text-slate-200">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><MapPin className="w-4 h-4 text-teal-400" /></div>
-                    <span>Sekretariat RT 01, RW 21, Wisma Garden, Kutajaya, Pasarkemis, Tangerang</span>
+                    <span>Sekretariat RT 01, RW 21, Kompleks Rukun, Sleman, DIY</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><Phone className="w-4 h-4 text-teal-400" /></div>
-                    <span>+62 812-1400-7871 (Ketua RT)</span>
+                    <span>+62 812-3456-7890 (Ketua RT)</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><MessageSquare className="w-4 h-4 text-teal-400" /></div>
-                    <span>muhammad.adjiprasetyo28@gmail.com</span>
+                    <span>info@guyubrukun-rt01.or.id</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/10 text-[10px] font-extrabold text-slate-400">
-                Layanan Digital dikelola secara mandiri oleh tim pengurus RT 01 Pasarkemis.
+                Layanan Digital dikelola secara mandiri oleh tim pengurus RT 01 Sleman.
               </div>
             </div>
 
@@ -1397,7 +1223,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               </span>
             </div>
             <p className="text-slate-400 text-xs font-medium leading-relaxed max-w-sm">
-              Sistem Portal Balai Warga Digital RT 01 / RW 21, Pasarkemis, Tangerang. Membawa kemudahan administrasi kependudukan, keterbukaan laporan kas, siskamling, dan perekonomian warga lokal.
+              Sistem Portal Balai Warga Digital RT 01 / RW 21, Sleman, DIY. Membawa kemudahan administrasi kependudukan, keterbukaan laporan kas, siskamling, dan perekonomian warga lokal.
             </p>
           </div>
 
