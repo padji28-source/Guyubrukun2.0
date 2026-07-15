@@ -4154,7 +4154,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
               initial={activeMobileTab === 'Profil' ? { opacity: 0, y: "100%" } : { opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0, y: 0 }}
               exit={activeMobileTab === 'Profil' ? { opacity: 0, y: "100%" } : { opacity: 0, x: -20 }}
-              transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
               className="h-full overflow-y-auto pb-24 relative"
             >
               {activeMobileTab === 'Profil' ? (

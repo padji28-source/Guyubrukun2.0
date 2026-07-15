@@ -63,9 +63,104 @@ export const WebDashboardRtView = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center py-24">
-        <Clock className="w-10 h-10 text-teal-600 animate-spin mb-4" />
-        <p className="text-sm text-gray-400">Memuat info Dashboard RT Guyub Rukun...</p>
+      <div className="p-6 max-w-7xl mx-auto space-y-6">
+        {/* Title block skeleton */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+          <div className="space-y-2">
+            <div className="h-7 w-48 bg-slate-200 rounded-lg animate-pulse" />
+            <div className="h-4 w-96 bg-slate-200 rounded-lg animate-pulse" />
+          </div>
+          <div className="h-9 w-28 bg-slate-200 rounded-xl animate-pulse" />
+        </div>
+
+        {/* Numerical Metrics Cards Grid skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-200 rounded-xl animate-pulse shrink-0" />
+              <div className="space-y-2 flex-1">
+                <div className="h-3 w-16 bg-slate-200 rounded animate-pulse" />
+                <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Main Analysis and Details Row skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Card 1 */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+            <div className="border-b pb-3 flex items-center justify-between">
+              <div className="h-5 w-32 bg-slate-200 rounded animate-pulse" />
+              <div className="h-3 w-16 bg-slate-200 rounded animate-pulse" />
+            </div>
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex justify-between items-center p-3 rounded-xl border border-gray-50">
+                  <div className="h-4 w-28 bg-slate-200 rounded animate-pulse" />
+                  <div className="h-4 w-20 bg-slate-200 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Card 2 */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+            <div className="border-b pb-3 flex items-center justify-between">
+              <div className="h-5 w-36 bg-slate-200 rounded animate-pulse" />
+              <div className="h-3 w-16 bg-slate-200 rounded animate-pulse" />
+            </div>
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <div className="h-3 w-24 bg-slate-200 rounded animate-pulse" />
+                  <div className="h-3 w-28 bg-slate-200 rounded animate-pulse" />
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden animate-pulse" />
+              </div>
+              <div className="h-10 bg-slate-50 border border-slate-50 p-3 rounded-xl animate-pulse" />
+            </div>
+          </div>
+
+          {/* Card 3 */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="border-b pb-3 flex items-center justify-between">
+              <div className="h-5 w-44 bg-slate-200 rounded animate-pulse" />
+              <div className="h-3.5 w-20 bg-slate-200 rounded animate-pulse" />
+            </div>
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl space-y-2 animate-pulse">
+                  <div className="flex justify-between">
+                    <div className="h-4 w-24 bg-slate-200 rounded" />
+                    <div className="h-4 w-12 bg-slate-200 rounded" />
+                  </div>
+                  <div className="h-3 w-full bg-slate-200 rounded" />
+                  <div className="h-3 w-2/3 bg-slate-200 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Card 4 */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="border-b pb-3 flex items-center justify-between">
+              <div className="h-5 w-44 bg-slate-200 rounded animate-pulse" />
+              <div className="h-3 w-16 bg-slate-200 rounded animate-pulse" />
+            </div>
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex gap-3.5 items-center p-3 bg-slate-50/50 rounded-xl border border-gray-50 animate-pulse">
+                  <div className="w-11 h-11 bg-slate-200 rounded-lg shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-3.5 w-28 bg-slate-200 rounded" />
+                    <div className="h-2.5 w-full bg-slate-200 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

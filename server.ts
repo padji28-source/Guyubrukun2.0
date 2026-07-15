@@ -13,6 +13,30 @@ dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "guyubrukunsecretkey_for_jwt2026";
 
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
+let isDbConnected = false;
+
+async function connectDB() {
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
+    isDbConnected = true;
+    return;
+  }
+  if (mongoose.connection && mongoose.connection.readyState === 2) {
+    return;
+  }
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
+    isDbConnected = true;
+    console.log("Connected securely to MongoDB database system.");
+  } catch (err) {
+    console.error("MongoDB connection exception:", err);
+    throw err;
+  }
+}
+
 // Secure Authentication Helpers
 function verifyPassword(input: string, stored: string): boolean {
   if (stored && stored.startsWith('$2') && stored.length >= 50) {
@@ -43,6 +67,19 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Global DB connection middleware for APIs to ensure stable connection on serverless/cold-start
+app.use(async (req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    try {
+      await connectDB();
+    } catch (err) {
+      console.error("Database connection failed in middleware:", err);
+      return res.status(500).json({ error: "Gagal menghubungkan ke database" });
+    }
+  }
+  next();
+});
 
 // Apply rate limiting to all requests
 app.use("/api/", apiLimiter);
@@ -92,9 +129,6 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 }
 
 app.use(authMiddleware);
-
-// Point 2: ROTATE & HIDE DATABASE CREDENTIALS (NO HARDCODING)
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 
 // Legacy fallback model for auto-migration
 const SystemDataSchema = new mongoose.Schema({
@@ -497,29 +531,6 @@ async function migrateLegacyDataIfAny(rtId: string) {
     }
   } catch (error) {
     console.error(`[Migration Error] Fault migrating legacy documents of ${rtId}:`, error);
-  }
-}
-
-// Global DB Connection marker
-let isDbConnected = false;
-
-async function connectDB() {
-  if (mongoose.connection && mongoose.connection.readyState === 1) {
-    isDbConnected = true;
-    return;
-  }
-  if (mongoose.connection && mongoose.connection.readyState === 2) {
-    return;
-  }
-  try {
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
-    });
-    isDbConnected = true;
-    console.log("Connected securely to MongoDB database system.");
-  } catch (err) {
-    console.error("MongoDB connection exception:", err);
   }
 }
 
@@ -2245,9 +2256,9 @@ app.get("/api/dashboard", async (req, res) => {
       UserModel.find({ rtId, role: { $ne: 'developer' } }).select('members').lean(),
       KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
       IuranModel.find({ rtId }).select('bulan status nominal').lean(),
-      LaporanModel.find({ rtId }).lean(),
-      AcaraModel.find({ rtId }).lean(),
-      MediaModel.find({ rtId }).lean()
+      LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
+      AcaraModel.find({ rtId }).select('id title date time location rtId createdAt').lean(),
+      MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').lean()
     ]);
 
     const jumlahKK = users.length;

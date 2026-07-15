@@ -6,9 +6,23 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
   const url = typeof input === 'string' ? input : input.toString();
 
-  // Clear cache on mutations (POST, PUT, DELETE)
+  // Clear cache on mutations (POST, PUT, DELETE) unless it's a non-mutating action
   if (!isGet) {
-    cache.clear();
+    const isNonMutating = 
+      url.includes('/api/ping') || 
+      url.includes('/api/notifications/read') || 
+      url.includes('/api/logout') || 
+      url.includes('/api/login') || 
+      url.includes('/api/register') || 
+      url.includes('/api/gemini') || 
+      url.includes('/api/ai') ||
+      url.includes('/api/chat') ||
+      url.includes('/api/password') ||
+      url.includes('/api/profile');
+
+    if (!isNonMutating) {
+      cache.clear();
+    }
   } else {
     // 1. Check cache
     const cached = cache.get(url);
