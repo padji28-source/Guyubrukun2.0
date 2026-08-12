@@ -3898,6 +3898,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   const [menuPermissions, setMenuPermissions] = useState<any[]>([]);
   const [developerStats, setDeveloperStats] = useState<{ onlineCount: number; registeredCount: number }>({ onlineCount: 0, registeredCount: 0 });
   const [rtList, setRtList] = useState<{rtId: string, totalUsers: number, isVip: boolean}[]>([]);
+  const [rwList, setRwList] = useState<{rwId: string, totalUsers: number, isVip: boolean}[]>([]);
 
   const fetchDeveloperStats = async () => {
     if (originalUser?.role !== 'developer') return;
@@ -3914,6 +3915,11 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
       if (rtRes.ok) {
         const json = await rtRes.json();
         setRtList(json.data || []);
+      }
+      const rwRes = await apiFetch('/api/developer/rw');
+      if (rwRes.ok) {
+        const json = await rwRes.json();
+        setRwList(json.data || []);
       }
     } catch (e) {
       console.error("Gagal mengambil stats developer", e);
@@ -4037,7 +4043,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
       if (data.type === 'menu_permissions') {
         fetchMenuPermissions();
       }
-      if (data.type === 'online_status') {
+      if (data.type === 'online_status' || data.type === 'rt_list_update') {
         fetchDeveloperStats();
       }
       window.dispatchEvent(new CustomEvent('app_data_update', { detail: data.type }));
@@ -4219,32 +4225,169 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                             </div>
                           </div>
 
-                          {/* RT Subscriptions */}
+                          {/* RT Subscriptions & Management */}
                           <div className="mt-4 border-t border-indigo-500/20 pt-4">
-                            <h4 className="text-xs font-bold text-indigo-200 mb-3 block">Kelola Berlangganan VIP RT</h4>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-xs font-bold text-indigo-200">Kelola Daftar & VIP RT</h4>
+                              <button
+                                onClick={async () => {
+                                  const input = window.prompt('Masukkan nomor RT baru (contoh: 04 atau rt04):');
+                                  if (!input || !input.trim()) return;
+                                  const isVipConfirm = window.confirm(`Apakah RT [${input.trim().toUpperCase()}] dijadikan VIP Member?`);
+                                  try {
+                                    const res = await apiFetch('/api/developer/rt', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ rtId: input.trim(), isVip: isVipConfirm })
+                                    });
+                                    const json = await res.json();
+                                    if (res.ok) {
+                                      alert(json.message || 'RT berhasil ditambahkan');
+                                      fetchDeveloperStats();
+                                    } else {
+                                      alert(json.error || 'Gagal menambahkan RT');
+                                    }
+                                  } catch (e: any) {
+                                    alert('Gagal menambahkan RT');
+                                  }
+                                }}
+                                className="text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                              >
+                                + Tambah RT
+                              </button>
+                            </div>
                             <div className="flex flex-col gap-2">
                               {rtList.length > 0 ? rtList.map(r => (
                                 <div key={r.rtId} className="flex flex-row items-center justify-between bg-white/5 border border-white/10 p-2.5 rounded-xl">
                                   <div>
-                                    <div className="text-xs font-bold text-white uppercase">{r.rtId}</div>
+                                    <div className="text-xs font-bold text-white uppercase flex items-center gap-1.5">
+                                      <span>{r.rtId}</span>
+                                      {r.isVip && <span className="text-[9px] bg-amber-500/20 border border-amber-500/30 text-amber-300 font-extrabold px-1.5 py-0.2 rounded">VIP</span>}
+                                    </div>
                                     <div className="text-[10px] text-indigo-300/70">{r.totalUsers} Warga</div>
                                   </div>
-                                  <button
-                                    onClick={async () => {
-                                      const res = await apiFetch(`/api/developer/rt/${r.rtId}/vip`, {
-                                        method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ isVip: !r.isVip })
-                                      });
-                                      if(res.ok) fetchDeveloperStats();
-                                    }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${r.isVip ? 'bg-amber-500/20 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-white/50'}`}
-                                  >
-                                    {r.isVip ? 'VIP Aktif' : 'VIP Nonaktif'}
-                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={async () => {
+                                        const res = await apiFetch(`/api/developer/rt/${r.rtId}/vip`, {
+                                          method: 'PUT',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ isVip: !r.isVip })
+                                        });
+                                        if(res.ok) fetchDeveloperStats();
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${r.isVip ? 'bg-amber-500/20 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-white/50'}`}
+                                    >
+                                      {r.isVip ? 'VIP' : 'Non-VIP'}
+                                    </button>
+                                    {!['rt01', 'rt02', 'rt03'].includes(r.rtId) && r.totalUsers === 0 && (
+                                      <button
+                                        onClick={async () => {
+                                          if (!window.confirm(`Hapus RT ${r.rtId.toUpperCase()}?`)) return;
+                                          const res = await apiFetch(`/api/developer/rt/${r.rtId}`, { method: 'DELETE' });
+                                          const json = await res.json();
+                                          if (res.ok) {
+                                            alert(json.message);
+                                            fetchDeveloperStats();
+                                          } else {
+                                            alert(json.error);
+                                          }
+                                        }}
+                                        className="px-2 py-1 bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                      >
+                                        Hapus
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               )) : (
                                 <div className="text-[10px] text-indigo-300/60 text-center py-2">Belum ada data RT.</div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Daftar RW System */}
+                          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+                            <div className="flex flex-row items-center justify-between border-b border-white/10 pb-2">
+                              <div>
+                                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                                  <span>Kelola RW System (rwList)</span>
+                                </h4>
+                                <p className="text-[10px] text-indigo-300/70">Daftar RW terdaftar dan status VIP</p>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const input = window.prompt("Masukkan Nomor RW Baru (contoh: 21 atau rw21):");
+                                  if (!input || !input.trim()) return;
+                                  const isVipConfirm = window.confirm(`Aktifkan status VIP untuk RW ${input.toUpperCase()}?`);
+                                  try {
+                                    const res = await apiFetch('/api/developer/rw', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ rwId: input.trim(), isVip: isVipConfirm })
+                                    });
+                                    const json = await res.json();
+                                    if (res.ok) {
+                                      alert(json.message);
+                                      fetchDeveloperStats();
+                                    } else {
+                                      alert(json.error);
+                                    }
+                                  } catch (e) {
+                                    alert("Gagal menambah RW.");
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-[10px] font-bold shadow-sm cursor-pointer transition-all"
+                              >
+                                + Tambah RW
+                              </button>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              {rwList.length > 0 ? rwList.map(r => (
+                                <div key={r.rwId} className="flex flex-row items-center justify-between bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                                  <div>
+                                    <div className="text-xs font-bold text-white uppercase flex items-center gap-1.5">
+                                      <span>{r.rwId}</span>
+                                      {r.isVip && <span className="text-[9px] bg-amber-500/20 border border-amber-500/30 text-amber-300 font-extrabold px-1.5 py-0.2 rounded">VIP</span>}
+                                    </div>
+                                    <div className="text-[10px] text-indigo-300/70">{r.totalUsers} Warga</div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={async () => {
+                                        const res = await apiFetch(`/api/developer/rw/${r.rwId}/vip`, {
+                                          method: 'PUT',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ isVip: !r.isVip })
+                                        });
+                                        if(res.ok) fetchDeveloperStats();
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${r.isVip ? 'bg-amber-500/20 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-white/50'}`}
+                                    >
+                                      {r.isVip ? 'VIP' : 'Non-VIP'}
+                                    </button>
+                                    {!['rw21'].includes(r.rwId) && r.totalUsers === 0 && (
+                                      <button
+                                        onClick={async () => {
+                                          if (!window.confirm(`Hapus RW ${r.rwId.toUpperCase()}?`)) return;
+                                          const res = await apiFetch(`/api/developer/rw/${r.rwId}`, { method: 'DELETE' });
+                                          const json = await res.json();
+                                          if (res.ok) {
+                                            alert(json.message);
+                                            fetchDeveloperStats();
+                                          } else {
+                                            alert(json.error);
+                                          }
+                                        }}
+                                        className="px-2 py-1 bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                      >
+                                        Hapus
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )) : (
+                                <div className="text-[10px] text-indigo-300/60 text-center py-2">Belum ada data RW.</div>
                               )}
                             </div>
                           </div>
@@ -4398,8 +4541,23 @@ const Register = React.lazy(() => import('./Auth').then(m => ({ default: m.Regis
 const CuteMascot = React.lazy(() => import('./Auth').then(m => ({ default: m.CuteMascot })));
 
 const RtSelection = ({ onSelectRt }: { onSelectRt: (rt: string) => void }) => {
-  const rts = ['RT 01', 'RT 02', 'RT 03'];
+  const [rts, setRts] = useState<{ id: string; label: string }[]>([
+    { id: 'rt01', label: 'RT 01' },
+    { id: 'rt02', label: 'RT 02' },
+    { id: 'rt03', label: 'RT 03' }
+  ]);
   const [selected, setSelected] = useState('');
+
+  useEffect(() => {
+    apiFetch('/api/public/rt-list')
+      .then(res => res.json())
+      .then(json => {
+        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+          setRts(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="w-full max-w-md mx-auto bg-white p-8 md:p-10 rounded-[2rem] shadow-2xl shadow-teal-900/10 relative overflow-hidden border border-teal-50">
@@ -4429,7 +4587,7 @@ const RtSelection = ({ onSelectRt }: { onSelectRt: (rt: string) => void }) => {
           >
             <option value="" disabled>-- Pilih RT Anda --</option>
             {rts.map(rt => (
-              <option key={rt} value={rt.toLowerCase().replace(' ', '')}>{rt}</option>
+              <option key={rt.id} value={rt.id}>{rt.label}</option>
             ))}
           </select>
           <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400">
@@ -4615,13 +4773,16 @@ export default function App() {
     
     const fetchGlobalEvents = () => {
       apiFetch('/api/dashboard')
-        .then(res => res.json())
+        .then(res => {
+          if (!res || !res.ok) return null;
+          return res.json();
+        })
         .then(json => {
-          if (json.acara) {
+          if (json && Array.isArray(json.acara)) {
             setGlobalEvents(json.acara);
           }
         })
-        .catch(err => console.error('Error loading events for reminders:', err));
+        .catch(err => console.warn('Error loading events for reminders:', err?.message || err));
     };
 
     fetchGlobalEvents();

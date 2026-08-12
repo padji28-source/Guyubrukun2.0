@@ -175,6 +175,13 @@ const RtConfigSchema = new mongoose.Schema({
 }, { timestamps: true });
 const RtConfigModel: mongoose.Model<any> = mongoose.models.RtConfig || mongoose.model("RtConfig", RtConfigSchema);
 
+// RW Config / Subscription Schema
+const RwConfigSchema = new mongoose.Schema({
+  rwId: { type: String, required: true, unique: true },
+  isVip: { type: Boolean, default: false }
+}, { timestamps: true });
+const RwConfigModel: mongoose.Model<any> = mongoose.models.RwConfig || mongoose.model("RwConfig", RwConfigSchema);
+
 // 2. Iuran Schema
 const IuranSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
@@ -792,6 +799,53 @@ async function initDb(rtId: string = '') {
       });
     }
 
+    // Seed Blok A (ganjil) accounts
+    const blokAAccounts = [
+      { no: '01', username: 'A01', password: 'A01', nama: 'Warga Blok A No. 01' },
+      { no: '03', username: 'A03', password: 'A03', nama: 'Warga Blok A No. 03' },
+      { no: '05', username: 'A05', password: 'A05', nama: 'Warga Blok A No. 05' },
+      { no: '07', username: 'A07', password: 'A07', nama: 'Warga Blok A No. 07' },
+      { no: '09', username: 'A09', password: 'A09', nama: 'Warga Blok A No. 09' },
+      { no: '11', username: 'A11', password: 'A11', nama: 'Warga Blok A No. 11' },
+      { no: '11A', username: 'A11A', password: 'A11A', nama: 'Warga Blok A No. 11A' },
+      { no: '15', username: 'A15', password: 'A15', nama: 'Warga Blok A No. 15' },
+      { no: '17', username: 'A17', password: 'A17', nama: 'Warga Blok A No. 17' },
+      { no: '19', username: 'A19', password: 'A19', nama: 'Warga Blok A No. 19' },
+      { no: '21', username: 'A21', password: 'A21', nama: 'Warga Blok A No. 21' },
+      { no: '23', username: 'A23', password: 'A23', nama: 'Warga Blok A No. 23' },
+      { no: '25', username: 'A25', password: 'A25', nama: 'Warga Blok A No. 25' },
+      { no: '27', username: 'A27', password: 'A27', nama: 'Warga Blok A No. 27' },
+      { no: '29', username: 'A29', password: 'A29', nama: 'Warga Blok A No. 29' }
+    ];
+
+    for (const acc of blokAAccounts) {
+      const alamat = `Blok A No. ${acc.no}`;
+      const existing = await UserModel.findOne({
+        $or: [
+          { username: new RegExp(`^${acc.username}$`, 'i') },
+          { alamat: new RegExp(`^${alamat}$`, 'i') }
+        ]
+      });
+
+      if (!existing) {
+        await UserModel.create({
+          id: `${Date.now()}_${acc.no}`,
+          username: acc.username,
+          nama: acc.nama,
+          password: hashPassword(acc.password),
+          alamat: alamat,
+          noHp: `0812${Math.floor(10000000 + Math.random() * 90000000)}`,
+          status: 'Warga Tetap',
+          role: 'warga',
+          isApproved: true,
+          isVip: false,
+          rtId: rtId || 'rt01',
+          umur: 30,
+          members: []
+        });
+      }
+    }
+
   } catch (e: any) {
     console.error("DB Initialization Error:", e);
   }
@@ -952,13 +1006,23 @@ app.post("/api/login", validateRequest(LoginValidator), async (req, res, next) =
     const rtId = req.headers['x-rt-id'] as string || 'rt01';
 
     await connectDB();
-    const query: any = { username };
-    if (username !== 'developer') {
+    const cleanUsername = (username || '').trim();
+    const query: any = { username: new RegExp(`^${cleanUsername}$`, 'i') };
+    if (cleanUsername.toLowerCase() !== 'developer') {
       query.rtId = rtId;
     }
     const user = await UserModel.findOne(query);
 
-    if (user && verifyPassword(password, user.password)) {
+    const cleanPwd = (password || '').trim();
+    const matchPwd = user && (
+      verifyPassword(cleanPwd, user.password) ||
+      verifyPassword(cleanPwd.toLowerCase(), user.password) ||
+      verifyPassword(cleanPwd.toUpperCase(), user.password) ||
+      verifyPassword(`Blok ${cleanPwd}`, user.password) ||
+      verifyPassword(cleanPwd.replace(/^blok\s*/i, ''), user.password)
+    );
+
+    if (user && matchPwd) {
       if (!user.password.startsWith('$2') && user.password === password) {
         user.password = hashPassword(password);
         await user.save();
@@ -1562,7 +1626,7 @@ app.post("/api/data/:resource", async (req, res) => {
       return res.status(403).json({ error: "Akses ditolak: Hanya Ketua RT atau Bendahara yang dapat menginput transaksi kas." });
     }
   }
-  if (resource === 'acara' || resource === 'umkm' || resource === 'inventaris') {
+  if (resource === 'acara' || resource === 'umkm' || resource === 'inventaris' || resource === 'darurat') {
     if (role !== 'admin' && role !== 'developer' && role !== 'sekretaris' && role !== 'bendahara' && role !== 'pengurus') {
       return res.status(403).json({ error: `Akses ditolak: Anda tidak memiliki wewenang untuk menambahkan ${resource}.` });
     }
@@ -1726,7 +1790,7 @@ app.put("/api/data/:resource/:id", async (req, res) => {
       return res.status(403).json({ error: `Akses ditolak: Hanya Ketua RT atau Bendahara yang dapat mengedit/memverifikasi transaksi ${resource}.` });
     }
   }
-  if (resource === 'acara' || resource === 'umkm' || resource === 'inventaris') {
+  if (resource === 'acara' || resource === 'umkm' || resource === 'inventaris' || resource === 'darurat') {
     if (role !== 'admin' && role !== 'developer' && role !== 'sekretaris' && role !== 'bendahara' && role !== 'pengurus') {
       return res.status(403).json({ error: `Akses ditolak: Anda tidak memiliki wewenang untuk mengedit ${resource}.` });
     }
@@ -1846,9 +1910,9 @@ app.delete("/api/data/:resource/:id", async (req, res) => {
 
   // Strict role verification for deletion (Only Ketua RT / Admin & Developer can delete core resources)
   const role = (req.headers['x-user-role'] as string) || 'warga';
-  if (['surat', 'laporan', 'tamu', 'kas', 'iuran', 'acara', 'umkm', 'inventaris', 'notulen'].includes(resource)) {
-    if (role !== 'admin' && role !== 'developer') {
-      return res.status(403).json({ error: `Akses ditolak: Operasi hapus data ${resource} hanya dapat dilakukan oleh Ketua RT.` });
+  if (['surat', 'laporan', 'tamu', 'kas', 'iuran', 'acara', 'umkm', 'inventaris', 'notulen', 'darurat'].includes(resource)) {
+    if (role !== 'admin' && role !== 'developer' && role !== 'sekretaris' && role !== 'bendahara' && role !== 'pengurus') {
+      return res.status(403).json({ error: `Akses ditolak: Operasi hapus data ${resource} hanya dapat dilakukan oleh Ketua RT atau Pengurus.` });
     }
   }
 
@@ -2050,6 +2114,34 @@ app.put("/api/developer/rt/:rtId/vip", enforceRoles(['developer']), async (req, 
   }
 });
 
+// Endpoint publik untuk daftar RT yang tersedia dalam sistem
+app.get("/api/public/rt-list", async (req, res) => {
+  try {
+    const configs = await RtConfigModel.find({}).lean();
+    const rtsAgg = await UserModel.aggregate([
+      { $match: { role: { $ne: 'developer' } } },
+      { $group: { _id: "$rtId" } }
+    ]);
+
+    const allRtSet = new Set<string>(['rt01', 'rt02', 'rt03']);
+    configs.forEach(c => { if (c.rtId) allRtSet.add(c.rtId); });
+    rtsAgg.forEach(r => { if (r._id) allRtSet.add(r._id); });
+
+    const list = Array.from(allRtSet).sort().map(id => {
+      let label = id.toUpperCase();
+      if (id.startsWith('rt')) {
+        const numPart = id.substring(2);
+        label = `RT ${numPart}`;
+      }
+      return { id, label };
+    });
+
+    res.json({ success: true, data: list });
+  } catch (e) {
+    res.status(500).json({ error: "Gagal mengambil daftar RT" });
+  }
+});
+
 // Endpoint untuk rekap list RT
 app.get("/api/developer/rt", enforceRoles(['developer']), async (req, res) => {
   try {
@@ -2057,19 +2149,229 @@ app.get("/api/developer/rt", enforceRoles(['developer']), async (req, res) => {
       { $match: { role: { $ne: 'developer' } } },
       { $group: { _id: "$rtId", totalUsers: { $sum: 1 } } }
     ]);
+    const userCountMap = new Map();
+    rtsAgg.forEach(r => { if (r._id) userCountMap.set(r._id, r.totalUsers); });
+
     const configs = await RtConfigModel.find({});
     const configMap = new Map();
     configs.forEach(c => configMap.set(c.rtId, c.isVip));
-    
-    const result = rtsAgg.map(r => ({
-      rtId: r._id,
-      totalUsers: r.totalUsers,
-      isVip: configMap.get(r._id) || false
-    }));
-    
+
+    const allRtIds = new Set<string>(['rt01', 'rt02', 'rt03']);
+    configs.forEach(c => { if (c.rtId) allRtIds.add(c.rtId); });
+    rtsAgg.forEach(r => { if (r._id) allRtIds.add(r._id); });
+
+    const result = Array.from(allRtIds).map(rtId => ({
+      rtId,
+      totalUsers: userCountMap.get(rtId) || 0,
+      isVip: configMap.get(rtId) || false
+    })).sort((a, b) => a.rtId.localeCompare(b.rtId));
+
     res.json({ success: true, data: result });
   } catch(e) {
     res.status(500).json({ error: "Gagal mengambil rekap RT" });
+  }
+});
+
+// Endpoint untuk Menambahkan Nomor RT Baru ke rtList
+app.post("/api/developer/rt", enforceRoles(['developer']), async (req, res) => {
+  try {
+    let { rtId, isVip } = req.body;
+    if (!rtId || typeof rtId !== 'string' || !rtId.trim()) {
+      return res.status(400).json({ error: "Nomor RT wajib diisi." });
+    }
+
+    let cleanRtId = rtId.trim().toLowerCase().replace(/\s+/g, '');
+    if (!cleanRtId.startsWith('rt')) {
+      const num = parseInt(cleanRtId, 10);
+      if (!isNaN(num)) {
+        cleanRtId = `rt${num < 10 ? '0' + num : num}`;
+      } else {
+        cleanRtId = `rt_${cleanRtId}`;
+      }
+    }
+
+    const existingConfig = await RtConfigModel.findOne({ rtId: cleanRtId });
+    if (existingConfig) {
+      return res.status(400).json({ error: `Nomor RT [${cleanRtId.toUpperCase()}] sudah terdaftar dalam sistem.` });
+    }
+
+    const newConfig = await RtConfigModel.create({
+      rtId: cleanRtId,
+      isVip: Boolean(isVip)
+    });
+
+    // Inisialisasi struktur DB & seed data awal untuk RT baru
+    await initDb(cleanRtId);
+
+    broadcastEvent('update', { type: 'rt_list_update' });
+
+    res.json({
+      success: true,
+      message: `Nomor RT [${cleanRtId.toUpperCase()}] berhasil ditambahkan ke dalam sistem!`,
+      rt: newConfig
+    });
+  } catch (e: any) {
+    console.error("Gagal menambah RT baru:", e);
+    res.status(500).json({ error: e.message || "Gagal menambahkan nomor RT baru" });
+  }
+});
+
+// Endpoint untuk Menghapus Nomor RT
+app.delete("/api/developer/rt/:rtId", enforceRoles(['developer']), async (req, res) => {
+  try {
+    const targetRtId = req.params.rtId;
+    if (['rt01', 'rt02', 'rt03'].includes(targetRtId)) {
+      return res.status(400).json({ error: `Nomor RT utama (${targetRtId}) tidak dapat dihapus.` });
+    }
+
+    const userCount = await UserModel.countDocuments({ rtId: targetRtId });
+    if (userCount > 0) {
+      return res.status(400).json({ error: `Tidak dapat menghapus ${targetRtId} karena terdapat ${userCount} warga terdaftar.` });
+    }
+
+    await RtConfigModel.deleteOne({ rtId: targetRtId });
+    broadcastEvent('update', { type: 'rt_list_update' });
+
+    res.json({ success: true, message: `Konfigurasi RT [${targetRtId.toUpperCase()}] telah dihapus.` });
+  } catch (e: any) {
+    res.status(500).json({ error: "Gagal menghapus nomor RT." });
+  }
+});
+
+// Endpoint untuk memperbarui status VIP RW
+app.put("/api/developer/rw/:rwId/vip", enforceRoles(['developer']), async (req, res) => {
+  try {
+    const targetRwId = req.params.rwId;
+    const { isVip } = req.body;
+    await RwConfigModel.findOneAndUpdate(
+      { rwId: targetRwId },
+      { isVip },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, message: `Status VIP untuk RW ${targetRwId} diperbarui menjadi ${isVip}.` });
+  } catch (e) {
+    res.status(500).json({ error: "Gagal memperbarui status VIP RW" });
+  }
+});
+
+// Endpoint publik untuk daftar RW yang tersedia dalam sistem
+app.get("/api/public/rw-list", async (req, res) => {
+  try {
+    const configs = await RwConfigModel.find({}).lean();
+    const rwsAgg = await UserModel.aggregate([
+      { $match: { role: { $ne: 'developer' } } },
+      { $group: { _id: "$rwId" } }
+    ]);
+
+    const allRwSet = new Set<string>(['rw21', 'rw01', 'rw02']);
+    configs.forEach(c => { if (c.rwId) allRwSet.add(c.rwId); });
+    rwsAgg.forEach(r => { if (r._id) allRwSet.add(r._id); });
+
+    const list = Array.from(allRwSet).sort().map(id => {
+      let label = id.toUpperCase();
+      if (id.startsWith('rw')) {
+        const numPart = id.substring(2);
+        label = `RW ${numPart}`;
+      }
+      return { id, label };
+    });
+
+    res.json({ success: true, data: list });
+  } catch (e) {
+    res.status(500).json({ error: "Gagal mengambil daftar RW" });
+  }
+});
+
+// Endpoint untuk rekap list RW (Developer)
+app.get("/api/developer/rw", enforceRoles(['developer']), async (req, res) => {
+  try {
+    const rwsAgg = await UserModel.aggregate([
+      { $match: { role: { $ne: 'developer' } } },
+      { $group: { _id: "$rwId", totalUsers: { $sum: 1 } } }
+    ]);
+    const userCountMap = new Map();
+    rwsAgg.forEach(r => { if (r._id) userCountMap.set(r._id, r.totalUsers); });
+
+    const configs = await RwConfigModel.find({});
+    const configMap = new Map();
+    configs.forEach(c => configMap.set(c.rwId, c.isVip));
+
+    const allRwIds = new Set<string>(['rw21']);
+    configs.forEach(c => { if (c.rwId) allRwIds.add(c.rwId); });
+    rwsAgg.forEach(r => { if (r._id) allRwIds.add(r._id); });
+
+    const result = Array.from(allRwIds).map(rwId => ({
+      rwId,
+      totalUsers: userCountMap.get(rwId) || 0,
+      isVip: configMap.get(rwId) || false
+    })).sort((a, b) => a.rwId.localeCompare(b.rwId));
+
+    res.json({ success: true, data: result });
+  } catch(e) {
+    res.status(500).json({ error: "Gagal mengambil rekap RW" });
+  }
+});
+
+// Endpoint untuk Menambahkan Nomor RW Baru ke rwList
+app.post("/api/developer/rw", enforceRoles(['developer']), async (req, res) => {
+  try {
+    let { rwId, isVip } = req.body;
+    if (!rwId || typeof rwId !== 'string' || !rwId.trim()) {
+      return res.status(400).json({ error: "Nomor RW wajib diisi." });
+    }
+
+    let cleanRwId = rwId.trim().toLowerCase().replace(/\s+/g, '');
+    if (!cleanRwId.startsWith('rw')) {
+      const num = parseInt(cleanRwId, 10);
+      if (!isNaN(num)) {
+        cleanRwId = `rw${num < 10 ? '0' + num : num}`;
+      } else {
+        cleanRwId = `rw_${cleanRwId}`;
+      }
+    }
+
+    const existingConfig = await RwConfigModel.findOne({ rwId: cleanRwId });
+    if (existingConfig) {
+      return res.status(400).json({ error: `Nomor RW [${cleanRwId.toUpperCase()}] sudah terdaftar dalam sistem.` });
+    }
+
+    const newConfig = await RwConfigModel.create({
+      rwId: cleanRwId,
+      isVip: Boolean(isVip)
+    });
+
+    broadcastEvent('update', { type: 'rw_list_update' });
+
+    res.json({
+      success: true,
+      message: `Nomor RW [${cleanRwId.toUpperCase()}] berhasil ditambahkan ke dalam sistem!`,
+      rw: newConfig
+    });
+  } catch (e: any) {
+    console.error("Gagal menambah RW baru:", e);
+    res.status(500).json({ error: e.message || "Gagal menambahkan nomor RW baru" });
+  }
+});
+
+// Endpoint untuk Menghapus Nomor RW
+app.delete("/api/developer/rw/:rwId", enforceRoles(['developer']), async (req, res) => {
+  try {
+    const targetRwId = req.params.rwId;
+    if (['rw21'].includes(targetRwId)) {
+      return res.status(400).json({ error: `Nomor RW utama (${targetRwId}) tidak dapat dihapus.` });
+    }
+
+    const userCount = await UserModel.countDocuments({ rwId: targetRwId });
+    if (userCount > 0) {
+      return res.status(400).json({ error: `Tidak dapat menghapus ${targetRwId} karena terdapat ${userCount} warga terdaftar.` });
+    }
+
+    await RwConfigModel.deleteOne({ rwId: targetRwId });
+    broadcastEvent('update', { type: 'rw_list_update' });
+
+    res.json({ success: true, message: `Konfigurasi RW [${targetRwId.toUpperCase()}] telah dihapus.` });
+  } catch (e: any) {
+    res.status(500).json({ error: "Gagal menghapus nomor RW." });
   }
 });
 
@@ -2305,6 +2607,42 @@ app.get("/api/dashboard", async (req, res) => {
     // Limit returned unused data
     const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
 
+    // Calculate 6-month financial trend
+    const monthlyMap = new Map<string, { pemasukan: number; pengeluaran: number; label: string; year: number; monthIdx: number }>();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' });
+      monthlyMap.set(key, { pemasukan: 0, pengeluaran: 0, label, year: d.getFullYear(), monthIdx: d.getMonth() });
+    }
+
+    kas.forEach((k: any) => {
+      if (!k.createdAt) return;
+      const d = new Date(k.createdAt);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthlyMap.has(key)) {
+        const label = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' });
+        monthlyMap.set(key, { pemasukan: 0, pengeluaran: 0, label, year: d.getFullYear(), monthIdx: d.getMonth() });
+      }
+      const item = monthlyMap.get(key)!;
+      if (k.type === 'Masuk') {
+        item.pemasukan += Number(k.amount) || 0;
+      } else if (k.type === 'Keluar') {
+        item.pengeluaran += Number(k.amount) || 0;
+      }
+    });
+
+    const monthlyTrend = Array.from(monthlyMap.values())
+      .sort((a, b) => (a.year - b.year) || (a.monthIdx - b.monthIdx))
+      .slice(-6)
+      .map(m => ({
+        bulan: m.label,
+        pemasukan: m.pemasukan,
+        pengeluaran: m.pengeluaran,
+        surplus: m.pemasukan - m.pengeluaran
+      }));
+
     res.json({
       metrics: {
         jumlahKK,
@@ -2314,6 +2652,7 @@ app.get("/api/dashboard", async (req, res) => {
         iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
         pengaduanAktif,
         agendaUpcoming,
+        monthlyTrend,
         wargaList: limitedUsers
       },
       kas: kas,
@@ -2349,6 +2688,11 @@ export async function startServer(listen = true) {
     } else {
       next(err);
     }
+  });
+
+  // Catch-all 404 handler for API routes to prevent falling through to Vite/index.html
+  app.use('/api/*', (req: express.Request, res: express.Response) => {
+    res.status(404).json({ error: `API route ${req.originalUrl} not found` });
   });
 
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
