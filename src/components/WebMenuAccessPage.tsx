@@ -92,11 +92,6 @@ export const WebMenuAccessPage = ({ user }: { user: any }) => {
   const [newRtVip, setNewRtVip] = useState(false);
   const [isSubmittingRt, setIsSubmittingRt] = useState(false);
 
-  const [rwList, setRwList] = useState<{ rwId: string; totalUsers: number; isVip: boolean }[]>([]);
-  const [newRwInput, setNewRwInput] = useState('');
-  const [newRwVip, setNewRwVip] = useState(false);
-  const [isSubmittingRw, setIsSubmittingRw] = useState(false);
-
   const fetchRtList = async () => {
     try {
       const res = await apiFetch('/api/developer/rt');
@@ -106,85 +101,6 @@ export const WebMenuAccessPage = ({ user }: { user: any }) => {
       }
     } catch (e) {
       console.error("Gagal memuat daftar RT", e);
-    }
-  };
-
-  const fetchRwList = async () => {
-    try {
-      const res = await apiFetch('/api/developer/rw');
-      if (res.ok) {
-        const json = await res.json();
-        setRwList(json.data || []);
-      }
-    } catch (e) {
-      console.error("Gagal memuat daftar RW", e);
-    }
-  };
-
-  const handleAddRw = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newRwInput.trim()) return;
-
-    setIsSubmittingRw(true);
-    try {
-      const res = await apiFetch('/api/developer/rw', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rwId: newRwInput.trim(), isVip: newRwVip })
-      });
-
-      const json = await res.json();
-      if (res.ok) {
-        setMessage({ text: json.message || 'Nomor RW berhasil ditambahkan', type: 'success' });
-        setNewRwInput('');
-        setNewRwVip(false);
-        fetchRwList();
-        fetchStats();
-        setTimeout(() => setMessage(null), 4000);
-      } else {
-        setMessage({ text: json.error || 'Gagal menambahkan nomor RW', type: 'error' });
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage({ text: 'Terjadi kesalahan server saat menambah RW', type: 'error' });
-    } finally {
-      setIsSubmittingRw(false);
-    }
-  };
-
-  const handleToggleRwVip = async (rwId: string, currentVip: boolean) => {
-    try {
-      const res = await apiFetch(`/api/developer/rw/${rwId}/vip`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isVip: !currentVip })
-      });
-      if (res.ok) {
-        fetchRwList();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleDeleteRw = async (rwId: string) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus nomor RW [${rwId.toUpperCase()}]?`)) return;
-
-    try {
-      const res = await apiFetch(`/api/developer/rw/${rwId}`, {
-        method: 'DELETE'
-      });
-      const json = await res.json();
-      if (res.ok) {
-        setMessage({ text: json.message || `RW ${rwId} berhasil dihapus`, type: 'success' });
-        fetchRwList();
-        setTimeout(() => setMessage(null), 4000);
-      } else {
-        setMessage({ text: json.error || 'Gagal menghapus RW', type: 'error' });
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage({ text: 'Gagal menghapus RW', type: 'error' });
     }
   };
 
@@ -292,13 +208,11 @@ export const WebMenuAccessPage = ({ user }: { user: any }) => {
     fetchPermissions();
     fetchStats();
     fetchRtList();
-    fetchRwList();
 
     const handleUpdate = (e: any) => {
-      if (e.detail === 'online_status' || e.detail === 'rt_list_update' || e.detail === 'rw_list_update') {
+      if (e.detail === 'online_status' || e.detail === 'rt_list_update') {
         fetchStats();
         fetchRtList();
-        fetchRwList();
       }
     };
     window.addEventListener('app_data_update', handleUpdate);
@@ -583,108 +497,6 @@ export const WebMenuAccessPage = ({ user }: { user: any }) => {
                     onClick={() => handleDeleteRt(r.rtId)}
                     className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
                     title="Hapus RT ini"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Kelola Daftar RW Sistem & Lisensi VIP Panel */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4 text-left">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-4 gap-3">
-          <div>
-            <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-teal-600" />
-              Kelola Daftar RW Sistem & Lisensi VIP
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Tambah nomor RW baru ke dalam <code className="bg-gray-100 px-1.5 py-0.5 rounded text-teal-600 font-mono text-[11px]">rwList</code> dan atur status kelola secara sistemik.
-            </p>
-          </div>
-
-          {/* Form Tambah RW Baru Inline */}
-          <form onSubmit={handleAddRw} className="flex items-center gap-2 flex-wrap">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Nomor RW (cth: 21 atau rw21)"
-                value={newRwInput}
-                onChange={(e) => setNewRwInput(e.target.value)}
-                className="px-3.5 py-2 text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-teal-500 outline-none w-48"
-                required
-              />
-            </div>
-            <label className="flex items-center gap-1.5 cursor-pointer bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-100">
-              <input
-                type="checkbox"
-                checked={newRwVip}
-                onChange={(e) => setNewRwVip(e.target.checked)}
-                className="rounded text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
-              />
-              <span>VIP Member</span>
-            </label>
-            <button
-              type="submit"
-              disabled={isSubmittingRw || !newRwInput.trim()}
-              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 disabled:opacity-50 transition-all cursor-pointer"
-            >
-              {isSubmittingRw ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-              <span>Tambah RW</span>
-            </button>
-          </form>
-        </div>
-
-        {/* List RW Items */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 pt-1">
-          {rwList.map((r) => (
-            <div
-              key={r.rwId}
-              className="p-3.5 rounded-xl border border-gray-100 bg-slate-50/60 flex items-center justify-between gap-3 hover:border-gray-300 transition-all"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-sm text-gray-800 uppercase tracking-wide">
-                    {r.rwId}
-                  </span>
-                  {r.isVip && (
-                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                      VIP
-                    </span>
-                  )}
-                </div>
-                <p className="text-[10px] text-gray-500 mt-0.5 font-medium">
-                  {r.totalUsers} Warga Terdaftar
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleToggleRwVip(r.rwId, r.isVip)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                    r.isVip
-                      ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
-                  }`}
-                  title={r.isVip ? 'Nonaktifkan Lisensi VIP' : 'Aktifkan Lisensi VIP'}
-                >
-                  {r.isVip ? 'VIP Aktif' : 'Set VIP'}
-                </button>
-
-                {!['rw21'].includes(r.rwId) && r.totalUsers === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteRw(r.rwId)}
-                    className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
-                    title="Hapus RW ini"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

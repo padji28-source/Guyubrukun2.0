@@ -13,29 +13,12 @@ import {
   TrendingUp,
   TrendingDown,
   Store,
-  MessageCircle,
-  BarChart3,
-  Filter,
-  ArrowUpRight,
-  ArrowDownRight,
-  PieChart
+  MessageCircle
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-  Cell
-} from 'recharts';
 
 export const WebDashboardRtView = () => {
   const [loading, setLoading] = useState(true);
   const [umkmList, setUmkmList] = useState<any[]>([]);
-  const [chartMode, setChartMode] = useState<'all' | 'pemasukan' | 'pengeluaran'>('all');
   const [metrics, setMetrics] = useState({
     jumlahKK: 0,
     jumlahWarga: 0,
@@ -44,7 +27,6 @@ export const WebDashboardRtView = () => {
     iuranBulanIni: { lunasPct: 0, totalIuranCount: 0, lunasCount: 0, totalAmount: 0 },
     pengaduanAktif: [] as any[],
     agendaUpcoming: [] as any[],
-    monthlyTrend: [] as any[],
     wargaList: [] as any[]
   });
 
@@ -246,186 +228,6 @@ export const WebDashboardRtView = () => {
           </div>
         </div>
       </div>
-
-      {/* Interactive Bar Chart: Tren Keuangan Kas RT */}
-      {(() => {
-        const trendData = metrics.monthlyTrend && metrics.monthlyTrend.length > 0
-          ? metrics.monthlyTrend
-          : [
-              { bulan: 'Mar', pemasukan: 1200000, pengeluaran: 450000, surplus: 750000 },
-              { bulan: 'Apr', pemasukan: 1850000, pengeluaran: 620000, surplus: 1230000 },
-              { bulan: 'Mei', pemasukan: 1500000, pengeluaran: 800000, surplus: 700000 },
-              { bulan: 'Jun', pemasukan: 2100000, pengeluaran: 550000, surplus: 1550000 },
-              { bulan: 'Jul', pemasukan: 1950000, pengeluaran: 720000, surplus: 1230000 },
-              { bulan: 'Agu', pemasukan: 2400000, pengeluaran: 600000, surplus: 1800000 }
-            ];
-
-        const totalPemasukan = trendData.reduce((acc: number, curr: any) => acc + (curr.pemasukan || 0), 0);
-        const totalPengeluaran = trendData.reduce((acc: number, curr: any) => acc + (curr.pengeluaran || 0), 0);
-        const totalSurplus = totalPemasukan - totalPengeluaran;
-
-        const CustomTooltip = ({ active, payload, label }: any) => {
-          if (active && payload && payload.length) {
-            const pVal = payload.find((item: any) => item.dataKey === 'pemasukan')?.value || 0;
-            const kVal = payload.find((item: any) => item.dataKey === 'pengeluaran')?.value || 0;
-            const sVal = pVal - kVal;
-
-            return (
-              <div className="bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-xl border border-slate-800 text-xs space-y-2.5 min-w-[200px] backdrop-blur-md">
-                <div className="font-bold text-slate-200 border-b border-slate-800 pb-1.5 flex items-center justify-between">
-                  <span>Bulan {label}</span>
-                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold uppercase ${sVal >= 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}`}>
-                    {sVal >= 0 ? 'Surplus Kas' : 'Defisit Kas'}
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center text-emerald-400 font-semibold">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shrink-0"></span>
-                      Pemasukan:
-                    </span>
-                    <span className="font-mono">Rp {pVal.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-rose-400 font-semibold">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0"></span>
-                      Pengeluaran:
-                    </span>
-                    <span className="font-mono">Rp {kVal.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="border-t border-slate-800 pt-1.5 flex justify-between items-center text-slate-100 font-extrabold">
-                    <span>Selisih (Net):</span>
-                    <span className={`font-mono ${sVal >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {sVal >= 0 ? '+' : ''}Rp {sVal.toLocaleString('id-ID')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-          return null;
-        };
-
-        return (
-          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
-            {/* Header & Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                    <BarChart3 className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-extrabold text-gray-900 text-base">Grafik Tren Pengeluaran vs Pemasukan Kas RT</h3>
-                </div>
-                <p className="text-xs text-gray-500">Visualisasi interaktif rasio arus kas bulanan untuk evaluasi kesehatan keuangan pengurus.</p>
-              </div>
-
-              {/* Chart View Toggle Controls */}
-              <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl self-start sm:self-auto border border-gray-200/50">
-                <button
-                  type="button"
-                  onClick={() => setChartMode('all')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${chartMode === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                >
-                  Semua Bar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChartMode('pemasukan')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${chartMode === 'pemasukan' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                >
-                  Pemasukan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChartMode('pengeluaran')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${chartMode === 'pengeluaran' ? 'bg-rose-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                >
-                  Pengeluaran
-                </button>
-              </div>
-            </div>
-
-            {/* Summary KPI Badges */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3.5 bg-emerald-50/60 border border-emerald-100 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider block">Total Pemasukan (6 Bln)</span>
-                  <span className="text-sm font-extrabold text-emerald-900 font-mono">Rp {totalPemasukan.toLocaleString('id-ID')}</span>
-                </div>
-                <div className="p-2 bg-emerald-500 text-white rounded-lg">
-                  <ArrowUpRight className="w-4 h-4" />
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-rose-50/60 border border-rose-100 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-extrabold text-rose-800 uppercase tracking-wider block">Total Pengeluaran (6 Bln)</span>
-                  <span className="text-sm font-extrabold text-rose-900 font-mono">Rp {totalPengeluaran.toLocaleString('id-ID')}</span>
-                </div>
-                <div className="p-2 bg-rose-500 text-white rounded-lg">
-                  <ArrowDownRight className="w-4 h-4" />
-                </div>
-              </div>
-
-              <div className={`p-3.5 rounded-xl border flex items-center justify-between ${totalSurplus >= 0 ? 'bg-teal-50/60 border-teal-100 text-teal-900' : 'bg-amber-50/60 border-amber-100 text-amber-900'}`}>
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider block opacity-80">Arus Kas Bersih (Surplus)</span>
-                  <span className="text-sm font-extrabold font-mono">{totalSurplus >= 0 ? '+' : ''}Rp {totalSurplus.toLocaleString('id-ID')}</span>
-                </div>
-                <span className={`text-[10px] font-extrabold px-2 py-1 rounded-md uppercase ${totalSurplus >= 0 ? 'bg-teal-600 text-white' : 'bg-amber-600 text-white'}`}>
-                  {totalSurplus >= 0 ? 'Kas Sehat' : 'Defisit'}
-                </span>
-              </div>
-            </div>
-
-            {/* Recharts Bar Chart Container */}
-            <div className="w-full h-72 pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                  <XAxis 
-                    dataKey="bulan" 
-                    tickLine={false} 
-                    axisLine={{ stroke: '#E2E8F0' }} 
-                    tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }} 
-                  />
-                  <YAxis 
-                    tickLine={false} 
-                    axisLine={false} 
-                    tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `Rp ${(val / 1000).toLocaleString()}k`}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend 
-                    verticalAlign="top" 
-                    height={36} 
-                    formatter={(value) => <span className="text-xs font-bold text-gray-700 capitalize">{value}</span>}
-                  />
-                  {(chartMode === 'all' || chartMode === 'pemasukan') && (
-                    <Bar 
-                      name="Pemasukan Kas" 
-                      dataKey="pemasukan" 
-                      fill="#10B981" 
-                      radius={[6, 6, 0, 0]} 
-                      maxBarSize={40}
-                    />
-                  )}
-                  {(chartMode === 'all' || chartMode === 'pengeluaran') && (
-                    <Bar 
-                      name="Pengeluaran Kas" 
-                      dataKey="pengeluaran" 
-                      fill="#F43F5E" 
-                      radius={[6, 6, 0, 0]} 
-                      maxBarSize={40}
-                    />
-                  )}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Main Analysis and Details Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

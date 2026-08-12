@@ -175,13 +175,6 @@ const RtConfigSchema = new mongoose.Schema({
 }, { timestamps: true });
 const RtConfigModel: mongoose.Model<any> = mongoose.models.RtConfig || mongoose.model("RtConfig", RtConfigSchema);
 
-// RW Config / Subscription Schema
-const RwConfigSchema = new mongoose.Schema({
-  rwId: { type: String, required: true, unique: true },
-  isVip: { type: Boolean, default: false }
-}, { timestamps: true });
-const RwConfigModel: mongoose.Model<any> = mongoose.models.RwConfig || mongoose.model("RwConfig", RwConfigSchema);
-
 // 2. Iuran Schema
 const IuranSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
@@ -2238,143 +2231,6 @@ app.delete("/api/developer/rt/:rtId", enforceRoles(['developer']), async (req, r
   }
 });
 
-// Endpoint untuk memperbarui status VIP RW
-app.put("/api/developer/rw/:rwId/vip", enforceRoles(['developer']), async (req, res) => {
-  try {
-    const targetRwId = req.params.rwId;
-    const { isVip } = req.body;
-    await RwConfigModel.findOneAndUpdate(
-      { rwId: targetRwId },
-      { isVip },
-      { upsert: true, new: true }
-    );
-    res.json({ success: true, message: `Status VIP untuk RW ${targetRwId} diperbarui menjadi ${isVip}.` });
-  } catch (e) {
-    res.status(500).json({ error: "Gagal memperbarui status VIP RW" });
-  }
-});
-
-// Endpoint publik untuk daftar RW yang tersedia dalam sistem
-app.get("/api/public/rw-list", async (req, res) => {
-  try {
-    const configs = await RwConfigModel.find({}).lean();
-    const rwsAgg = await UserModel.aggregate([
-      { $match: { role: { $ne: 'developer' } } },
-      { $group: { _id: "$rwId" } }
-    ]);
-
-    const allRwSet = new Set<string>(['rw21', 'rw01', 'rw02']);
-    configs.forEach(c => { if (c.rwId) allRwSet.add(c.rwId); });
-    rwsAgg.forEach(r => { if (r._id) allRwSet.add(r._id); });
-
-    const list = Array.from(allRwSet).sort().map(id => {
-      let label = id.toUpperCase();
-      if (id.startsWith('rw')) {
-        const numPart = id.substring(2);
-        label = `RW ${numPart}`;
-      }
-      return { id, label };
-    });
-
-    res.json({ success: true, data: list });
-  } catch (e) {
-    res.status(500).json({ error: "Gagal mengambil daftar RW" });
-  }
-});
-
-// Endpoint untuk rekap list RW (Developer)
-app.get("/api/developer/rw", enforceRoles(['developer']), async (req, res) => {
-  try {
-    const rwsAgg = await UserModel.aggregate([
-      { $match: { role: { $ne: 'developer' } } },
-      { $group: { _id: "$rwId", totalUsers: { $sum: 1 } } }
-    ]);
-    const userCountMap = new Map();
-    rwsAgg.forEach(r => { if (r._id) userCountMap.set(r._id, r.totalUsers); });
-
-    const configs = await RwConfigModel.find({});
-    const configMap = new Map();
-    configs.forEach(c => configMap.set(c.rwId, c.isVip));
-
-    const allRwIds = new Set<string>(['rw21']);
-    configs.forEach(c => { if (c.rwId) allRwIds.add(c.rwId); });
-    rwsAgg.forEach(r => { if (r._id) allRwIds.add(r._id); });
-
-    const result = Array.from(allRwIds).map(rwId => ({
-      rwId,
-      totalUsers: userCountMap.get(rwId) || 0,
-      isVip: configMap.get(rwId) || false
-    })).sort((a, b) => a.rwId.localeCompare(b.rwId));
-
-    res.json({ success: true, data: result });
-  } catch(e) {
-    res.status(500).json({ error: "Gagal mengambil rekap RW" });
-  }
-});
-
-// Endpoint untuk Menambahkan Nomor RW Baru ke rwList
-app.post("/api/developer/rw", enforceRoles(['developer']), async (req, res) => {
-  try {
-    let { rwId, isVip } = req.body;
-    if (!rwId || typeof rwId !== 'string' || !rwId.trim()) {
-      return res.status(400).json({ error: "Nomor RW wajib diisi." });
-    }
-
-    let cleanRwId = rwId.trim().toLowerCase().replace(/\s+/g, '');
-    if (!cleanRwId.startsWith('rw')) {
-      const num = parseInt(cleanRwId, 10);
-      if (!isNaN(num)) {
-        cleanRwId = `rw${num < 10 ? '0' + num : num}`;
-      } else {
-        cleanRwId = `rw_${cleanRwId}`;
-      }
-    }
-
-    const existingConfig = await RwConfigModel.findOne({ rwId: cleanRwId });
-    if (existingConfig) {
-      return res.status(400).json({ error: `Nomor RW [${cleanRwId.toUpperCase()}] sudah terdaftar dalam sistem.` });
-    }
-
-    const newConfig = await RwConfigModel.create({
-      rwId: cleanRwId,
-      isVip: Boolean(isVip)
-    });
-
-    broadcastEvent('update', { type: 'rw_list_update' });
-
-    res.json({
-      success: true,
-      message: `Nomor RW [${cleanRwId.toUpperCase()}] berhasil ditambahkan ke dalam sistem!`,
-      rw: newConfig
-    });
-  } catch (e: any) {
-    console.error("Gagal menambah RW baru:", e);
-    res.status(500).json({ error: e.message || "Gagal menambahkan nomor RW baru" });
-  }
-});
-
-// Endpoint untuk Menghapus Nomor RW
-app.delete("/api/developer/rw/:rwId", enforceRoles(['developer']), async (req, res) => {
-  try {
-    const targetRwId = req.params.rwId;
-    if (['rw21'].includes(targetRwId)) {
-      return res.status(400).json({ error: `Nomor RW utama (${targetRwId}) tidak dapat dihapus.` });
-    }
-
-    const userCount = await UserModel.countDocuments({ rwId: targetRwId });
-    if (userCount > 0) {
-      return res.status(400).json({ error: `Tidak dapat menghapus ${targetRwId} karena terdapat ${userCount} warga terdaftar.` });
-    }
-
-    await RwConfigModel.deleteOne({ rwId: targetRwId });
-    broadcastEvent('update', { type: 'rw_list_update' });
-
-    res.json({ success: true, message: `Konfigurasi RW [${targetRwId.toUpperCase()}] telah dihapus.` });
-  } catch (e: any) {
-    res.status(500).json({ error: "Gagal menghapus nomor RW." });
-  }
-});
-
 app.get("/api/menu-permissions", async (req, res) => {
   try {
     const list = await MenuAccessModel.find({}).lean();
@@ -2607,42 +2463,6 @@ app.get("/api/dashboard", async (req, res) => {
     // Limit returned unused data
     const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
 
-    // Calculate 6-month financial trend
-    const monthlyMap = new Map<string, { pemasukan: number; pengeluaran: number; label: string; year: number; monthIdx: number }>();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' });
-      monthlyMap.set(key, { pemasukan: 0, pengeluaran: 0, label, year: d.getFullYear(), monthIdx: d.getMonth() });
-    }
-
-    kas.forEach((k: any) => {
-      if (!k.createdAt) return;
-      const d = new Date(k.createdAt);
-      if (isNaN(d.getTime())) return;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthlyMap.has(key)) {
-        const label = d.toLocaleString('id-ID', { month: 'short', year: '2-digit' });
-        monthlyMap.set(key, { pemasukan: 0, pengeluaran: 0, label, year: d.getFullYear(), monthIdx: d.getMonth() });
-      }
-      const item = monthlyMap.get(key)!;
-      if (k.type === 'Masuk') {
-        item.pemasukan += Number(k.amount) || 0;
-      } else if (k.type === 'Keluar') {
-        item.pengeluaran += Number(k.amount) || 0;
-      }
-    });
-
-    const monthlyTrend = Array.from(monthlyMap.values())
-      .sort((a, b) => (a.year - b.year) || (a.monthIdx - b.monthIdx))
-      .slice(-6)
-      .map(m => ({
-        bulan: m.label,
-        pemasukan: m.pemasukan,
-        pengeluaran: m.pengeluaran,
-        surplus: m.pemasukan - m.pengeluaran
-      }));
-
     res.json({
       metrics: {
         jumlahKK,
@@ -2652,7 +2472,6 @@ app.get("/api/dashboard", async (req, res) => {
         iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
         pengaduanAktif,
         agendaUpcoming,
-        monthlyTrend,
         wargaList: limitedUsers
       },
       kas: kas,
