@@ -4546,9 +4546,9 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
         className="w-48 h-48 sm:w-56 sm:h-56 relative mb-8 rounded-[2rem] overflow-hidden shadow-2xl flex items-center justify-center ring-4 ring-white/20 bg-[#16b3a0]"
       >
         <img 
-          src="/icon-512.png" 
+          src="/splash-logo.png" 
           alt="Guyub Rukun Logo" 
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         />
       </motion.div>
 
