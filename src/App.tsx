@@ -4540,42 +4540,16 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
       <div className="absolute bottom-0 left-0 w-48 h-48 bg-emerald-300 opacity-20 rounded-full -translate-x-16 translate-y-16 blur-2xl"></div>
       
       <motion.div
-        initial={{ y: 30, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.8, ease: "easeOut" }}
-        className="w-40 h-40 relative mb-8 rounded-[2rem] overflow-hidden shadow-2xl bg-white/10 backdrop-blur-md p-5 flex items-center justify-center border border-white/20"
+        initial={{ y: 40, opacity: 0, scale: 0.9 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        transition={{ delay: 0.2, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="w-48 h-48 sm:w-56 sm:h-56 relative mb-8 rounded-[2.5rem] overflow-hidden shadow-2xl bg-white p-2 flex items-center justify-center border-4 border-white/40"
       >
-        <motion.svg 
-          viewBox="0 0 100 100" 
-          className="w-full h-full drop-shadow-xl"
-        >
-          <defs>
-            <linearGradient id="bg_splash" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#14B8A6" />
-              <stop offset="100%" stopColor="#0F766E" />
-            </linearGradient>
-          </defs>
-          <rect width="100" height="100" fill="transparent" />
-          
-          <motion.g animate={{ y: [0, -3, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
-            <circle cx="30" cy="35" r="8" fill="#A5F3FC" />
-            <path d="M15 65 Q30 40 45 65 Z" fill="#A5F3FC" />
-          </motion.g>
-
-          <motion.g animate={{ y: [0, -3, 0] }} transition={{ duration: 2.2, repeat: Infinity, delay: 0.2, ease: "easeInOut" }}>
-            <circle cx="70" cy="35" r="8" fill="#FEF08A" />
-            <path d="M55 65 Q70 40 85 65 Z" fill="#FEF08A" />
-          </motion.g>
-
-          <motion.g animate={{ y: [-1, -4, -1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} style={{ transformOrigin: '50px 65px' }}>
-            <circle cx="50" cy="28" r="9" fill="#FFFFFF" />
-            <path d="M30 65 C40 30 60 30 70 65 Z" fill="#FFFFFF" />
-          </motion.g>
-
-          <path d="M15 65 L85 65" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" />
-          
-          <text x="50" y="85" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="11" fill="#FFFFFF" textAnchor="middle" letterSpacing="0.5">GUYUB RUKUN</text>
-        </motion.svg>
+        <img 
+          src="/logo.svg" 
+          alt="Guyub Rukun Logo" 
+          className="w-full h-full object-contain drop-shadow-lg"
+        />
       </motion.div>
 
       <motion.h1 
