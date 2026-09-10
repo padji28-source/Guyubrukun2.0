@@ -8,6 +8,7 @@ async function generateIcons() {
     
     // Read the source image
     const sourceImage = await Jimp.read(sourcePath);
+    const bgColor = sourceImage.getPixelColor(0, 0);
     
     // Target configurations
     const configs = [
@@ -20,12 +21,26 @@ async function generateIcons() {
       const outputPath = path.join(process.cwd(), 'public', config.name);
       console.log(`Generating ${config.name} (${config.size}x${config.size})...`);
       
-      // Clone the source image and resize it
-      const resized = sourceImage.clone();
-      resized.resize({ w: config.size, h: config.size });
+      // Create new canvas filled with background color
+      const canvas = new Jimp({
+          width: config.size,
+          height: config.size,
+          color: bgColor
+      });
       
-      // Save the resized image
-      await resized.write(outputPath);
+      // Calculate scaled size for the logo (e.g., 75% of container)
+      const targetLogoSize = Math.floor(config.size * 0.70);
+      const offset = Math.floor((config.size - targetLogoSize) / 2);
+      
+      // Clone and resize original
+      const resized = sourceImage.clone();
+      resized.resize({ w: targetLogoSize, h: targetLogoSize });
+      
+      // Composite
+      canvas.composite(resized, offset, offset);
+      
+      // Save
+      await canvas.write(outputPath);
       console.log(`Successfully generated ${config.name}`);
     }
     
@@ -35,5 +50,4 @@ async function generateIcons() {
     process.exit(1);
   }
 }
-
 generateIcons();

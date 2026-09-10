@@ -4543,12 +4543,12 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
         initial={{ y: 40, opacity: 0, scale: 0.9 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ delay: 0.2, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="w-48 h-48 sm:w-56 sm:h-56 relative mb-8 rounded-[2.5rem] overflow-hidden shadow-2xl bg-white p-2 flex items-center justify-center border-4 border-white/40"
+        className="w-48 h-48 sm:w-56 sm:h-56 relative mb-8 rounded-[2rem] overflow-hidden shadow-2xl flex items-center justify-center ring-4 ring-white/20 bg-[#16b3a0]"
       >
         <img 
-          src="/logo.svg" 
+          src="/icon-512.png" 
           alt="Guyub Rukun Logo" 
-          className="w-full h-full object-contain drop-shadow-lg"
+          className="w-full h-full object-cover"
         />
       </motion.div>
 

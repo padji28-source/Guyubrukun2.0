@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => {
           start_url: "/",
           scope: "/",
           display: "standalone",
-          background_color: "#ffffff",
+          background_color: "#16b3a0",
           theme_color: "#0d9488",
           description: "Aplikasi Guyub Rukun untuk warga RT 01",
           icons: [
