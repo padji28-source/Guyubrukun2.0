@@ -224,6 +224,11 @@ export const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
     </svg>
   ),
+  delete: (props: any) => (
+    <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  ),
   qr: (props: any) => (
     <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 7V5a2 2 0 0 1 2-2h2" />
@@ -2362,13 +2367,13 @@ const quickActions = [
   { name: 'Surat', icon: icons.surat, color: 'from-blue-400 to-indigo-500', shadow: 'shadow-blue-200' },
   { name: 'Lapor RT', icon: icons.laporanrt, color: 'from-rose-400 to-red-500', shadow: 'shadow-rose-200' },
   { name: 'Dokumen', icon: icons.dokumen, color: 'from-amber-400 to-orange-500', shadow: 'shadow-amber-200' },
-  { name: 'Notulen Rapat', icon: icons.laporan, color: 'from-sky-500 to-blue-600', shadow: 'shadow-sky-200' },
-  { name: 'Media', icon: icons.media, color: 'from-purple-400 to-fuchsia-500', shadow: 'shadow-purple-200' },
+  { name: 'UMKM', icon: icons.umkm, color: 'from-yellow-400 to-amber-500', shadow: 'shadow-yellow-200' },
   { name: 'Iuran', icon: icons.iuran, color: 'from-emerald-400 to-teal-500', shadow: 'shadow-emerald-200' },
   { name: 'Kas', icon: icons.kas, color: 'from-cyan-400 to-blue-500', shadow: 'shadow-cyan-200' },
   { name: 'Data Warga', icon: icons.warga, color: 'from-violet-400 to-purple-500', shadow: 'shadow-violet-200' },
+  { name: 'Media', icon: icons.media, color: 'from-purple-400 to-fuchsia-500', shadow: 'shadow-purple-200' },
+  { name: 'Notulen Rapat', icon: icons.laporan, color: 'from-sky-500 to-blue-600', shadow: 'shadow-sky-200' },
   { name: 'Sedekah', icon: icons.sedekah, color: 'from-pink-400 to-rose-500', shadow: 'shadow-pink-200' },
-  { name: 'UMKM', icon: icons.umkm, color: 'from-yellow-400 to-amber-500', shadow: 'shadow-yellow-200' },
   { name: 'Darurat', icon: icons.darurat, color: 'from-red-500 to-rose-600', shadow: 'shadow-red-200' },
   { name: 'Tamu', icon: icons.warga, color: 'from-sky-400 to-indigo-500', shadow: 'shadow-sky-200' },
   { name: 'Voting', icon: icons.voting, color: 'from-indigo-400 to-indigo-600', shadow: 'shadow-indigo-200' },
@@ -3027,7 +3032,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(`Waktu Sholat ${prayerName} Telah Tiba!`, {
         body: `Pukul ${prayerTime}. Mari bersiap untuk menunaikan ibadah sholat ${prayerName}.`,
-        icon: '/guyubrukun2.png'
+        icon: '/icon-192.png'
       });
     }
   };
@@ -3935,17 +3940,20 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   const fallbackPermissions: { [key: string]: string[] } = {
     developer: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 'Smart RT AI', 'Pengaturan', 'Akses Menu'],
     admin: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 'Smart RT AI', 'Pengaturan'],
-    sekretaris: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Notulen Rapat', 'Pengumuman', 'Media', 'Inventaris', 'Pengaturan'],
-    bendahara: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Pengaturan'],
-    pengurus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'Inventaris', 'Pengaturan'],
+    sekretaris: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
+    bendahara: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'UMKM', 'Pengaturan'],
+    pengurus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
     warga: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Smart RT AI', 'Pengaturan']
   };
 
   const userRole = originalUser?.role || 'warga';
   const rolePermission = menuPermissions.find(p => p.role === userRole);
   let allowedMenus = rolePermission ? rolePermission.allowedMenus : (fallbackPermissions[userRole] || fallbackPermissions.warga);
+  if (Array.isArray(allowedMenus) && !allowedMenus.includes('UMKM')) {
+    allowedMenus = [...allowedMenus, 'UMKM'];
+  }
   
-  const vipMenus = ['Notulen Rapat', 'Voting', 'Inventaris', 'Smart RT AI', 'UMKM', 'UMKM Warga'];
+  const vipMenus = ['Notulen Rapat', 'Voting', 'Inventaris', 'Smart RT AI'];
   
   // Semua role bisa melihat menu, list master menu yang ada
   const allAppMenus = [
@@ -4302,8 +4310,8 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         </div>
                       )}
                       <MobileQuickActions onActionClick={setActiveMobileTab} visibleMenus={visibleMenus}/>
+                      <MobileUMKMAds onActionClick={setActiveMobileTab} />
                       <MobileCalendarWidget onActionClick={setActiveMobileTab} />
-                      <MobileUMKMAds />
                     </>
                   )}
 
@@ -4633,26 +4641,25 @@ export default function App() {
   useEffect(() => {
     if (!user?.id) return;
 
-    
     // Initial ping
-    apiFetch('/api/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id }) });
-    
-    // Heartbeat ping every 5 seconds
+    apiFetch('/api/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id }) }).catch(() => {});
+
+    // Heartbeat ping every 30 seconds
     const interval = setInterval(() => {
-      apiFetch('/api/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id }) });
-    }, 5000);
-    
+      apiFetch('/api/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.id }) }).catch(() => {});
+    }, 30000);
+
     return () => {
       clearInterval(interval);
     };
-  }, [user]);
+  }, [user?.id]);
 
   const [globalEvents, setGlobalEvents] = useState<any[]>([]);
   const [activeToast, setActiveToast] = useState<{ id: string; title: string; time: string } | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
-    
+
     const fetchGlobalEvents = () => {
       apiFetch('/api/dashboard')
         .then(res => {
@@ -4664,13 +4671,13 @@ export default function App() {
             setGlobalEvents(json.acara);
           }
         })
-        .catch(err => console.warn('Error loading events for reminders:', err?.message || err));
+        .catch(() => {});
     };
 
     fetchGlobalEvents();
-    const interval = setInterval(fetchGlobalEvents, 30000);
+    const interval = setInterval(fetchGlobalEvents, 60000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (globalEvents.length === 0) return;

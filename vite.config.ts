@@ -14,11 +14,12 @@ export default defineConfig(({ mode }) => {
         registerType: "autoUpdate",
         injectRegister: "auto",
         devOptions: {
-          enabled: true,
+          enabled: false,
           type: "module",
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           cleanupOutdatedCaches: true,
           runtimeCaching: [
             {
@@ -69,40 +70,12 @@ export default defineConfig(({ mode }) => {
       "process.env.GEMINI_API_KEY": JSON.stringify(env.GEMINI_API_KEY),
     },
     build: {
+      outDir: "dist",
+      emptyOutDir: true,
       target: "esnext",
       minify: "esbuild",
       cssMinify: true,
       sourcemap: false,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes("node_modules")) {
-              if (id.includes("react") || id.includes("scheduler")) {
-                return "vendor-react";
-              }
-              if (id.includes("recharts") || id.includes("d3")) {
-                return "vendor-charts";
-              }
-              if (id.includes("lucide-react")) {
-                return "vendor-icons";
-              }
-              if (id.includes("motion")) {
-                return "vendor-motion";
-              }
-              if (id.includes("jspdf") || id.includes("jspdf-autotable")) {
-                return "vendor-pdf";
-              }
-              if (id.includes("html5-qrcode")) {
-                return "vendor-qrcode";
-              }
-              if (id.includes("@dnd-kit") || id.includes("sortable")) {
-                return "vendor-dnd";
-              }
-              return "vendor-core";
-            }
-          },
-        },
-      },
     },
     resolve: {
       alias: {

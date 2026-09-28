@@ -359,7 +359,7 @@ export const WebDashboardRtView = () => {
 
       </div>
 
-      {/* Etalase Promosi UMKM Warga */}
+      {/* Etalase Promosi UMKM Warga (Gambar Slide & Kartu) */}
       {umkmList.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between border-b pb-4">
@@ -368,48 +368,71 @@ export const WebDashboardRtView = () => {
                 <Store className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-extrabold text-gray-900 text-sm">Etalase Sponsor & Iklan UMKM Mandiri Warga</h3>
-                <p className="text-[11px] text-gray-500 mt-0.5">Dukung perekonomian warga dengan berbelanja di usaha lokal tetangga kita.</p>
+                <h3 className="font-extrabold text-gray-900 text-sm">Iklan & Etalase UMKM Warga</h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">Dukung perekonomian warga dengan berbelanja di usaha lokal tetangga kita yang telah diverifikasi RT.</p>
               </div>
             </div>
-            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200/50 font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
-              Iklan Warga RT
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+              {umkmList.filter((u: any) => !u.status || u.status === 'disetujui').length} Usaha Terverifikasi
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-            {umkmList.map((item) => (
-              <div key={item.id} className="group relative bg-gray-50/50 hover:bg-white border border-gray-100/80 hover:border-teal-200 rounded-2xl p-4 transition-all duration-300 hover:shadow-md flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[9px] bg-teal-50 border border-teal-100 text-teal-700 font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                      {item.category || 'Usaha Lokal'}
-                    </span>
-                    <span className="text-[9px] text-gray-400 font-mono">ID: {item.id.slice(-4)}</span>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-extrabold text-gray-900 group-hover:text-teal-700 transition-colors line-clamp-1">{item.nama}</h4>
-                    <p className="text-[11px] text-gray-500 mt-1 line-clamp-3 leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {umkmList
+              .filter((item: any) => !item.status || item.status === 'disetujui')
+              .map((item, idx) => {
+                const fallbackImgs = [
+                  'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80',
+                  'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80',
+                  'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80'
+                ];
+                const bannerImg = item.bannerUrl || fallbackImgs[idx % fallbackImgs.length];
+                const rawWa = (item.kontak || item.phone || '').replace(/[^0-9]/g, '');
+                const waNum = rawWa.startsWith('0') ? '62' + rawWa.slice(1) : rawWa;
+                return (
+                  <div key={item.id} className="group relative bg-white border border-gray-100 hover:border-teal-200 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-md flex flex-col justify-between">
+                    <div className="h-40 w-full relative overflow-hidden bg-slate-900">
+                      <img src={bannerImg} alt={item.nama || item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/20 to-transparent" />
+                      <div className="absolute bottom-3 left-3.5 right-3.5 text-white">
+                        <p className="text-[10px] text-teal-200 font-semibold truncate">{item.category || 'UMKM'} · {item.alamat || item.owner}</p>
+                        <h4 className="text-sm font-extrabold truncate">{item.nama || item.name}</h4>
+                      </div>
+                    </div>
 
-                <div className="mt-4 pt-3 border-t border-gray-100/70 flex items-center justify-between">
-                  {item.kontak ? (
-                    <a
-                      href={`https://wa.me/${item.kontak.replace(/[^0-9]/g, '')}?text=Halo%20saya%20warga%20RT%20tertarik%20dengan%20usaha%20${encodeURIComponent(item.nama)}%20di%20aplikasi%20Guyub%20Rukun.`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366] hover:text-white text-[11px] font-black py-2 rounded-xl text-center transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      Hubungi Toko (WA)
-                    </a>
-                  ) : (
-                    <span className="text-[10px] text-gray-400 italic">No kontak tidak tersedia</span>
-                  )}
-                </div>
-              </div>
-            ))}
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      {Array.isArray(item.products) && item.products.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {item.products.slice(0, 2).map((p: any, pIdx: number) => (
+                            <div key={p.id || pIdx} className="flex items-center justify-between text-xs bg-slate-50 px-2.5 py-1.5 rounded-lg">
+                              <span className="font-medium text-slate-700 truncate">{p.namaProduk}</span>
+                              <span className="font-bold text-teal-700 shrink-0">{formatCurrency(Number(p.harga) || 0)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">{item.desc}</p>
+                      )}
+
+                      <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                        {waNum ? (
+                          <a
+                            href={`https://wa.me/${waNum}?text=Halo%20saya%20warga%20RT%20tertarik%20dengan%20usaha%20${encodeURIComponent(item.nama || item.name)}%20di%20aplikasi%20Guyub%20Rukun.`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366] hover:text-white text-[11px] font-black py-2 rounded-xl text-center transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            Hubungi WA ({item.kontak || item.phone})
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 italic">No kontak tidak tersedia</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
