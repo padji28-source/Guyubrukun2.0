@@ -1147,21 +1147,11 @@ const WebDokumenPage = ({ user, onUpdateUser }: { user: any, onUpdateUser: (u: a
   </div>
 );
 
-const WebLaporanPage = ({ user }: { user: any }) => {
-  const [showForm, setShowForm] = useState(false);
+const WebLaporanPage = ({ user, initialTab = 'aduan' }: { user: any, initialTab?: 'aduan' | 'tamu' | 'laporan' }) => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col w-full h-full min-h-[500px] overflow-auto">
-      <div className="p-4 md:p-8 relative">
-        {!showForm ? (
-          <div>
-            <div className="flex justify-end mb-4">
-              <button onClick={() => setShowForm(true)} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-teal-700 transition">Tambahkan Laporan</button>
-            </div>
-            <MobileLaporan onBack={() => {}} currentUser={user} />
-          </div>
-        ) : (
-          <MobileLaporRT onBack={() => setShowForm(false)} currentUser={user} defaultTab="Keluhan" />
-        )}
+      <div className="p-2 md:p-6 relative">
+        <MobileLaporan onBack={() => {}} currentUser={user} initialTab={initialTab} />
       </div>
     </div>
   );
@@ -1192,23 +1182,7 @@ const WebMediaPage = ({ user }: { user: any }) => (
 );
 
 const WebTamuPage = ({ user }: { user: any }) => {
-  const [showForm, setShowForm] = useState(false);
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col w-full h-full min-h-[500px] overflow-auto">
-      <div className="p-4 md:p-8 relative">
-        {!showForm ? (
-          <div>
-            <div className="flex justify-end mb-4">
-              <button onClick={() => setShowForm(true)} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-teal-700 transition">Tambahkan Laporan</button>
-            </div>
-            <MobileTamu onBack={() => {}} currentUser={user} />
-          </div>
-        ) : (
-          <MobileLaporRT onBack={() => setShowForm(false)} currentUser={user} defaultTab="Tamu" />
-        )}
-      </div>
-    </div>
-  );
+  return <WebLaporanPage user={user} initialTab="tamu" />;
 };
 
 const WebPengaturanPage = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
@@ -2366,6 +2340,7 @@ export const ProfileAvatar = ({ size = '10' }: { size?: string }) => (
 const quickActions = [
   { name: 'Surat', icon: icons.surat, color: 'from-blue-400 to-indigo-500', shadow: 'shadow-blue-200' },
   { name: 'Lapor RT', icon: icons.laporanrt, color: 'from-rose-400 to-red-500', shadow: 'shadow-rose-200' },
+  { name: 'Laporan', icon: icons.laporan, color: 'from-sky-400 to-indigo-500', shadow: 'shadow-sky-200' },
   { name: 'Dokumen', icon: icons.dokumen, color: 'from-amber-400 to-orange-500', shadow: 'shadow-amber-200' },
   { name: 'UMKM', icon: icons.umkm, color: 'from-yellow-400 to-amber-500', shadow: 'shadow-yellow-200' },
   { name: 'Iuran', icon: icons.iuran, color: 'from-emerald-400 to-teal-500', shadow: 'shadow-emerald-200' },
@@ -2375,7 +2350,6 @@ const quickActions = [
   { name: 'Notulen Rapat', icon: icons.laporan, color: 'from-sky-500 to-blue-600', shadow: 'shadow-sky-200' },
   { name: 'Sedekah', icon: icons.sedekah, color: 'from-pink-400 to-rose-500', shadow: 'shadow-pink-200' },
   { name: 'Darurat', icon: icons.darurat, color: 'from-red-500 to-rose-600', shadow: 'shadow-red-200' },
-  { name: 'Tamu', icon: icons.warga, color: 'from-sky-400 to-indigo-500', shadow: 'shadow-sky-200' },
   { name: 'Voting', icon: icons.voting, color: 'from-indigo-400 to-indigo-600', shadow: 'shadow-indigo-200' },
   { name: 'Inventaris', icon: icons.inventaris, color: 'from-emerald-500 to-teal-600', shadow: 'shadow-emerald-250' },
   { name: 'Smart RT AI', icon: icons.gemini, color: 'from-teal-400 to-cyan-500', shadow: 'shadow-teal-200' },
@@ -4336,8 +4310,8 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                   {activeMobileTab === 'Media' && <MobileMedia onBack={() => setActiveMobileTab('Beranda')} currentUser={user} />}
                   {activeMobileTab === 'Darurat' && <MobileDarurat onBack={() => setActiveMobileTab('Beranda')} currentUser={user} />}
                   {activeMobileTab === 'Dokumen' && <MobileDokumen onBack={() => setActiveMobileTab('Beranda')} currentUser={user} onUpdateUser={onUpdateUser} />}
-                   {activeMobileTab === 'Tamu' && <MobileTamu onBack={() => setActiveMobileTab('Beranda')} currentUser={user} />}
-                   {activeMobileTab === 'Inventaris' && (
+                  {activeMobileTab === 'Tamu' && <MobileLaporan onBack={() => setActiveMobileTab('Beranda')} currentUser={user} initialTab="tamu" />}
+                  {activeMobileTab === 'Inventaris' && (
                      <div className="p-4 overflow-y-auto max-h-[calc(100vh-140px)]">
                        <button className="flex items-center gap-2 mb-4 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 px-3 py-1.5 rounded-full outline-none pointer-events-auto cursor-pointer" onClick={() => setActiveMobileTab('Beranda')}>
                          <icons.arrowLeft className="w-4 h-4" /> Kembali ke Beranda
