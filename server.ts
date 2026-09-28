@@ -162,12 +162,15 @@ const UserSchema = new mongoose.Schema({
   isVip: { type: Boolean, default: false },
   rtId: { type: String, required: true },
   umur: { type: Number },
+  tglLahir: { type: String },
+  jenisKelamin: { type: String },
   members: [{
     id: String,
     name: String,
     role: String,
     age: Number,
-    tglLahir: String
+    tglLahir: String,
+    jenisKelamin: String
   }],
   photo: String,
   dokumenKk: mongoose.Schema.Types.Mixed,
@@ -1125,6 +1128,8 @@ const RegisterValidator = z.object({
   noHp: z.string().optional(),
   status: z.string().optional(),
   umur: z.any().optional(),
+  tglLahir: z.string().optional(),
+  jenisKelamin: z.string().optional(),
   role: z.string().optional(),
   isApproved: z.boolean().optional(),
   dokumenKk: z.any().optional(),
@@ -1185,7 +1190,7 @@ function enforceRoles(allowed: string[]) {
 
 // --- AUTH & SIGNUP ---
 app.post("/api/register", validateRequest(RegisterValidator), async (req, res) => {
-  const { username, nama, password, alamat, noHp, status, umur, role, isApproved, dokumenKk, dokumenKtp } = req.body;
+  const { username, nama, password, alamat, noHp, status, umur, tglLahir, jenisKelamin, role, isApproved, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
 
   await connectDB();
@@ -1208,6 +1213,8 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
     role: assignedRole,
     isApproved: typeof isApproved === 'boolean' ? isApproved : false,
     umur: Number(umur) || undefined,
+    tglLahir: tglLahir || undefined,
+    jenisKelamin: jenisKelamin || undefined,
     dokumenKk: dokumenKk || undefined,
     dokumenKtp: dokumenKtp || undefined,
     rtId,
@@ -1767,7 +1774,7 @@ app.post("/api/warga/:id/extract-kk", async (req, res) => {
       return res.status(400).json({ error: "Warga ini belum mengunggah dokumen Kartu Keluarga (KK). Silakan unggah KK terlebih dahulu." });
     }
 
-    let extractedList: Array<{ name: string; role: string; age: string; tglLahir?: string }> = [];
+    let extractedList: Array<{ name: string; role: string; age: string; tglLahir?: string; jenisKelamin?: string; gender?: string }> = [];
 
     // =========================================================================
     // LAYER 1: DIRECT SVG / XML KARTU KELUARGA PARSER
@@ -2082,12 +2089,23 @@ Kembalikan hasil dalam bentuk JSON Array.`;
       const normRole = normalizeRole(item?.role || '');
       const cleanDob = String(item?.tglLahir || '').trim();
       const numericAge = calcAgeFromDob(cleanDob, item?.age);
+      const rawJk = String(item?.jenisKelamin || item?.gender || '').trim().toUpperCase();
+      const inferredJk =
+        rawJk === 'P' || rawJk.includes('PEREMPU') || normRole === 'Istri' || /^Ny\.\s/i.test(cleanName)
+          ? 'Perempuan'
+          : 'Laki-laki';
 
       const isSameAsAccountName = isSamePersonAsAccount(cleanName, user.nama || '');
 
       if (normRole === 'Kepala Keluarga' || isSameAsAccountName) {
         if (numericAge > 0) {
           user.umur = numericAge;
+        }
+        if (cleanDob) {
+          user.tglLahir = cleanDob;
+        }
+        if (inferredJk) {
+          user.jenisKelamin = inferredJk;
         }
         // If account name is a placeholder like "Warga Blok A No. 01", update it or skip if it's the account holder
         if (isSameAsAccountName || !/^Warga\s+Blok/i.test(user.nama || '')) {
@@ -2105,18 +2123,20 @@ Kembalikan hasil dalam bentuk JSON Array.`;
           name: cleanName,
           role: normRole,
           age: numericAge || 25,
-          tglLahir: cleanDob
+          tglLahir: cleanDob,
+          jenisKelamin: inferredJk
         };
         user.members.push(newMember);
         addedMembers.push(newMember);
         addedCount++;
       } else {
-        // Sync role, age, and tglLahir with the KK data
+        // Sync role, age, tglLahir, and jenisKelamin with the KK data
         user.members[existingIdx] = {
           ...user.members[existingIdx],
           role: normRole || user.members[existingIdx].role,
           age: numericAge || user.members[existingIdx].age,
-          tglLahir: cleanDob || user.members[existingIdx].tglLahir
+          tglLahir: cleanDob || user.members[existingIdx].tglLahir,
+          jenisKelamin: inferredJk || user.members[existingIdx].jenisKelamin
         };
         addedMembers.push(user.members[existingIdx]);
         updatedCount++;
@@ -2254,7 +2274,7 @@ app.delete("/api/warga/:id", enforceRoles(['admin']), async (req, res) => {
 
 // Add Family members to Kartu Keluarga
 app.post("/api/warga/:id/members", async (req, res) => {
-  const { name, role, age, tglLahir } = req.body;
+  const { name, role, age, tglLahir, jenisKelamin } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const targetId = req.params.id;
 
@@ -2270,7 +2290,7 @@ app.post("/api/warga/:id/members", async (req, res) => {
     }
 
     const beforeObj = Array.isArray(user.members)
-      ? user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '' }))
+      ? user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '', jenisKelamin: m.jenisKelamin || '' }))
       : [];
     if (!Array.isArray(user.members)) user.members = [];
 
@@ -2284,13 +2304,14 @@ app.post("/api/warga/:id/members", async (req, res) => {
       name: cleanName,
       role: role || 'Anggota',
       age: Number(age) || 0,
-      tglLahir: tglLahir || ''
+      tglLahir: tglLahir || '',
+      jenisKelamin: jenisKelamin || (role === 'Istri' ? 'Perempuan' : 'Laki-laki')
     };
     user.members.push(newMember);
     user.markModified('members');
     await user.save();
 
-    const afterObj = user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '' }));
+    const afterObj = user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '', jenisKelamin: m.jenisKelamin || '' }));
     await logAudit(user.rtId || rtId, user.nama, "ADD_FAMILY_MEMBER", `Menambahkan anggota keluarga baru ${newMember.name} ke KK`, beforeObj, afterObj);
     await addNotification(user.rtId || rtId, "Anggota Keluarga Bertambah", `Anggota baru ${newMember.name} ditambahkan ke KK ${user.nama}.`, user.nama, "warga", user.id);
     broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
@@ -2303,7 +2324,7 @@ app.post("/api/warga/:id/members", async (req, res) => {
 });
 
 app.put("/api/warga/:id/members/:memberId", async (req, res) => {
-  const { name, role, age, tglLahir } = req.body;
+  const { name, role, age, tglLahir, jenisKelamin } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const targetId = req.params.id;
   const memberId = req.params.memberId;
@@ -2320,7 +2341,7 @@ app.put("/api/warga/:id/members/:memberId", async (req, res) => {
     }
 
     const beforeObj = Array.isArray(user.members)
-      ? user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '' }))
+      ? user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '', jenisKelamin: m.jenisKelamin || '' }))
       : [];
     if (!Array.isArray(user.members)) user.members = [];
 
@@ -2338,6 +2359,7 @@ app.put("/api/warga/:id/members/:memberId", async (req, res) => {
       const updatedRole = role || member.role || 'Anggota';
       const updatedAge = age !== undefined && age !== '' ? Number(age) || 0 : member.age || 0;
       const updatedDob = tglLahir !== undefined ? tglLahir : member.tglLahir || '';
+      const updatedJk = jenisKelamin !== undefined ? jenisKelamin : (member.jenisKelamin || (updatedRole === 'Istri' ? 'Perempuan' : 'Laki-laki'));
 
       if (typeof member.set === 'function') {
         member.set({
@@ -2345,7 +2367,8 @@ app.put("/api/warga/:id/members/:memberId", async (req, res) => {
           name: cleanName,
           role: updatedRole,
           age: updatedAge,
-          tglLahir: updatedDob
+          tglLahir: updatedDob,
+          jenisKelamin: updatedJk
         });
       } else {
         user.members[memberIndex] = {
@@ -2353,7 +2376,8 @@ app.put("/api/warga/:id/members/:memberId", async (req, res) => {
           name: cleanName,
           role: updatedRole,
           age: updatedAge,
-          tglLahir: updatedDob
+          tglLahir: updatedDob,
+          jenisKelamin: updatedJk
         };
       }
       user.markModified('members');
