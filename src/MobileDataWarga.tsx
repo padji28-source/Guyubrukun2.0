@@ -665,6 +665,132 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showStatusBanner(`Laporan Excel (CSV) kategori ${selectedAgeCategory.toUpperCase()} berhasil diunduh!`);
+  };
+
+  const exportFilteredWargaToCsv = () => {
+    const sourceWarga =
+      !filterAgeCategory && !filterBlok && !debouncedSearchQuery && allWargaFullData.length > 0
+        ? allWargaFullData.filter(w => w.role !== 'developer')
+        : filteredWargaData;
+
+    const getAgeCategoryLabel = (age: number): string => {
+      if (age < 0) return '-';
+      if (age <= 4) return 'Balita (0-4 Thn)';
+      if (age <= 12) return 'Anak (5-12 Thn)';
+      if (age <= 20) return 'Remaja (13-20 Thn)';
+      if (age >= 60) return 'Lansia (≥60 Thn)';
+      return 'Dewasa (>20 Thn)';
+    };
+
+    const headers = [
+      'No',
+      'Nama Lengkap',
+      'Status Hubungan',
+      'Kepala Keluarga',
+      'Blok / Alamat',
+      'Jenis Kelamin',
+      'Tanggal Lahir',
+      'Umur (Tahun)',
+      'Kategori Usia',
+      'No. HP',
+      'Status Warga',
+      'Jabatan RT'
+    ];
+
+    const rows: string[][] = [];
+    let rowNo = 1;
+
+    sourceWarga.forEach(w => {
+      const headAge = resolvePersonAge(w.umur, w.tglLahir);
+      const headJk = inferJenisKelamin(w.nama || '', 'Kepala Keluarga', w.jenisKelamin);
+      const headDob = formatTanggalLahirWarga(w.tglLahir, headAge >= 0 ? headAge : undefined);
+      const roleLabel =
+        w.role === 'admin'
+          ? 'Ketua RT'
+          : w.role === 'bendahara'
+          ? 'Bendahara'
+          : w.role === 'sekretaris'
+          ? 'Sekretaris'
+          : w.role === 'pengurus'
+          ? 'Pengurus'
+          : 'Warga';
+
+      const includeHead = !filterAgeCategory || matchesAgeCategoryFilter(headAge, filterAgeCategory);
+      if (includeHead) {
+        rows.push([
+          String(rowNo++),
+          w.nama || '-',
+          'Kepala Keluarga',
+          w.nama || '-',
+          w.alamat || '-',
+          headJk,
+          headDob,
+          headAge >= 0 ? `${headAge} Tahun` : '-',
+          getAgeCategoryLabel(headAge),
+          w.noHp || '-',
+          w.status || 'Warga Tetap',
+          roleLabel
+        ]);
+      }
+
+      if (Array.isArray(w.members)) {
+        w.members.forEach((m: any) => {
+          const mAge = resolvePersonAge(m.age, m.tglLahir);
+          const includeMember = !filterAgeCategory || matchesAgeCategoryFilter(mAge, filterAgeCategory);
+          // Jika sedang mencari nama spesifik, pastikan anggota atau KK cocok
+          const q = debouncedSearchQuery.trim().toLowerCase();
+          const nameMatchesQuery =
+            !q ||
+            (m.name || '').toLowerCase().includes(q) ||
+            (w.nama || '').toLowerCase().includes(q);
+
+          if (includeMember && nameMatchesQuery) {
+            const mJk = inferJenisKelamin(m.name || '', m.role, m.jenisKelamin);
+            const mDob = formatTanggalLahirWarga(m.tglLahir, mAge >= 0 ? mAge : undefined);
+            rows.push([
+              String(rowNo++),
+              m.name || '-',
+              m.role || 'Anggota Keluarga',
+              w.nama || '-',
+              w.alamat || '-',
+              mJk,
+              mDob,
+              mAge >= 0 ? `${mAge} Tahun` : '-',
+              getAgeCategoryLabel(mAge),
+              w.noHp || '-',
+              w.status || 'Warga Tetap',
+              'Anggota Keluarga'
+            ]);
+          }
+        });
+      }
+    });
+
+    const csvContent =
+      '\uFEFF' +
+      [
+        headers.join(','),
+        ...rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const filterParts: string[] = [];
+    if (filterBlok) filterParts.push(`Blok_${filterBlok}`);
+    if (filterAgeCategory) filterParts.push(`Usia_${filterAgeCategory.toUpperCase()}`);
+    if (debouncedSearchQuery.trim()) filterParts.push('Pencarian');
+    const suffix = filterParts.length > 0 ? filterParts.join('_') : 'Semua';
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Laporan_Data_Warga_${suffix}_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showStatusBanner(`Berhasil mengunduh ${rows.length} baris data warga ke format Excel (CSV)!`);
   };
 
   const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
@@ -1636,7 +1762,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                         className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition shadow-xs cursor-pointer flex items-center gap-1.5"
                       >
                         <span>📥</span>
-                        <span>Export CSV</span>
+                        <span>Unduh Excel</span>
                       </button>
                       <button
                         type="button"
@@ -1875,6 +2001,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                   </div>
                 </div>
+
+                {/* Tombol Unduh Excel (CSV) untuk Pelaporan Offline */}
+                <button
+                  type="button"
+                  onClick={exportFilteredWargaToCsv}
+                  title="Unduh data warga yang sedang difilter ke dalam format CSV/Excel"
+                  className="px-3.5 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <span>📥</span>
+                  <span>Unduh Excel</span>
+                </button>
               </div>
             </div>
 
