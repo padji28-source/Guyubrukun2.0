@@ -27,6 +27,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [activeSubMenu, setActiveSubMenu] = useState<'direktori' | 'dokumen_kk'>('direktori');
 
   const [wargaData, setWargaData] = useState<any[]>(cachedDataWarga || []);
+  const [allWargaFullData, setAllWargaFullData] = useState<any[]>([]);
   const [allWargaKkData, setAllWargaKkData] = useState<any[]>([]);
   const [loadingKkMenu, setLoadingKkMenu] = useState(false);
   const [kkFilterStatus, setKkFilterStatus] = useState<'terupload' | 'semua' | 'belum'>('terupload');
@@ -43,7 +44,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   // Forms states
   const [showAddWarga, setShowAddWarga] = useState(false);
-  const [newWarga, setNewWarga] = useState({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', role: 'warga', dokumenKk: '', dokumenKtp: [] as string[] });
+  const [newWarga, setNewWarga] = useState({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '', jenisKelamin: 'Laki-laki', role: 'warga', dokumenKk: '', dokumenKtp: [] as string[] });
   const [newWargaBlok, setNewWargaBlok] = useState('');
   const [newWargaNomor, setNewWargaNomor] = useState('');
   const [uploadingDocWargaId, setUploadingDocWargaId] = useState<string | null>(null);
@@ -55,8 +56,13 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [isSavingMember, setIsSavingMember] = useState(false);
   const [editingMember, setEditingMember] = useState<any>(null);
   const [activeWargaId, setActiveWargaId] = useState('');
-  const [memberForm, setMemberForm] = useState({ name: '', role: '', age: '', tglLahir: '' });
+  const [memberForm, setMemberForm] = useState({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
   const [searchQuery, setSearchQuery] = useState('');
+
+  // State khusus Ketua RT untuk klik kategori usia (Balita, Anak, Remaja, Dewasa)
+  const [selectedAgeCategory, setSelectedAgeCategory] = useState<'balita' | 'anak' | 'remaja' | 'dewasa' | null>(null);
+  const [ageCategorySearch, setAgeCategorySearch] = useState('');
+  const [ageCategoryGenderFilter, setAgeCategoryGenderFilter] = useState<'semua' | 'Laki-laki' | 'Perempuan'>('semua');
 
   const showStatusBanner = (msg: string, isError = false) => {
     if (isError) {
@@ -114,6 +120,18 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     }
   };
 
+  const fetchAllWargaFull = async () => {
+    try {
+      const res = await apiFetch('/api/warga?limit=0');
+      if (res.ok) {
+        const data = await res.json();
+        setAllWargaFullData(data.users || []);
+      }
+    } catch (e) {
+      console.error('Gagal memuat seluruh data warga untuk demografi:', e);
+    }
+  };
+
   const fetchAllKkWargaForKetuaRT = async () => {
     if (!isKetuaRT) return;
     setLoadingKkMenu(true);
@@ -135,6 +153,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   }, [page, limit, debouncedSearchQuery]);
 
   useEffect(() => {
+    fetchAllWargaFull();
     if (isKetuaRT) {
       fetchAllKkWargaForKetuaRT();
     }
@@ -148,6 +167,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     const handleUpdate = (e: any) => {
       if (e.detail === 'users' || e.detail === 'online_status') {
         fetchWarga();
+        fetchAllWargaFull();
         if (isKetuaRT) {
           fetchAllKkWargaForKetuaRT();
         }
@@ -302,11 +322,12 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         return;
       }
       setShowAddWarga(false);
-      setNewWarga({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', role: 'warga', dokumenKk: '', dokumenKtp: [] });
+      setNewWarga({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '', jenisKelamin: 'Laki-laki', role: 'warga', dokumenKk: '', dokumenKtp: [] });
       setNewWargaBlok('');
       setNewWargaNomor('');
       showStatusBanner('Warga / Pengurus baru berhasil ditambahkan!');
       fetchWarga();
+      fetchAllWargaFull();
       if (isKetuaRT) {
         fetchAllKkWargaForKetuaRT();
       }
@@ -338,7 +359,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             name: memberForm.name.trim(),
             role: memberForm.role || 'Anggota',
             age: Number(memberForm.age) || 0,
-            tglLahir: memberForm.tglLahir || ''
+            tglLahir: memberForm.tglLahir || '',
+            jenisKelamin: memberForm.jenisKelamin || (memberForm.role === 'Istri' ? 'Perempuan' : 'Laki-laki')
           })
         });
       } else {
@@ -349,7 +371,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             name: memberForm.name.trim(),
             role: memberForm.role || 'Anggota',
             age: Number(memberForm.age) || 0,
-            tglLahir: memberForm.tglLahir || ''
+            tglLahir: memberForm.tglLahir || '',
+            jenisKelamin: memberForm.jenisKelamin || (memberForm.role === 'Istri' ? 'Perempuan' : 'Laki-laki')
           })
         });
       }
@@ -358,9 +381,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       if (res.ok) {
         setShowMemberForm(false);
         setEditingMember(null);
-        setMemberForm({ name: '', role: '', age: '', tglLahir: '' });
+        setMemberForm({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
         showStatusBanner(editingMember ? 'Data anggota keluarga berhasil diperbarui!' : 'Anggota keluarga baru berhasil ditambahkan!');
         fetchWarga();
+        fetchAllWargaFull();
         if (isKetuaRT) {
           fetchAllKkWargaForKetuaRT();
         }
@@ -450,25 +474,197 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     }
   };
 
-  const getAllAges = () => {
-    const sourceList = isKetuaRT && allWargaKkData.length > 0 ? allWargaKkData : wargaData;
-    const ages: number[] = [];
-    sourceList.forEach(w => {
-      if (w.umur) {
-        const a = parseInt(String(w.umur).replace(/\D/g, '') || '-1');
-        if (a >= 0) ages.push(a);
+  // Helper inferensi Jenis Kelamin & Tanggal Lahir untuk Data Warga
+  const inferJenisKelamin = (name: string, role?: string, explicitJk?: string): 'Laki-laki' | 'Perempuan' => {
+    const jk = String(explicitJk || '').trim().toLowerCase();
+    if (jk === 'perempuan' || jk === 'p' || jk === 'wanita') return 'Perempuan';
+    if (jk === 'laki-laki' || jk === 'l' || jk === 'pria') return 'Laki-laki';
+
+    const r = String(role || '').trim().toLowerCase();
+    if (r === 'istri' || r === 'ibu') return 'Perempuan';
+    if (r === 'suami' || r === 'ayah') return 'Laki-laki';
+
+    const femalePattern = /(\bny\.|\bibu\b|\bhj\.|\bsiti\b|\bsri\b|\bayu\b|\bdewi\b|\bputri\b|\bnabila\b|\baisyah\b|\bzahra\b|\bfitri\b|\brina\b|\bani\b|\bwulan\b|\bindah\b|\blestari\b|\bratna\b|\bbunga\b|\bcitra\b|\bdian\b|\beka\b|\bintan\b|\bkartika\b|\bmaya\b|\bmelati\b|\bnadia\b|\bnur\b|\brahma\b|\brani\b|\brizka\b|\bsalma\b|\bsari\b|\btiara\b|\bvina\b|\byuli\b|\byuni\b|\bannisa\b|\bnurul\b)/i;
+    if (femalePattern.test(name || '')) return 'Perempuan';
+    return 'Laki-laki';
+  };
+
+  const formatTanggalLahirWarga = (rawDob?: string, age?: number): string => {
+    const dob = String(rawDob || '').trim();
+    if (dob) {
+      // Cek format YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+        const dt = new Date(dob);
+        if (!isNaN(dt.getTime())) {
+          return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        }
       }
-      if (w.members) {
-        w.members.forEach((m: any) => {
-          const a = parseInt(String(m.age).replace(/\D/g, '') || '-1');
-          if (a >= 0) ages.push(a);
+      return dob;
+    }
+    if (typeof age === 'number' && age >= 0) {
+      const estYear = new Date().getFullYear() - age;
+      return `Tahun ${estYear}`;
+    }
+    return '-';
+  };
+
+  // Kumpulan seluruh individu warga (Kepala Keluarga + Anggota Keluarga) dari Data Warga
+  const allPersonsList = useMemo(() => {
+    const rawSource =
+      allWargaKkData.length > 0
+        ? allWargaKkData
+        : allWargaFullData.length > 0
+        ? allWargaFullData
+        : wargaData;
+    const sourceList = rawSource.filter(w => w.role !== 'developer');
+    const persons: Array<{
+      id: string;
+      wargaId: string;
+      isHead: boolean;
+      nama: string;
+      hubungan: string;
+      kepalaKeluarga: string;
+      wargaObj: any;
+      memberObj?: any;
+      blokFormatted: string;
+      blokShort: string;
+      jenisKelamin: 'Laki-laki' | 'Perempuan';
+      tglLahirRaw: string;
+      tglLahirFormatted: string;
+      umur: number;
+      category: 'balita' | 'anak' | 'remaja' | 'dewasa';
+    }> = [];
+
+    const resolveAge = (rawAge: any, rawDob?: string): number => {
+      if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+        const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+        if (!isNaN(diff) && diff > 0) {
+          return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
+        }
+      }
+      const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+      return isNaN(parsed) ? -1 : parsed;
+    };
+
+    const getCat = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' => {
+      if (age <= 4) return 'balita';
+      if (age <= 12) return 'anak';
+      if (age <= 20) return 'remaja';
+      return 'dewasa';
+    };
+
+    sourceList.forEach(w => {
+      const headAge = resolveAge(w.umur, w.tglLahir);
+      const alamatStr = String(w?.alamat || '').trim();
+      const m1 = alamatStr.match(/Blok\s*([a-zA-Z0-9]+)\s*(?:No\.?|Nomor|\/|-)?\s*([a-zA-Z0-9]+)?/i);
+      const blokFormatted = m1 && m1[1]
+        ? (m1[2] ? `Blok ${m1[1].toUpperCase()} • No. ${m1[2].toUpperCase()}` : `Blok ${m1[1].toUpperCase()}`)
+        : (alamatStr || 'Alamat Belum Diisi');
+      const blokShort = m1 && m1[1]
+        ? (m1[2] ? `${m1[1].toUpperCase()}-${m1[2].toUpperCase()}` : m1[1].toUpperCase())
+        : '-';
+
+      if (headAge >= 0) {
+        persons.push({
+          id: `kk_${w.id}`,
+          wargaId: w.id,
+          isHead: true,
+          nama: w.nama || 'Warga',
+          hubungan: 'Kepala Keluarga',
+          kepalaKeluarga: w.nama || 'Warga',
+          wargaObj: w,
+          blokFormatted,
+          blokShort,
+          jenisKelamin: inferJenisKelamin(w.nama, 'Kepala Keluarga', w.jenisKelamin),
+          tglLahirRaw: w.tglLahir || '',
+          tglLahirFormatted: formatTanggalLahirWarga(w.tglLahir, headAge),
+          umur: headAge,
+          category: getCat(headAge)
+        });
+      }
+
+      if (Array.isArray(w.members)) {
+        w.members.forEach((m: any, mIdx: number) => {
+          const mAge = resolveAge(m.age, m.tglLahir);
+          if (mAge >= 0) {
+            persons.push({
+              id: `mem_${w.id}_${m.id || m._id || mIdx}`,
+              wargaId: w.id,
+              isHead: false,
+              nama: m.name || 'Anggota Keluarga',
+              hubungan: m.role || 'Anggota',
+              kepalaKeluarga: w.nama || 'Warga',
+              wargaObj: w,
+              memberObj: m,
+              blokFormatted,
+              blokShort,
+              jenisKelamin: inferJenisKelamin(m.name, m.role, m.jenisKelamin),
+              tglLahirRaw: m.tglLahir || '',
+              tglLahirFormatted: formatTanggalLahirWarga(m.tglLahir, mAge),
+              umur: mAge,
+              category: getCat(mAge)
+            });
+          }
         });
       }
     });
-    return ages;
-  };
 
-  const allAges = useMemo(() => getAllAges(), [wargaData, allWargaKkData, isKetuaRT]);
+    return persons;
+  }, [wargaData, allWargaFullData, allWargaKkData, isKetuaRT]);
+
+  const allAges = useMemo(() => allPersonsList.map(p => p.umur), [allPersonsList]);
+
+  const filteredSelectedAgePersons = useMemo(() => {
+    if (!selectedAgeCategory) return [];
+    return allPersonsList
+      .filter(p => p.category === selectedAgeCategory)
+      .filter(p => {
+        if (ageCategoryGenderFilter !== 'semua' && p.jenisKelamin !== ageCategoryGenderFilter) {
+          return false;
+        }
+        if (ageCategorySearch.trim()) {
+          const q = ageCategorySearch.toLowerCase();
+          return (
+            p.nama.toLowerCase().includes(q) ||
+            p.blokFormatted.toLowerCase().includes(q) ||
+            p.blokShort.toLowerCase().includes(q) ||
+            p.kepalaKeluarga.toLowerCase().includes(q)
+          );
+        }
+        return true;
+      });
+  }, [allPersonsList, selectedAgeCategory, ageCategoryGenderFilter, ageCategorySearch]);
+
+  const exportAgeCategoryToCsv = () => {
+    if (!selectedAgeCategory) return;
+    const catLabels: Record<string, string> = {
+      balita: 'Balita (0-4 Tahun)',
+      anak: 'Anak (5-12 Tahun)',
+      remaja: 'Remaja (13-20 Tahun)',
+      dewasa: 'Dewasa (>20 Tahun)'
+    };
+    const headers = ['No', 'Nama Lengkap', 'Hubungan Keluarga', 'Kepala Keluarga', 'Blok / Alamat', 'Jenis Kelamin', 'Tanggal Lahir', 'Umur (Tahun)'];
+    const rows = filteredSelectedAgePersons.map((p, idx) => [
+      String(idx + 1),
+      p.nama,
+      p.hubungan,
+      p.kepalaKeluarga,
+      p.blokFormatted,
+      p.jenisKelamin,
+      p.tglLahirFormatted,
+      `${p.umur} Tahun`
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Data_Warga_${selectedAgeCategory.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const filteredWargaData = useMemo(() => {
     return wargaData.filter(w => {
@@ -517,26 +713,124 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   const isPdfUrl = (url?: string) => Boolean(url && url.startsWith('data:application/pdf'));
 
-  // Helper untuk menampilkan kode Blok & No Rumah secara jelas pada avatar/badge
+  // Helper & Component untuk menampilkan Badge Visual Blok dan No Rumah yang kontras & mencolok
+  const parseHouseInfo = (warga: any) => {
+    const alamat = String(warga?.alamat || '').trim();
+    
+    // Format standar: Blok X No. Y / Blok X Nomor Y / Blok X No Y
+    const match1 = alamat.match(/Blok\s*([a-zA-Z0-9]+)\s*(?:No\.?|Nomor|\/|-)?\s*([a-zA-Z0-9]+)?/i);
+    if (match1 && match1[1]) {
+      const blok = match1[1].toUpperCase();
+      const nomor = match1[2] ? match1[2].toUpperCase() : '';
+      return {
+        blok,
+        nomor,
+        hasSpecific: true,
+        shortCode: nomor ? `${blok}-${nomor}` : blok,
+        fullFormatted: nomor ? `Blok ${blok} • No. ${nomor}` : `Blok ${blok}`
+      };
+    }
+
+    // Format singkat: A1-01 / B3/12 / C2-5
+    const match2 = alamat.match(/^([a-zA-Z]+)[-\s/]+([0-9]+)$/i);
+    if (match2) {
+      const blok = match2[1].toUpperCase();
+      const nomor = match2[2];
+      return {
+        blok,
+        nomor,
+        hasSpecific: true,
+        shortCode: `${blok}-${nomor}`,
+        fullFormatted: `Blok ${blok} • No. ${nomor}`
+      };
+    }
+
+    // Format username: misal A101
+    if (warga?.username && /^[A-Za-z]+\d+/i.test(warga.username)) {
+      const uMatch = warga.username.match(/^([A-Za-z]+)(\d+)$/);
+      if (uMatch) {
+        const blok = uMatch[1].toUpperCase();
+        const nomor = uMatch[2];
+        return {
+          blok,
+          nomor,
+          hasSpecific: true,
+          shortCode: `${blok}-${nomor}`,
+          fullFormatted: `Blok ${blok} • No. ${nomor}`
+        };
+      }
+    }
+
+    return {
+      blok: '',
+      nomor: '',
+      hasSpecific: false,
+      shortCode: (warga?.nama || 'W').charAt(0).toUpperCase(),
+      fullFormatted: alamat || 'Alamat Belum Diisi'
+    };
+  };
+
   const getHouseShortCode = (warga: any): string => {
-    const alamat = String(warga?.alamat || '');
-    const match = alamat.match(/Blok\s+([a-zA-Z0-9]+)\s*(?:No\.?|Nomor)?\s*([a-zA-Z0-9]+)/i);
-    if (match) {
-      return `${match[1].toUpperCase()}${match[2].toUpperCase()}`;
-    }
-    if (warga?.username && /^[A-Z]\d+/i.test(warga.username)) {
-      return warga.username.toUpperCase();
-    }
-    return (warga?.nama || 'W').charAt(0).toUpperCase();
+    return parseHouseInfo(warga).shortCode;
   };
 
   const getFormattedBlokNo = (warga: any): string => {
-    const alamat = String(warga?.alamat || '').trim();
-    const match = alamat.match(/Blok\s+([a-zA-Z0-9]+)\s*(?:No\.?|Nomor)?\s*([a-zA-Z0-9]+)/i);
-    if (match) {
-      return `Blok ${match[1].toUpperCase()} • No. ${match[2].toUpperCase()}`;
+    return parseHouseInfo(warga).fullFormatted;
+  };
+
+  // Komponen Badge Blok & No Rumah dengan kontras tinggi disesuaikan dengan tema aplikasi Smart RT (Teal & Emerald / Obsidian Dark)
+  const HouseBadge = ({ warga, size = 'md' }: { warga: any; size?: 'sm' | 'md' | 'lg' }) => {
+    const info = parseHouseInfo(warga);
+
+    if (size === 'sm') {
+      if (info.hasSpecific) {
+        return (
+          <div className="inline-flex items-stretch rounded-lg shadow-sm border border-teal-400 bg-slate-950 overflow-hidden select-none shrink-0 ring-1 ring-teal-400/30">
+            <span className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-[10px] px-2 py-0.5 flex items-center gap-0.5 uppercase tracking-tight">
+              <span className="text-[7.5px] font-extrabold text-teal-100 opacity-90">BLOK</span>
+              <span className="text-[11px] font-black">{info.blok}</span>
+            </span>
+            {info.nomor && (
+              <span className="bg-slate-950 text-teal-300 font-black text-[10px] px-2 py-0.5 flex items-center gap-0.5 border-l border-teal-500/40">
+                <span className="text-[7.5px] text-teal-400 font-bold">NO.</span>
+                <span className="text-[11px] font-black text-white">{info.nomor}</span>
+              </span>
+            )}
+          </div>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-1 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-[10px] px-2 py-0.5 rounded-lg shadow-xs border border-teal-400 shrink-0">
+          <span>🏠</span>
+          <span className="truncate max-w-[120px] font-black">{info.fullFormatted}</span>
+        </span>
+      );
     }
-    return alamat || 'Alamat belum diisi';
+
+    // Default 'md' size
+    if (info.hasSpecific) {
+      return (
+        <div className="inline-flex items-stretch rounded-xl shadow-md border-2 border-teal-500 bg-slate-950 overflow-hidden select-none shrink-0 ring-2 ring-teal-500/20">
+          <div className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-xs px-2.5 py-1 flex items-center gap-1 uppercase tracking-tight shadow-inner">
+            <span className="text-[8.5px] font-extrabold text-teal-100 opacity-90">BLOK</span>
+            <span className="text-sm font-black tracking-tight">{info.blok}</span>
+          </div>
+          {info.nomor && (
+            <div className="bg-slate-950 text-teal-300 font-black text-xs px-2.5 py-1 flex items-center gap-1 border-l-2 border-teal-500/40">
+              <span className="text-[8.5px] text-teal-400 font-extrabold opacity-95">NO.</span>
+              <span className="text-sm font-black text-white tracking-tight">{info.nomor}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white border-2 border-teal-400 font-black text-xs px-3 py-1 rounded-xl shadow-md ring-2 ring-teal-500/20 shrink-0">
+        <span className="text-xs">🏠</span>
+        <span className="font-black text-[12px] truncate max-w-[170px]">{info.fullFormatted}</span>
+      </div>
+    );
   };
 
   return (
@@ -862,17 +1156,15 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                             className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                           />
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/35 to-transparent flex items-end justify-between p-3.5 gap-2">
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-900/40 to-transparent flex items-end justify-between p-3.5 gap-2">
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="inline-block bg-emerald-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                              <span className="inline-block bg-emerald-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
                                 ✓ KK Terupload
                               </span>
-                              <span className="inline-block bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs">
-                                {getFormattedBlokNo(warga)}
-                              </span>
+                              <HouseBadge warga={warga} size="sm" />
                             </div>
-                            <p className="text-white font-extrabold text-sm mt-1 leading-snug break-words">{warga.nama}</p>
+                            <p className="text-white font-extrabold text-sm leading-snug break-words">{warga.nama}</p>
                           </div>
                           <span className="bg-white/95 text-slate-900 text-[11px] font-extrabold px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 shrink-0 group-hover:bg-teal-500 group-hover:text-white transition-colors">
                             <icons.eye className="w-3.5 h-3.5" />
@@ -882,13 +1174,11 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                       </div>
                     ) : (
                       <div className="h-32 bg-slate-50 border-b border-dashed border-slate-200 flex flex-col items-center justify-center p-4 text-center">
-                        <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 mb-2">
                           <span className="bg-amber-100 text-amber-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full">
                             Belum Upload KK
                           </span>
-                          <span className="bg-teal-100 text-teal-800 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-teal-200">
-                            {getFormattedBlokNo(warga)}
-                          </span>
+                          <HouseBadge warga={warga} size="sm" />
                         </div>
                         <p className="font-extrabold text-slate-800 text-sm leading-snug">{warga.nama}</p>
                       </div>
@@ -917,7 +1207,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                 onClick={() => {
                                   setActiveWargaId(warga.id);
                                   setEditingMember(null);
-                                  setMemberForm({ name: '', role: '', age: '', tglLahir: '' });
+                                  setMemberForm({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
                                   setShowMemberForm(true);
                                 }}
                                 className="text-[10px] font-bold text-teal-700 bg-teal-100 hover:bg-teal-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
@@ -939,7 +1229,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                       name: m.name || '',
                                       role: m.role || '',
                                       tglLahir: m.tglLahir || '',
-                                      age: String(m.age || '')
+                                      age: String(m.age || ''),
+                                      jenisKelamin: inferJenisKelamin(m.name || '', m.role, m.jenisKelamin)
                                     });
                                     setShowMemberForm(true);
                                   }
@@ -961,7 +1252,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                 onClick={() => {
                                   setActiveWargaId(warga.id);
                                   setEditingMember(null);
-                                  setMemberForm({ name: '', role: '', age: '', tglLahir: '' });
+                                  setMemberForm({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
                                   setShowMemberForm(true);
                                 }}
                                 className="inline-flex items-center gap-1 text-[10px] bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-lg font-bold transition-colors cursor-pointer"
@@ -1052,7 +1343,31 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             </div>
 
             <input type="tel" placeholder="Nomor HP" value={newWarga.noHp} onChange={e => setNewWarga({ ...newWarga, noHp: e.target.value })} required className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none" />
-            <input type="number" placeholder="Usia (Tahun)" value={newWarga.umur} onChange={e => setNewWarga({ ...newWarga, umur: e.target.value })} required className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">Jenis Kelamin</label>
+                <select value={newWarga.jenisKelamin} onChange={e => setNewWarga({ ...newWarga, jenisKelamin: e.target.value })} className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none">
+                  <option value="Laki-laki">Laki-laki</option>
+                  <option value="Perempuan">Perempuan</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">Tanggal Lahir</label>
+                <input
+                  type="date"
+                  value={newWarga.tglLahir}
+                  onChange={e => {
+                    const tgl = e.target.value;
+                    setNewWarga({ ...newWarga, tglLahir: tgl, umur: calculateAge(tgl) || newWarga.umur });
+                  }}
+                  className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 mb-1 pl-1">Usia (Tahun)</label>
+                <input type="number" placeholder="Usia (Tahun)" value={newWarga.umur} onChange={e => setNewWarga({ ...newWarga, umur: e.target.value })} required className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none" />
+              </div>
+            </div>
 
             <select value={newWarga.status} onChange={e => setNewWarga({ ...newWarga, status: e.target.value })} required className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none appearance-none">
               <option value="">Pilih Status Warga</option>
@@ -1124,25 +1439,298 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         <>
           <h2 className="text-xl font-extrabold text-gray-800 mb-4 tracking-tight">Direktori Warga & Pengurus</h2>
 
-          {/* STATS CARDS */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
-            <div className="bg-gradient-to-b from-blue-50 to-white border border-blue-100 p-3 rounded-2xl text-center shadow-sm flex flex-col items-center justify-center">
-              <p className="text-[10px] text-blue-600 font-semibold mb-1">Balita</p>
-              <p className="font-extrabold text-blue-800 text-xl leading-none">{allAges.filter((a) => a >= 0 && a <= 4).length}</p>
-            </div>
-            <div className="bg-gradient-to-b from-green-50 to-white border border-green-100 p-3 rounded-2xl text-center shadow-sm flex flex-col items-center justify-center">
-              <p className="text-[10px] text-green-600 font-semibold mb-1">Anak</p>
-              <p className="font-extrabold text-green-800 text-xl leading-none">{allAges.filter((a) => a >= 5 && a <= 12).length}</p>
-            </div>
-            <div className="bg-gradient-to-b from-purple-50 to-white border border-purple-100 p-3 rounded-2xl text-center shadow-sm flex flex-col items-center justify-center">
-              <p className="text-[10px] text-purple-600 font-semibold mb-1">Remaja</p>
-              <p className="font-extrabold text-purple-800 text-xl leading-none">{allAges.filter((a) => a >= 13 && a <= 20).length}</p>
-            </div>
-            <div className="bg-gradient-to-b from-orange-50 to-white border border-orange-100 p-3 rounded-2xl text-center shadow-sm flex flex-col items-center justify-center">
-              <p className="text-[10px] text-orange-600 font-semibold mb-1">Dewasa</p>
-              <p className="font-extrabold text-orange-800 text-xl leading-none">{allAges.filter((a) => a > 20).length}</p>
-            </div>
+          {/* STATS CARDS (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Demografi Usia Warga
+            </span>
+            <span className="text-[10px] font-extrabold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+              ✨ Klik kategori usia untuk lihat daftar warga
+            </span>
           </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {[
+              {
+                key: 'balita' as const,
+                label: 'Balita',
+                range: '0 - 4 Thn',
+                count: allPersonsList.filter(p => p.category === 'balita').length,
+                bg: 'from-blue-50 to-white',
+                border: 'border-blue-200',
+                activeRing: 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/90 shadow-md',
+                textLabel: 'text-blue-600',
+                textCount: 'text-blue-900',
+                badgeBg: 'bg-blue-100 text-blue-800'
+              },
+              {
+                key: 'anak' as const,
+                label: 'Anak',
+                range: '5 - 12 Thn',
+                count: allPersonsList.filter(p => p.category === 'anak').length,
+                bg: 'from-emerald-50 to-white',
+                border: 'border-emerald-200',
+                activeRing: 'ring-2 ring-emerald-500 border-emerald-500 bg-emerald-50/90 shadow-md',
+                textLabel: 'text-emerald-600',
+                textCount: 'text-emerald-900',
+                badgeBg: 'bg-emerald-100 text-emerald-800'
+              },
+              {
+                key: 'remaja' as const,
+                label: 'Remaja',
+                range: '13 - 20 Thn',
+                count: allPersonsList.filter(p => p.category === 'remaja').length,
+                bg: 'from-purple-50 to-white',
+                border: 'border-purple-200',
+                activeRing: 'ring-2 ring-purple-500 border-purple-500 bg-purple-50/90 shadow-md',
+                textLabel: 'text-purple-600',
+                textCount: 'text-purple-900',
+                badgeBg: 'bg-purple-100 text-purple-800'
+              },
+              {
+                key: 'dewasa' as const,
+                label: 'Dewasa',
+                range: '> 20 Thn',
+                count: allPersonsList.filter(p => p.category === 'dewasa').length,
+                bg: 'from-orange-50 to-white',
+                border: 'border-orange-200',
+                activeRing: 'ring-2 ring-orange-500 border-orange-500 bg-orange-50/90 shadow-md',
+                textLabel: 'text-orange-600',
+                textCount: 'text-orange-900',
+                badgeBg: 'bg-orange-100 text-orange-800'
+              }
+            ].map(card => {
+              const isSelected = selectedAgeCategory === card.key;
+              return (
+                <div
+                  key={card.key}
+                  onClick={() => {
+                    setSelectedAgeCategory(prev => (prev === card.key ? null : card.key));
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedAgeCategory(prev => (prev === card.key ? null : card.key));
+                    }
+                  }}
+                  className={`bg-gradient-to-b ${card.bg} border p-3.5 rounded-2xl text-center shadow-xs flex flex-col items-center justify-center transition-all select-none cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-98 ${
+                    isSelected ? card.activeRing : card.border
+                  }`}
+                >
+                  <div className="flex items-center gap-1 mb-1">
+                    <p className={`text-xs ${card.textLabel} font-extrabold`}>{card.label}</p>
+                    <span className="text-[9px] text-slate-400 font-bold">({card.range})</span>
+                  </div>
+                  <p className={`font-black ${card.textCount} text-2xl leading-none my-0.5`}>
+                    {card.count}
+                  </p>
+                  <span
+                    className={`mt-2 text-[9px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
+                      isSelected ? 'bg-slate-900 text-white' : card.badgeBg
+                    }`}
+                  >
+                    {isSelected ? 'Tutup Daftar ✕' : 'Lihat Daftar ›'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* PANEL DAFTAR WARGA BERDASARKAN KATEGORI USIA */}
+          <AnimatePresence>
+            {selectedAgeCategory && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+                className="mb-6 overflow-hidden"
+              >
+                <div className="bg-white rounded-3xl border-2 border-teal-500/80 shadow-xl overflow-hidden">
+                  {/* Header Daftar Kategori Usia */}
+                  <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 px-5 py-4 text-white flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-teal-500 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          Data Demografi Warga
+                        </span>
+                        <span className="text-teal-300 text-xs font-bold">
+                          Total: {filteredSelectedAgePersons.length} Warga
+                        </span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-black tracking-tight mt-1">
+                        Daftar Warga Kriteria:{' '}
+                        <span className="text-teal-400 uppercase">
+                          {selectedAgeCategory === 'balita'
+                            ? 'Balita (0 - 4 Tahun)'
+                            : selectedAgeCategory === 'anak'
+                            ? 'Anak (5 - 12 Tahun)'
+                            : selectedAgeCategory === 'remaja'
+                            ? 'Remaja (13 - 20 Tahun)'
+                            : 'Dewasa (> 20 Tahun)'}
+                        </span>
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={exportAgeCategoryToCsv}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span>📥</span>
+                        <span>Export CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAgeCategory(null)}
+                        className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-sm transition cursor-pointer"
+                        title="Tutup daftar"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Filter & Pencarian dalam Kategori Usia */}
+                  <div className="p-4 bg-slate-50 border-b border-slate-200/80 flex flex-col sm:flex-row gap-2.5">
+                    <div className="relative flex-1">
+                      <icons.search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama warga atau blok rumah..."
+                        value={ageCategorySearch}
+                        onChange={e => setAgeCategorySearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-xl focus:border-teal-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {(['semua', 'Laki-laki', 'Perempuan'] as const).map(jk => (
+                        <button
+                          key={jk}
+                          type="button"
+                          onClick={() => setAgeCategoryGenderFilter(jk)}
+                          className={`px-3 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                            ageCategoryGenderFilter === jk
+                              ? 'bg-teal-600 text-white shadow-2xs'
+                              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {jk === 'semua' ? 'Semua JK' : jk}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tabel & Card List Warga Sesuai Kriteria */}
+                  <div className="p-4">
+                    {filteredSelectedAgePersons.length === 0 ? (
+                      <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <p className="text-sm font-bold text-slate-600">
+                          Tidak ada data warga pada kategori usia ini.
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Pastikan usia atau tanggal lahir warga/anggota keluarga telah diisi pada Data Warga.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b-2 border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider bg-slate-50/80">
+                              <th className="py-3 px-3 rounded-tl-xl">No</th>
+                              <th className="py-3 px-3">Nama Lengkap</th>
+                              <th className="py-3 px-3">Blok / Rumah</th>
+                              <th className="py-3 px-3">Jenis Kelamin</th>
+                              <th className="py-3 px-3">Tanggal Lahir</th>
+                              <th className="py-3 px-3 rounded-tr-xl text-right">Umur</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-xs">
+                            {filteredSelectedAgePersons.map((person, idx) => (
+                              <tr
+                                key={person.id}
+                                className="hover:bg-teal-50/40 transition-colors group"
+                              >
+                                <td className="py-3 px-3 font-bold text-slate-400">
+                                  {idx + 1}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="font-extrabold text-slate-900 text-sm">
+                                    {person.nama}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                      {person.hubungan}
+                                    </span>
+                                    {!person.isHead && (
+                                      <span className="text-[10px] text-slate-400 font-medium">
+                                        (KK: {person.kepalaKeluarga})
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <HouseBadge warga={person.wargaObj} size="sm" />
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${
+                                      person.jenisKelamin === 'Perempuan'
+                                        ? 'bg-pink-50 text-pink-700 border-pink-200'
+                                        : 'bg-sky-50 text-sky-700 border-sky-200'
+                                    }`}
+                                  >
+                                    <span>{person.jenisKelamin === 'Perempuan' ? '♀' : '♂'}</span>
+                                    <span>{person.jenisKelamin}</span>
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 font-bold text-slate-700">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>📅</span>
+                                    <span>{person.tglLahirFormatted}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-right">
+                                  <div className="inline-flex items-center gap-2 justify-end">
+                                    <span className="bg-teal-50 text-teal-800 border border-teal-200 font-black px-2.5 py-1 rounded-xl text-xs">
+                                      {person.umur} Thn
+                                    </span>
+                                    {!person.isHead && person.memberObj && (isKetuaRT || person.wargaId === currentUser?.id) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveWargaId(person.wargaId);
+                                          setEditingMember(person.memberObj);
+                                          setMemberForm({
+                                            name: person.memberObj.name || '',
+                                            role: person.memberObj.role || '',
+                                            tglLahir: person.memberObj.tglLahir || '',
+                                            age: String(person.memberObj.age || ''),
+                                            jenisKelamin: person.jenisKelamin
+                                          });
+                                          setShowMemberForm(true);
+                                        }}
+                                        className="p-1.5 text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors cursor-pointer"
+                                        title="Edit Data Anggota"
+                                      >
+                                        <icons.edit className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {isAdmin && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
@@ -1204,68 +1792,75 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               const isExpanded = expandedId === warga.id;
               const hasKk = Boolean(warga.dokumenKk && String(warga.dokumenKk).trim() !== '');
               const hasKtp = Array.isArray(warga.dokumenKtp) ? warga.dokumenKtp.length > 0 : Boolean(warga.dokumenKtp);
-              const houseShortCode = getHouseShortCode(warga);
-              const formattedBlokNo = getFormattedBlokNo(warga);
+              const houseInfo = parseHouseInfo(warga);
 
               return (
-                <div key={warga.id + '_' + idx} className={`bg-white rounded-[1.5rem] border ${isExpanded ? 'border-teal-200 shadow-lg' : 'border-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)]'} overflow-hidden transition-all duration-300`}>
+                <div key={warga.id + '_' + idx} className={`bg-white rounded-[1.5rem] border ${isExpanded ? 'border-teal-400 shadow-xl ring-2 ring-teal-500/15' : 'border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] hover:border-teal-300 hover:shadow-md'} overflow-hidden transition-all duration-300`}>
                   <div
                     className="p-4 flex items-start sm:items-center gap-3.5 cursor-pointer select-none"
                     onClick={() => setExpandedId(isExpanded ? null : warga.id)}
                   >
+                    {/* Avatar / Unit Icon */}
                     <div className="relative shrink-0 mt-0.5 sm:mt-0">
                       {warga.photo ? (
                         <img
                           src={warga.photo}
                           alt={warga.nama}
-                          className="w-[50px] h-[50px] rounded-2xl object-cover border-2 border-slate-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-slate-100"
+                          className="w-[52px] h-[52px] rounded-2xl object-cover border-2 border-teal-500 shadow-md bg-slate-100"
                         />
                       ) : (
-                        <div className="w-[50px] h-[50px] rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 flex flex-col items-center justify-center text-white shadow-[0_2px_8px_rgba(20,184,166,0.25)] border-[1.5px] border-white px-1">
-                          {houseShortCode.length > 1 ? (
+                        <div className="w-[52px] h-[52px] rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 border-2 border-teal-400 flex flex-col items-center justify-center text-white shadow-md px-1 select-none ring-2 ring-teal-500/20">
+                          {houseInfo.hasSpecific ? (
                             <>
-                              <span className="text-[8px] font-bold uppercase tracking-wider opacity-85 leading-none">BLOK</span>
-                              <span className="font-black text-[13px] leading-tight tracking-tight mt-0.5">{houseShortCode}</span>
+                              <span className="text-[7px] font-black uppercase tracking-widest text-teal-400 leading-none">BLOK</span>
+                              <span className="font-black text-[13px] leading-tight text-white tracking-tight mt-0.5">{houseInfo.shortCode}</span>
                             </>
                           ) : (
-                            <span className="font-extrabold text-[17px]">{houseShortCode}</span>
+                            <span className="font-black text-lg text-teal-300">{(warga.nama || 'W').charAt(0).toUpperCase()}</span>
                           )}
                         </div>
                       )}
 
-                      <span className={`absolute bottom-[-2px] right-[-2px] w-3.5 h-3.5 ${warga.isOnline ? 'bg-emerald-500' : 'bg-slate-300'} border-[1.5px] border-white rounded-full shadow-sm`}></span>
+                      <span className={`absolute bottom-[-2px] right-[-2px] w-3.5 h-3.5 ${warga.isOnline ? 'bg-emerald-500 ring-2 ring-white' : 'bg-slate-300'} rounded-full shadow-xs`}></span>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                          <h5 className="font-extrabold text-slate-800 text-[15px] leading-snug break-words">
+                          <h5 className="font-extrabold text-slate-900 text-[15px] leading-snug break-words">
                             {warga.nama}
                           </h5>
                           {currentUser?.id === warga.id && (
-                            <span className="bg-slate-100 text-slate-500 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest shrink-0">
+                            <span className="bg-teal-950 text-teal-300 text-[9px] px-2 py-0.5 rounded-md uppercase font-black tracking-widest shrink-0 border border-teal-500/40">
                               Anda
                             </span>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[9px] bg-sky-50 text-sky-600 border border-sky-100 px-1.5 py-0.5 rounded font-extrabold uppercase tracking-widest">
+                        {/* HIGH-CONTRAST BLOK & NO RUMAH BADGE */}
+                        <div className="shrink-0">
+                          <HouseBadge warga={warga} size="md" />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 mt-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-lg font-extrabold uppercase tracking-wider">
                             {warga.rt || 'RT 01'}
                           </span>
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-widest border ${
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg uppercase tracking-wider border ${
                             warga.role === 'admin'
-                              ? 'bg-amber-50 text-amber-600 border-amber-100'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
                               : warga.role === 'pengurus'
-                              ? 'bg-blue-50 text-blue-600 border-blue-100'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
                               : warga.role === 'bendahara'
-                              ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : warga.role === 'sekretaris'
-                              ? 'bg-violet-50 text-violet-600 border-violet-100'
-                              : 'bg-slate-50 text-slate-500 border-slate-100'
+                              ? 'bg-violet-50 text-violet-700 border-violet-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
                           }`}>
                             {warga.role === 'admin'
-                              ? 'Admin'
+                              ? 'Ketua RT'
                               : warga.role === 'pengurus'
                               ? 'Pengurus'
                               : warga.role === 'bendahara'
@@ -1274,17 +1869,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                               ? 'Sekretaris'
                               : (warga.status || 'Warga').split(' ')[0]}
                           </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 mt-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-800 border border-teal-200/80 px-2.5 py-0.5 rounded-lg text-xs font-extrabold tracking-tight shadow-2xs">
-                            <span>🏠</span>
-                            <span>{formattedBlokNo}</span>
-                          </span>
                           <span className="inline-flex items-center bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg text-[11px] font-extrabold">
-                            {members.length + 1} Orang
+                            👨‍👩‍👧‍👦 {members.length + 1} Jiwa
                           </span>
                           {hasKk && (
                             <span className="inline-flex items-center bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold">
@@ -1293,7 +1879,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                           )}
                         </div>
 
-                        <div className={`p-1 rounded-full transition-colors flex items-center justify-center shrink-0 ${isExpanded ? 'bg-teal-50 text-teal-600' : 'text-slate-500'}`}>
+                        <div className={`p-1.5 rounded-xl transition-colors flex items-center justify-center shrink-0 ${isExpanded ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
                           <icons.lainnya className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
@@ -1306,9 +1892,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="px-4 pb-4 border-t border-gray-50 bg-gray-50/50"
+                        className="px-4 pb-4 border-t border-gray-100 bg-slate-50/70"
                       >
                         <div className="pt-4 space-y-4">
+                          {/* DETAIL RUMAH & ALAMAT */}
+                          <div className="bg-white p-3.5 rounded-2xl border border-teal-100/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Identitas Rumah / Unit</p>
+                              <p className="text-xs font-bold text-slate-800 mt-0.5">{warga.alamat || 'Alamat belum dilengkapi'}</p>
+                            </div>
+                            <HouseBadge warga={warga} size="md" />
+                          </div>
 
                           {/* ADMIN CONTROLS */}
                           {(isAdmin || currentUser?.role === 'developer') && warga.id !== currentUser?.id && (
@@ -1441,7 +2035,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                   )
                                 )}
                                 {canEditFamily && (
-                                  <button onClick={() => { setActiveWargaId(warga.id); setMemberForm({ name: '', role: '', age: '', tglLahir: '' }); setEditingMember(null); setShowMemberForm(true); }} className="text-xs text-white font-bold bg-teal-600 hover:bg-teal-700 px-3 py-1.5 rounded-xl shadow-sm transition-colors cursor-pointer">
+                                  <button onClick={() => { setActiveWargaId(warga.id); setMemberForm({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' }); setEditingMember(null); setShowMemberForm(true); }} className="text-xs text-white font-bold bg-teal-600 hover:bg-teal-700 px-3 py-1.5 rounded-xl shadow-sm transition-colors cursor-pointer">
                                     + Tambah
                                   </button>
                                 )}
@@ -1475,7 +2069,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                     <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-1 rounded-lg">{member.age} Thn</span>
                                     {canEditFamily && (
                                       <div className="flex gap-1">
-                                        <button onClick={() => { setActiveWargaId(warga.id); setEditingMember(member); setMemberForm({ name: member.name || '', role: member.role || '', tglLahir: member.tglLahir || '', age: String(member.age || '') }); setShowMemberForm(true); }} className="p-1.5 text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer" title="Edit Anggota"><icons.edit className="w-4 h-4" /></button>
+                                        <button onClick={() => { setActiveWargaId(warga.id); setEditingMember(member); setMemberForm({ name: member.name || '', role: member.role || '', tglLahir: member.tglLahir || '', age: String(member.age || ''), jenisKelamin: inferJenisKelamin(member.name || '', member.role, member.jenisKelamin) }); setShowMemberForm(true); }} className="p-1.5 text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer" title="Edit Anggota"><icons.edit className="w-4 h-4" /></button>
                                         {isKetuaRT && (
                                           <button onClick={() => handleDeleteMember(warga.id, member.id || member._id || member.name)} className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer" title="Hapus Anggota"><icons.delete className="w-4 h-4" /></button>
                                         )}
@@ -1652,27 +2246,48 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    Status Hubungan Keluarga <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={memberForm.role}
-                    onChange={e => setMemberForm({ ...memberForm, role: e.target.value })}
-                    required
-                    className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
-                  >
-                    <option value="">-- Pilih Status Hubungan --</option>
-                    <option value="Kepala Keluarga">Kepala Keluarga</option>
-                    <option value="Suami">Suami</option>
-                    <option value="Istri">Istri</option>
-                    <option value="Anak">Anak</option>
-                    <option value="Orang Tua">Orang Tua</option>
-                    <option value="Mertua">Mertua</option>
-                    <option value="Cucu">Cucu</option>
-                    <option value="Kerabat">Kerabat</option>
-                    <option value="Famili Lain">Famili Lain</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                      Status Hubungan <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={memberForm.role}
+                      onChange={e => {
+                        const r = e.target.value;
+                        const autoJk = r === 'Istri' ? 'Perempuan' : r === 'Suami' || r === 'Kepala Keluarga' ? 'Laki-laki' : memberForm.jenisKelamin;
+                        setMemberForm({ ...memberForm, role: r, jenisKelamin: autoJk });
+                      }}
+                      required
+                      className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                    >
+                      <option value="">-- Pilih Hubungan --</option>
+                      <option value="Kepala Keluarga">Kepala Keluarga</option>
+                      <option value="Suami">Suami</option>
+                      <option value="Istri">Istri</option>
+                      <option value="Anak">Anak</option>
+                      <option value="Orang Tua">Orang Tua</option>
+                      <option value="Mertua">Mertua</option>
+                      <option value="Cucu">Cucu</option>
+                      <option value="Kerabat">Kerabat</option>
+                      <option value="Famili Lain">Famili Lain</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                      Jenis Kelamin <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={memberForm.jenisKelamin || 'Laki-laki'}
+                      onChange={e => setMemberForm({ ...memberForm, jenisKelamin: e.target.value })}
+                      required
+                      className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                    >
+                      <option value="Laki-laki">Laki-laki</option>
+                      <option value="Perempuan">Perempuan</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
