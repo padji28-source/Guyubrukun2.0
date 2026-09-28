@@ -970,28 +970,80 @@ async function initDb(rtId: string = '') {
       await UmkmModel.insertMany(initialUmkm);
     }
 
-    // Seed Blok A (ganjil) accounts
-    const blokAAccounts = [
-      { no: '01', username: 'A01', password: 'A01', nama: 'Warga Blok A No. 01' },
-      { no: '03', username: 'A03', password: 'A03', nama: 'Warga Blok A No. 03' },
-      { no: '05', username: 'A05', password: 'A05', nama: 'Warga Blok A No. 05' },
-      { no: '07', username: 'A07', password: 'A07', nama: 'Warga Blok A No. 07' },
-      { no: '09', username: 'A09', password: 'A09', nama: 'Warga Blok A No. 09' },
-      { no: '11', username: 'A11', password: 'A11', nama: 'Warga Blok A No. 11' },
-      { no: '11A', username: 'A11A', password: 'A11A', nama: 'Warga Blok A No. 11A' },
-      { no: '15', username: 'A15', password: 'A15', nama: 'Warga Blok A No. 15' },
-      { no: '17', username: 'A17', password: 'A17', nama: 'Warga Blok A No. 17' },
-      { no: '19', username: 'A19', password: 'A19', nama: 'Warga Blok A No. 19' },
-      { no: '21', username: 'A21', password: 'A21', nama: 'Warga Blok A No. 21' },
-      { no: '23', username: 'A23', password: 'A23', nama: 'Warga Blok A No. 23' },
-      { no: '25', username: 'A25', password: 'A25', nama: 'Warga Blok A No. 25' },
-      { no: '27', username: 'A27', password: 'A27', nama: 'Warga Blok A No. 27' },
-      { no: '29', username: 'A29', password: 'A29', nama: 'Warga Blok A No. 29' }
+    // Seed Blok A, C, D, E, dan F accounts
+    const blokAccounts = [
+      // Blok A (ganjil)
+      { blok: 'A', no: '01', username: 'A01', password: 'A01', nama: 'Warga Blok A No. 01' },
+      { blok: 'A', no: '03', username: 'A03', password: 'A03', nama: 'Warga Blok A No. 03' },
+      { blok: 'A', no: '05', username: 'A05', password: 'A05', nama: 'Warga Blok A No. 05' },
+      { blok: 'A', no: '07', username: 'A07', password: 'A07', nama: 'Warga Blok A No. 07' },
+      { blok: 'A', no: '09', username: 'A09', password: 'A09', nama: 'Warga Blok A No. 09' },
+      { blok: 'A', no: '11', username: 'A11', password: 'A11', nama: 'Warga Blok A No. 11' },
+      { blok: 'A', no: '11A', username: 'A11A', password: 'A11A', nama: 'Warga Blok A No. 11A' },
+      { blok: 'A', no: '15', username: 'A15', password: 'A15', nama: 'Warga Blok A No. 15' },
+      { blok: 'A', no: '17', username: 'A17', password: 'A17', nama: 'Warga Blok A No. 17' },
+      { blok: 'A', no: '19', username: 'A19', password: 'A19', nama: 'Warga Blok A No. 19' },
+      { blok: 'A', no: '21', username: 'A21', password: 'A21', nama: 'Warga Blok A No. 21' },
+      { blok: 'A', no: '23', username: 'A23', password: 'A23', nama: 'Warga Blok A No. 23' },
+      { blok: 'A', no: '25', username: 'A25', password: 'A25', nama: 'Warga Blok A No. 25' },
+      { blok: 'A', no: '27', username: 'A27', password: 'A27', nama: 'Warga Blok A No. 27' },
+      { blok: 'A', no: '29', username: 'A29', password: 'A29', nama: 'Warga Blok A No. 29' },
+
+      // Blok C (genap: C02, C04, C06, C08)
+      { blok: 'C', no: '02', username: 'C02', password: 'C02', nama: 'Warga Blok C No. 02' },
+      { blok: 'C', no: '04', username: 'C04', password: 'C04', nama: 'Warga Blok C No. 04' },
+      { blok: 'C', no: '06', username: 'C06', password: 'C06', nama: 'Warga Blok C No. 06' },
+      { blok: 'C', no: '08', username: 'C08', password: 'C08', nama: 'Warga Blok C No. 08' },
+
+      // Blok D (ganjil: 01 s/d 25 selain 03, 05, 11A, 13, 17, 21, 25)
+      { blok: 'D', no: '01', username: 'D01', password: 'D01', nama: 'Warga Blok D No. 01' },
+      { blok: 'D', no: '07', username: 'D07', password: 'D07', nama: 'Warga Blok D No. 07' },
+      { blok: 'D', no: '09', username: 'D09', password: 'D09', nama: 'Warga Blok D No. 09' },
+      { blok: 'D', no: '11', username: 'D11', password: 'D11', nama: 'Warga Blok D No. 11' },
+      { blok: 'D', no: '15', username: 'D15', password: 'D15', nama: 'Warga Blok D No. 15' },
+      { blok: 'D', no: '19', username: 'D19', password: 'D19', nama: 'Warga Blok D No. 19' },
+      { blok: 'D', no: '23', username: 'D23', password: 'D23', nama: 'Warga Blok D No. 23' },
+
+      // Blok D (genap: 02 s/d 20)
+      { blok: 'D', no: '02', username: 'D02', password: 'D02', nama: 'Warga Blok D No. 02' },
+      { blok: 'D', no: '04', username: 'D04', password: 'D04', nama: 'Warga Blok D No. 04' },
+      { blok: 'D', no: '06', username: 'D06', password: 'D06', nama: 'Warga Blok D No. 06' },
+      { blok: 'D', no: '08', username: 'D08', password: 'D08', nama: 'Warga Blok D No. 08' },
+      { blok: 'D', no: '10', username: 'D10', password: 'D10', nama: 'Warga Blok D No. 10' },
+      { blok: 'D', no: '12', username: 'D12', password: 'D12', nama: 'Warga Blok D No. 12' },
+      { blok: 'D', no: '14', username: 'D14', password: 'D14', nama: 'Warga Blok D No. 14' },
+      { blok: 'D', no: '16', username: 'D16', password: 'D16', nama: 'Warga Blok D No. 16' },
+      { blok: 'D', no: '18', username: 'D18', password: 'D18', nama: 'Warga Blok D No. 18' },
+      { blok: 'D', no: '20', username: 'D20', password: 'D20', nama: 'Warga Blok D No. 20' },
+
+      // Blok E (ganjil: 01 s/d 17 kecuali 15, dan 13 diubah menjadi 11A)
+      { blok: 'E', no: '01', username: 'E01', password: 'E01', nama: 'Warga Blok E No. 01' },
+      { blok: 'E', no: '03', username: 'E03', password: 'E03', nama: 'Warga Blok E No. 03' },
+      { blok: 'E', no: '05', username: 'E05', password: 'E05', nama: 'Warga Blok E No. 05' },
+      { blok: 'E', no: '07', username: 'E07', password: 'E07', nama: 'Warga Blok E No. 07' },
+      { blok: 'E', no: '09', username: 'E09', password: 'E09', nama: 'Warga Blok E No. 09' },
+      { blok: 'E', no: '11', username: 'E11', password: 'E11', nama: 'Warga Blok E No. 11' },
+      { blok: 'E', no: '11A', username: 'E11A', password: 'E11A', nama: 'Warga Blok E No. 11A' },
+      { blok: 'E', no: '17', username: 'E17', password: 'E17', nama: 'Warga Blok E No. 17' },
+
+      // Blok F (genap: 02 s/d 26 selain 08, 16, dan 22)
+      { blok: 'F', no: '02', username: 'F02', password: 'F02', nama: 'Warga Blok F No. 02' },
+      { blok: 'F', no: '04', username: 'F04', password: 'F04', nama: 'Warga Blok F No. 04' },
+      { blok: 'F', no: '06', username: 'F06', password: 'F06', nama: 'Warga Blok F No. 06' },
+      { blok: 'F', no: '10', username: 'F10', password: 'F10', nama: 'Warga Blok F No. 10' },
+      { blok: 'F', no: '12', username: 'F12', password: 'F12', nama: 'Warga Blok F No. 12' },
+      { blok: 'F', no: '14', username: 'F14', password: 'F14', nama: 'Warga Blok F No. 14' },
+      { blok: 'F', no: '18', username: 'F18', password: 'F18', nama: 'Warga Blok F No. 18' },
+      { blok: 'F', no: '20', username: 'F20', password: 'F20', nama: 'Warga Blok F No. 20' },
+      { blok: 'F', no: '24', username: 'F24', password: 'F24', nama: 'Warga Blok F No. 24' },
+      { blok: 'F', no: '26', username: 'F26', password: 'F26', nama: 'Warga Blok F No. 26' }
     ];
 
-    for (const acc of blokAAccounts) {
-      const alamat = `Blok A No. ${acc.no}`;
+    for (const acc of blokAccounts) {
+      const targetRtId = rtId || 'rt01';
+      const alamat = `Blok ${acc.blok} No. ${acc.no}`;
       const existing = await UserModel.findOne({
+        rtId: targetRtId,
         $or: [
           { username: new RegExp(`^${acc.username}$`, 'i') },
           { alamat: new RegExp(`^${alamat}$`, 'i') }
@@ -1000,7 +1052,7 @@ async function initDb(rtId: string = '') {
 
       if (!existing) {
         await UserModel.create({
-          id: `${Date.now()}_${acc.no}`,
+          id: `${Date.now()}_${acc.username}_${targetRtId}`,
           username: acc.username,
           nama: acc.nama,
           password: hashPassword(acc.password),
@@ -1010,8 +1062,9 @@ async function initDb(rtId: string = '') {
           role: 'warga',
           isApproved: true,
           isVip: false,
-          rtId: rtId || 'rt01',
+          rtId: targetRtId,
           umur: 30,
+          jenisKelamin: 'Laki-laki',
           members: []
         });
       }
@@ -1251,19 +1304,43 @@ app.post("/api/login", validateRequest(LoginValidator), async (req, res, next) =
 
     await connectDB();
     const cleanUsername = (username || '').trim();
-    const query: any = { username: new RegExp(`^${cleanUsername}$`, 'i') };
+    const normalizedBlockUser = cleanUsername
+      .replace(/^blok\s*/i, '')
+      .replace(/no\.?\s*/i, '')
+      .replace(/[\s-]+/g, '');
+    const query: any = {
+      $or: [
+        { username: new RegExp(`^${cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        ...(normalizedBlockUser
+          ? [{ username: new RegExp(`^${normalizedBlockUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }]
+          : [])
+      ]
+    };
     if (cleanUsername.toLowerCase() !== 'developer') {
       query.rtId = rtId;
     }
     const user = await UserModel.findOne(query);
 
     const cleanPwd = (password || '').trim();
+    const strippedPwd = cleanPwd
+      .replace(/^blok\s*/i, '')
+      .replace(/no\.?\s*/i, '')
+      .replace(/[\s-]+/g, '');
+    const blockPrefix = (user?.username || '').match(/^[A-Za-z]+/)?.[0] || '';
+    const withBlockLetter =
+      blockPrefix && /^\d+[A-Za-z]*$/.test(strippedPwd) ? `${blockPrefix}${strippedPwd}` : strippedPwd;
+
     const matchPwd = user && (
       verifyPassword(cleanPwd, user.password) ||
       verifyPassword(cleanPwd.toLowerCase(), user.password) ||
       verifyPassword(cleanPwd.toUpperCase(), user.password) ||
       verifyPassword(`Blok ${cleanPwd}`, user.password) ||
-      verifyPassword(cleanPwd.replace(/^blok\s*/i, ''), user.password)
+      verifyPassword(cleanPwd.replace(/^blok\s*/i, ''), user.password) ||
+      verifyPassword(strippedPwd, user.password) ||
+      verifyPassword(strippedPwd.toUpperCase(), user.password) ||
+      verifyPassword(strippedPwd.toLowerCase(), user.password) ||
+      verifyPassword(withBlockLetter.toUpperCase(), user.password) ||
+      verifyPassword(withBlockLetter.toLowerCase(), user.password)
     );
 
     if (user && matchPwd) {
