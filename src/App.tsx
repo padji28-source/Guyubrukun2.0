@@ -603,8 +603,8 @@ const WebStatsCards = () => {
           kasRT: metrics.kasDetail?.kasRT || 0,
           danaKematian: metrics.kasDetail?.danaKematian || 0,
           danaSosial: metrics.kasDetail?.danaSosial || 0,
-          docUploaded: 0,
-          docNotUploaded: 0
+          docUploaded: metrics.docUploaded || 0,
+          docNotUploaded: metrics.docNotUploaded || 0
         });
 
       } catch (e) {
@@ -3938,7 +3938,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
     sekretaris: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Notulen Rapat', 'Pengumuman', 'Media', 'Inventaris', 'Pengaturan'],
     bendahara: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Pengaturan'],
     pengurus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'Inventaris', 'Pengaturan'],
-    warga: []
+    warga: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Smart RT AI', 'Pengaturan']
   };
 
   const userRole = originalUser?.role || 'warga';

@@ -17,8 +17,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       url.includes('/api/gemini') || 
       url.includes('/api/ai') ||
       url.includes('/api/chat') ||
-      url.includes('/api/password') ||
-      url.includes('/api/profile');
+      url.includes('/api/password');
 
     if (!isNonMutating) {
       cache.clear();

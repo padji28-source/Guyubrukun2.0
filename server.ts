@@ -163,10 +163,13 @@ const UserSchema = new mongoose.Schema({
     tglLahir: String
   }],
   photo: String,
-  dokumenKk: String,
-  dokumenKtp: String,
-}, { timestamps: true });
-const UserModel: mongoose.Model<any> = mongoose.models.User || mongoose.model("User", UserSchema);
+  dokumenKk: mongoose.Schema.Types.Mixed,
+  dokumenKtp: mongoose.Schema.Types.Mixed,
+}, { timestamps: true, strict: false });
+if (mongoose.models.User) {
+  delete mongoose.models.User;
+}
+const UserModel: mongoose.Model<any> = mongoose.model("User", UserSchema);
 
 // RT Config / Subscription Schema
 const RtConfigSchema = new mongoose.Schema({
@@ -364,9 +367,13 @@ const DokumenSchema = new mongoose.Schema({
   title: { type: String, required: true },
   category: { type: String, required: true }, // 'KK', 'KTP', 'Surat RT', 'Peraturan', 'Lainnya'
   fileUrl: { type: String, required: true }, // base64 or URL
+  fileName: { type: String },
+  fileType: { type: String },
+  description: { type: String },
   uploaderId: { type: String },
   uploaderName: { type: String },
-  rtId: { type: String, required: true }
+  rtId: { type: String, required: true },
+  createdAt: { type: String }
 }, { timestamps: true });
 const DokumenModel: mongoose.Model<any> = mongoose.models.Dokumen || mongoose.model("Dokumen", DokumenSchema);
 
@@ -755,7 +762,7 @@ async function initDb(rtId: string = '') {
       },
       {
         role: 'warga',
-        allowedMenus: ['Dashboard', 'Surat Online', 'Iuran', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Smart RT AI', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Smart RT AI', 'Pengaturan']
       }
     ];
 
@@ -1151,25 +1158,33 @@ app.put("/api/password", async (req, res) => {
 app.put("/api/profile", async (req, res) => {
   const { id, username, nama, alamat, noHp, status, photo, umur, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const targetId = id || (req.headers['x-user-id'] as string);
 
-  const user = await UserModel.findOne({ id, rtId });
+  let user = await UserModel.findOne({ id: targetId, rtId });
+  if (!user && targetId) {
+    user = await UserModel.findOne({ id: targetId });
+  }
   if (user) {
     const beforeObj = user.toObject();
     
-    user.nama = nama || user.nama;
-    user.alamat = alamat || user.alamat;
-    user.noHp = noHp || user.noHp;
-    user.status = status || user.status;
-    user.photo = photo || user.photo;
-    user.umur = umur !== undefined ? Number(umur) : user.umur;
-    user.dokumenKk = dokumenKk !== undefined ? dokumenKk : user.dokumenKk;
-    user.dokumenKtp = dokumenKtp !== undefined ? dokumenKtp : user.dokumenKtp;
+    if (nama !== undefined && nama !== '') user.nama = nama;
+    if (alamat !== undefined) user.alamat = alamat;
+    if (noHp !== undefined) user.noHp = noHp;
+    if (status !== undefined) user.status = status;
+    if (photo !== undefined) user.photo = photo;
+    if (umur !== undefined) user.umur = Number(umur);
+    if (dokumenKk !== undefined) user.dokumenKk = dokumenKk;
+    if (dokumenKtp !== undefined) {
+      user.dokumenKtp = dokumenKtp;
+      user.markModified('dokumenKtp');
+    }
     
     const updatedUser = await user.save();
-    await logAudit(rtId, user.nama, "PROFILE_UPDATE", `Memperbarui rincian profil`, beforeObj, updatedUser);
+    await logAudit(user.rtId || rtId, user.nama, "PROFILE_UPDATE", `Memperbarui rincian profil / dokumen`, beforeObj, updatedUser);
     
     const updater = req.body.updaterName || nama || user.nama || 'Sistem';
-    await addNotification(rtId, "Profil Diperbarui", `Warga ${user.nama} memperbarui profil.`, updater, "warga", id);
+    await addNotification(user.rtId || rtId, "Profil & Dokumen Diperbarui", `Warga ${user.nama} memperbarui data profil/dokumen.`, updater, "warga", user.id);
+    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
     
     res.json({ message: "Profile updated successfully", user: updatedUser });
   } else {
@@ -2411,7 +2426,7 @@ app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
     const [users, kas, iuran, laporan, acara, media] = await Promise.all([
-      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('members').lean(),
+      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('members dokumenKk dokumenKtp').lean(),
       KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
       IuranModel.find({ rtId }).select('bulan status nominal').lean(),
       LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
@@ -2421,9 +2436,16 @@ app.get("/api/dashboard", async (req, res) => {
 
     const jumlahKK = users.length;
     let totalWarga = jumlahKK;
+    let docUploaded = 0;
     users.forEach((u: any) => {
       totalWarga += (u.members?.length || 0);
+      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
+      if (hasKk || hasKtp) {
+        docUploaded++;
+      }
     });
+    const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
 
     const getSaldo = (cat: string) => {
       const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
@@ -2467,6 +2489,8 @@ app.get("/api/dashboard", async (req, res) => {
       metrics: {
         jumlahKK,
         jumlahWarga: totalWarga,
+        docUploaded,
+        docNotUploaded,
         saldoKas,
         kasDetail: { kasRT, danaKematian, danaSosial },
         iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
