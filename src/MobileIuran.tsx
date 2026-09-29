@@ -583,7 +583,7 @@ export const MobileIuran = ({ onBack, currentUser }: { onBack: () => void, curre
                   <select value={adminSelectedUserId} onChange={e => setAdminSelectedUserId(e.target.value)} required className="w-full mt-1 p-3 text-sm font-semibold bg-slate-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl outline-none appearance-none">
                     <option value="" disabled>-- Silakan Pilih --</option>
                     <option value="all">Semua Warga Terdaftar</option>
-                    {wargaList.map(w => <option key={w.id} value={w.id}>{w.nama}</option>)}
+                    {wargaList.map((w, idx) => <option key={`w_${w.id}_${idx}`} value={w.id}>{w.nama}</option>)}
                   </select>
                 </div>
                 
