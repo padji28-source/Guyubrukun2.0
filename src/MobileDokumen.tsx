@@ -849,7 +849,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredWargaList.map((person) => {
+                  {filteredWargaList.map((person, idx) => {
                     const ktpArr: string[] = Array.isArray(person.dokumenKtp)
                       ? person.dokumenKtp
                       : person.dokumenKtp
@@ -868,7 +868,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
 
                     return (
                       <div
-                        key={person.id}
+                        key={person.id ? `doc_p_${person.id}_${idx}` : `doc_p_idx_${idx}`}
                         className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:border-teal-200 transition-all space-y-3"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1346,8 +1346,8 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                   <optgroup label="Pengurus RT">
                     {wargaList
                       .filter(u => ['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
-                      .map(u => (
-                        <option key={u.id} value={u.id}>
+                      .map((u, idx) => (
+                        <option key={`opt_p_${u.id}_${idx}`} value={u.id}>
                           {u.nama} — [{getRoleLabel(u.role)}] ({u.alamat || 'RT 01'})
                         </option>
                       ))}
@@ -1355,8 +1355,8 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                   <optgroup label="Warga">
                     {wargaList
                       .filter(u => !['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
-                      .map(u => (
-                        <option key={u.id} value={u.id}>
+                      .map((u, idx) => (
+                        <option key={`opt_w_${u.id}_${idx}`} value={u.id}>
                           {u.nama} — [Warga] ({u.alamat || 'RT 01'})
                         </option>
                       ))}
