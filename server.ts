@@ -16,6 +16,12 @@ const JWT_SECRET = process.env.JWT_SECRET || "guyubrukunsecretkey_for_jwt2026";
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 let isDbConnected = false;
 
+function isValidGeminiApiKey(key?: string): boolean {
+  if (!key) return false;
+  const k = key.trim();
+  return k.length >= 20 && !k.startsWith('MY_') && !k.startsWith('YOUR_') && !k.includes('placeholder');
+}
+
 async function connectDB() {
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     isDbConnected = true;
@@ -1896,7 +1902,7 @@ app.post("/api/warga/:id/extract-kk", async (req, res) => {
     // =========================================================================
     // LAYER 2: GEMINI AI VISION (WHEN API KEY IS ACTIVE & VALID)
     // =========================================================================
-    if (extractedList.length === 0 && process.env.GEMINI_API_KEY && docBase64) {
+    if (extractedList.length === 0 && isValidGeminiApiKey(process.env.GEMINI_API_KEY) && docBase64) {
       try {
         const ai = new GoogleGenAI({
           apiKey: process.env.GEMINI_API_KEY,
@@ -1948,7 +1954,7 @@ Kembalikan hasil dalam bentuk JSON Array.`;
         let response;
         try {
           response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
+            model: "gemini-2.5-flash",
             contents: contentsPayload,
             config: genConfig
           });
@@ -1976,7 +1982,7 @@ Kembalikan hasil dalam bentuk JSON Array.`;
           }
         }
       } catch (geminiErr: any) {
-        console.warn("Gemini Vision fallback to Local OCR:", geminiErr?.message || geminiErr);
+        // Quiet fallback to Local OCR Engine
       }
     }
 
@@ -3638,7 +3644,7 @@ app.post("/api/gemini/action", async (req, res) => {
     }
 
     let responseText = "";
-    if (process.env.GEMINI_API_KEY) {
+    if (isValidGeminiApiKey(process.env.GEMINI_API_KEY)) {
       try {
         const ai = new GoogleGenAI({
           apiKey: process.env.GEMINI_API_KEY,
@@ -3650,7 +3656,7 @@ app.post("/api/gemini/action", async (req, res) => {
         });
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
+            model: "gemini-2.5-flash",
             contents: prompt,
             config: {
               systemInstruction,
@@ -3670,7 +3676,7 @@ app.post("/api/gemini/action", async (req, res) => {
           responseText = response.text || "";
         }
       } catch (aiErr: any) {
-        console.warn("Smart RT AI fallback triggered:", aiErr?.message || aiErr);
+        // Fallback to built-in smart assistant generator
       }
     }
 
