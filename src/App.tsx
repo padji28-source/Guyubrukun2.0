@@ -4476,8 +4476,8 @@ const RtSelection = ({ onSelectRt }: { onSelectRt: (rt: string) => void }) => {
             className="w-full pl-5 pr-12 py-4 bg-slate-50 border-2 border-slate-200 hover:border-teal-300 focus:border-teal-500 rounded-2xl text-base font-semibold text-slate-800 transition-all appearance-none focus:outline-none focus:ring-4 focus:ring-teal-500/10 cursor-pointer"
           >
             <option value="" disabled>-- Pilih RT Anda --</option>
-            {rts.map(rt => (
-              <option key={rt.id} value={rt.id}>{rt.label}</option>
+            {rts.map((rt, idx) => (
+              <option key={`rt_${rt.id}_${idx}`} value={rt.id}>{rt.label}</option>
             ))}
           </select>
           <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400">
