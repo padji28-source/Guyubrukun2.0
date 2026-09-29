@@ -406,8 +406,11 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       const res = await apiFetch(`/api/warga/${encodeURIComponent(wargaId)}/members/${encodeURIComponent(memberId)}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        setShowMemberForm(false);
+        setEditingMember(null);
         showStatusBanner('Data anggota keluarga berhasil dihapus.');
         fetchWarga();
+        fetchAllWargaFull();
         if (isKetuaRT) {
           fetchAllKkWargaForKetuaRT();
         }
@@ -846,7 +849,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     const sourceData =
       isFilteringAll && allWargaFullData.length > 0 ? allWargaFullData : wargaData;
 
-    return sourceData.filter(w => {
+    const filtered = sourceData.filter(w => {
       if (w.role === 'developer') return false;
       const q = debouncedSearchQuery.toLowerCase();
       const matchName =
@@ -858,7 +861,16 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         !filterAgeCategory || getMatchingPersonsInWarga(w, filterAgeCategory).length > 0;
       return matchName && matchBlok && matchAge;
     });
-  }, [wargaData, allWargaFullData, debouncedSearchQuery, filterBlok, filterAgeCategory]);
+
+    // Tempatkan akun user yang sedang aktif di urutan paling atas
+    return [...filtered].sort((a, b) => {
+      const isCurrentA = currentUser && (a.id === currentUser.id || a.username === currentUser.username);
+      const isCurrentB = currentUser && (b.id === currentUser.id || b.username === currentUser.username);
+      if (isCurrentA && !isCurrentB) return -1;
+      if (!isCurrentA && isCurrentB) return 1;
+      return 0;
+    });
+  }, [wargaData, allWargaFullData, debouncedSearchQuery, filterBlok, filterAgeCategory, currentUser]);
 
   // Summary & Filtered list for "Data Dokumen KK" menu (Ketua RT only)
   const kkStats = useMemo(() => {
@@ -873,7 +885,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   }, [allWargaKkData]);
 
   const filteredKkMenuData = useMemo(() => {
-    return allWargaKkData
+    const filtered = allWargaKkData
       .filter(w => w.role !== 'developer')
       .filter(w => {
         const hasKk = Boolean(w.dokumenKk && String(w.dokumenKk).trim() !== '');
@@ -891,7 +903,15 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         const matchBlok = !kkFilterBlok || w.alamat?.match(/Blok\s+([a-zA-Z0-9]+)/i)?.[1] === kkFilterBlok;
         return matchSearch && matchBlok;
       });
-  }, [allWargaKkData, kkFilterStatus, kkSearchQuery, kkFilterBlok]);
+
+    return [...filtered].sort((a, b) => {
+      const isCurrentA = currentUser && (a.id === currentUser.id || a.username === currentUser.username);
+      const isCurrentB = currentUser && (b.id === currentUser.id || b.username === currentUser.username);
+      if (isCurrentA && !isCurrentB) return -1;
+      if (!isCurrentA && isCurrentB) return 1;
+      return 0;
+    });
+  }, [allWargaKkData, kkFilterStatus, kkSearchQuery, kkFilterBlok, currentUser]);
 
   const isPdfUrl = (url?: string) => Boolean(url && url.startsWith('data:application/pdf'));
 
@@ -1131,9 +1151,9 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             </div>
             {lastExtractedInfo.addedMembers.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {lastExtractedInfo.addedMembers.map((m: any) => (
+                {lastExtractedInfo.addedMembers.map((m: any, mIdx: number) => (
                   <span
-                    key={m.id}
+                    key={m.id ? `ext_${m.id}_${mIdx}` : `ext_${mIdx}_${m.name || 'mem'}`}
                     className="bg-white border border-indigo-100 text-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1.5"
                   >
                     <span className="text-indigo-700">{m.name}</span>
@@ -1301,7 +1321,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredKkMenuData.map((warga) => {
+              {filteredKkMenuData.map((warga, idx) => {
                 const hasKk = Boolean(warga.dokumenKk && String(warga.dokumenKk).trim() !== '');
                 const members = warga.members || [];
                 const isExtractingThis = extractingId === warga.id;
@@ -1310,7 +1330,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
                 return (
                   <div
-                    key={warga.id}
+                    key={warga.id ? `kk_${warga.id}_${idx}` : `kk_row_${idx}`}
                     className="bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col"
                   >
                     {/* Document Preview Banner */}
@@ -1400,9 +1420,9 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                           </div>
                         ) : (
                           <div className="flex flex-wrap items-center gap-1.5">
-                            {members.map((m: any) => (
+                            {members.map((m: any, mIdx: number) => (
                               <span
-                                key={m.id || m._id || m.name}
+                                key={m.id ? `chip_${warga.id}_${m.id}_${mIdx}` : `chip_${warga.id}_${mIdx}_${m.name || ''}`}
                                 onClick={() => {
                                   if (canEditFamily) {
                                     setActiveWargaId(warga.id);
@@ -1832,7 +1852,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                           <tbody className="divide-y divide-slate-100 text-xs">
                             {filteredSelectedAgePersons.map((person, idx) => (
                               <tr
-                                key={person.id}
+                                key={person.id ? `person_${person.id}_${idx}` : `person_${idx}`}
                                 className="hover:bg-teal-50/40 transition-colors group"
                               >
                                 <td className="py-3 px-3 font-bold text-slate-400">
@@ -1879,26 +1899,36 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                     <span className="bg-teal-50 text-teal-800 border border-teal-200 font-black px-2.5 py-1 rounded-xl text-xs">
                                       {person.umur} Thn
                                     </span>
-                                    {!person.isHead && person.memberObj && (isKetuaRT || person.wargaId === currentUser?.id) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveWargaId(person.wargaId);
-                                          setEditingMember(person.memberObj);
-                                          setMemberForm({
-                                            name: person.memberObj.name || '',
-                                            role: person.memberObj.role || '',
-                                            tglLahir: person.memberObj.tglLahir || '',
-                                            age: String(person.memberObj.age || ''),
-                                            jenisKelamin: person.jenisKelamin
-                                          });
-                                          setShowMemberForm(true);
-                                        }}
-                                        className="p-1.5 text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors cursor-pointer"
-                                        title="Edit Data Anggota"
-                                      >
-                                        <icons.edit className="w-3.5 h-3.5" />
-                                      </button>
+                                    {!person.isHead && person.memberObj && (isKetuaRT || person.wargaId === currentUser?.id || person.wargaObj?.username === currentUser?.username) && (
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveWargaId(person.wargaId);
+                                            setEditingMember(person.memberObj);
+                                            setMemberForm({
+                                              name: person.memberObj.name || '',
+                                              role: person.memberObj.role || '',
+                                              tglLahir: person.memberObj.tglLahir || '',
+                                              age: String(person.memberObj.age || ''),
+                                              jenisKelamin: person.jenisKelamin
+                                            });
+                                            setShowMemberForm(true);
+                                          }}
+                                          className="p-1.5 text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors cursor-pointer"
+                                          title="Edit Data Anggota"
+                                        >
+                                          <icons.edit className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteMember(person.wargaId, person.memberObj.id || person.memberObj._id || person.memberObj.name)}
+                                          className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
+                                          title="Hapus Data Anggota"
+                                        >
+                                          <icons.delete className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
                                 </td>
@@ -2078,14 +2108,15 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
           <div className="space-y-4">
             {filteredWargaData.map((warga, idx) => {
               const members = warga.members || [];
-              const canEditFamily = isAdmin || ['sekretaris', 'bendahara', 'pengurus'].includes(currentUser?.role) || currentUser?.id === warga.id;
+              const isCurrentUser = Boolean(currentUser && (warga.id === currentUser.id || warga.username === currentUser.username));
+              const canEditFamily = isAdmin || ['sekretaris', 'bendahara', 'pengurus'].includes(currentUser?.role) || isCurrentUser;
               const isExpanded = expandedId === warga.id;
               const hasKk = Boolean(warga.dokumenKk && String(warga.dokumenKk).trim() !== '');
               const hasKtp = Array.isArray(warga.dokumenKtp) ? warga.dokumenKtp.length > 0 : Boolean(warga.dokumenKtp);
               const houseInfo = parseHouseInfo(warga);
 
               return (
-                <div key={warga.id + '_' + idx} className={`bg-white rounded-[1.5rem] border ${isExpanded ? 'border-teal-400 shadow-xl ring-2 ring-teal-500/15' : 'border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] hover:border-teal-300 hover:shadow-md'} overflow-hidden transition-all duration-300`}>
+                <div key={`${warga.id || 'warga'}_${idx}`} className={`bg-white rounded-[1.5rem] border ${isCurrentUser ? 'border-teal-500 shadow-md ring-2 ring-teal-500/20' : isExpanded ? 'border-teal-400 shadow-xl ring-2 ring-teal-500/15' : 'border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] hover:border-teal-300 hover:shadow-md'} overflow-hidden transition-all duration-300`}>
                   <div
                     className="p-4 flex items-start sm:items-center gap-3.5 cursor-pointer select-none"
                     onClick={() => setExpandedId(isExpanded ? null : warga.id)}
@@ -2120,9 +2151,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                           <h5 className="font-extrabold text-slate-900 text-[15px] leading-snug break-words">
                             {warga.nama}
                           </h5>
-                          {currentUser?.id === warga.id && (
-                            <span className="bg-teal-950 text-teal-300 text-[9px] px-2 py-0.5 rounded-md uppercase font-black tracking-widest shrink-0 border border-teal-500/40">
-                              Anda
+                          {isCurrentUser && (
+                            <span className="bg-gradient-to-r from-teal-700 to-emerald-700 text-white text-[9px] px-2.5 py-0.5 rounded-full uppercase font-black tracking-widest shrink-0 border border-teal-400 shadow-xs flex items-center gap-1">
+                              <span>★</span>
+                              <span>Akun Anda</span>
                             </span>
                           )}
                         </div>
@@ -2361,11 +2393,11 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                             </div>
                           ) : (
                             <div className="grid gap-2">
-                              {members.map((member: any) => (
-                                <div key={member.id} className="flex justify-between items-center bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                              {members.map((member: any, mIdx: number) => (
+                                <div key={member.id ? `mem_${warga.id}_${member.id}` : `mem_${warga.id}_${mIdx}_${member.name || ''}`} className="flex justify-between items-center bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600">
-                                      {member.name.charAt(0)}
+                                      {(member.name || 'A').charAt(0)}
                                     </div>
                                     <div>
                                       <p className="text-xs font-bold text-gray-800">{member.name}</p>
@@ -2378,7 +2410,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                     {canEditFamily && (
                                       <div className="flex gap-1">
                                         <button onClick={() => { setActiveWargaId(warga.id); setEditingMember(member); setMemberForm({ name: member.name || '', role: member.role || '', tglLahir: member.tglLahir || '', age: String(member.age || ''), jenisKelamin: inferJenisKelamin(member.name || '', member.role, member.jenisKelamin) }); setShowMemberForm(true); }} className="p-1.5 text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer" title="Edit Anggota"><icons.edit className="w-4 h-4" /></button>
-                                        {isKetuaRT && (
+                                        {(isKetuaRT || currentUser?.id === warga.id || currentUser?.username === warga.username) && (
                                           <button onClick={() => handleDeleteMember(warga.id, member.id || member._id || member.name)} className="p-1.5 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer" title="Hapus Anggota"><icons.delete className="w-4 h-4" /></button>
                                         )}
                                       </div>
@@ -2632,7 +2664,21 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-3 border-t border-slate-100">
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-100">
+                  {editingMember && (isKetuaRT || activeWargaId === currentUser?.id || currentUser?.username === (wargaData.find(w => w.id === activeWargaId)?.username || '')) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editingMember) {
+                          handleDeleteMember(activeWargaId, editingMember.id || editingMember._id || editingMember.name);
+                        }
+                      }}
+                      className="px-3 py-3 text-xs font-extrabold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <icons.delete className="w-4 h-4" />
+                      <span>Hapus Anggota</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
