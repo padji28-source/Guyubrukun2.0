@@ -2,6 +2,16 @@ import { apiFetch } from './apiInterceptor';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell
+} from 'recharts';
 
 const MobileDataWarga = React.lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
 const MobileScanQR = React.lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
@@ -2461,6 +2471,218 @@ const MobileSaldoCard = () => {
   );
 };
 
+let cachedDemographicsWidget: any = null;
+
+const MobileDemographicsWidget = ({
+  user,
+  onActionClick
+}: {
+  user?: any;
+  onActionClick: (tab: string) => void;
+}) => {
+  const [groups, setGroups] = useState<
+    Array<{ key: string; name: string; range: string; count: number; fill: string }>
+  >(
+    cachedDemographicsWidget?.groups || [
+      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
+      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
+      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
+      { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: 0, fill: '#f97316' }
+    ]
+  );
+  const [jumlahKK, setJumlahKK] = useState<number>(cachedDemographicsWidget?.jumlahKK || 0);
+  const [loading, setLoading] = useState(!cachedDemographicsWidget);
+
+  const loadDemographics = async () => {
+    try {
+      const res = await apiFetch('/api/dashboard');
+      const json = await res.json();
+      const demo = json?.metrics?.demographics;
+      if (demo && Array.isArray(demo.groups) && demo.totalWithAge > 0) {
+        setGroups(demo.groups);
+        setJumlahKK(json.metrics.jumlahKK || 0);
+        cachedDemographicsWidget = {
+          groups: demo.groups,
+          jumlahKK: json.metrics.jumlahKK || 0
+        };
+        setLoading(false);
+        return;
+      }
+
+      // Fallback computation from /api/warga?limit=0&summary=1
+      const wRes = await apiFetch('/api/warga?limit=0&summary=1');
+      if (wRes.ok) {
+        const wJson = await wRes.json();
+        const users = (wJson.users || []).filter((u: any) => u.role !== 'developer');
+        const resolveAge = (rawAge: any, rawDob?: string): number => {
+          if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+            const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+            if (!isNaN(diff) && diff > 0) {
+              return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
+            }
+          }
+          const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+          return isNaN(parsed) ? -1 : parsed;
+        };
+
+        let balita = 0,
+          anak = 0,
+          remaja = 0,
+          dewasa = 0;
+        const addAge = (age: number) => {
+          if (age < 0) return;
+          if (age <= 4) balita++;
+          else if (age <= 12) anak++;
+          else if (age <= 20) remaja++;
+          else dewasa++;
+        };
+
+        users.forEach((u: any) => {
+          addAge(resolveAge(u.umur, u.tglLahir));
+          if (Array.isArray(u.members)) {
+            u.members.forEach((m: any) => addAge(resolveAge(m.age, m.tglLahir)));
+          }
+        });
+
+        const nextGroups = [
+          { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balita, fill: '#3b82f6' },
+          { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anak, fill: '#10b981' },
+          { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remaja, fill: '#8b5cf6' },
+          { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: dewasa, fill: '#f97316' }
+        ];
+        setGroups(nextGroups);
+        setJumlahKK(users.length);
+        cachedDemographicsWidget = { groups: nextGroups, jumlahKK: users.length };
+      }
+    } catch (e) {
+      console.error('Gagal memuat demografi usia warga:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDemographics();
+    const handleUpdate = () => loadDemographics();
+    window.addEventListener('app_data_update', handleUpdate);
+    return () => window.removeEventListener('app_data_update', handleUpdate);
+  }, []);
+
+  const totalPersons = groups.reduce((acc, g) => acc + (Number(g.count) || 0), 0);
+  const isAdminRole = ['admin', 'developer', 'bendahara', 'sekretaris', 'pengurus'].includes(
+    user?.role || 'admin'
+  );
+
+  return (
+    <section className="px-5 mb-6">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
+                Demografi Usia Warga (Semua Warga)
+              </h3>
+              <span className="text-[9px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded">
+                {isAdminRole ? 'Pengurus RT' : 'Statistik RT'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Total {totalPersons} jiwa dari {jumlahKK} KK terdaftar
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onActionClick('Data Warga')}
+            className="text-[11px] font-extrabold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1.5 rounded-xl transition-colors cursor-pointer shrink-0"
+          >
+            Lihat Detail ›
+          </button>
+        </div>
+
+        {/* Bar Chart Visualization */}
+        <div className="h-44 w-full bg-slate-50/70 border border-slate-100 rounded-xl p-2.5">
+          {loading ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={groups} margin={{ top: 8, right: 8, left: -20, bottom: 0 }} barSize={32}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: '#334155', fontSize: 11, fontWeight: 700 }}
+                  axisLine={{ stroke: '#cbd5e1' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(13, 148, 136, 0.06)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length > 0) {
+                      const item = payload[0].payload;
+                      const pct =
+                        totalPersons > 0 ? Math.round((item.count / totalPersons) * 100) : 0;
+                      return (
+                        <div className="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-md text-[11px]">
+                          <p className="font-extrabold text-teal-300">
+                            {item.name} ({item.range})
+                          </p>
+                          <p className="font-bold mt-0.5">
+                            {item.count} Warga ({pct}%)
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                  {groups.map(entry => (
+                    <Cell key={entry.key} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Summary Age Group Pills */}
+        <div className="grid grid-cols-4 gap-2">
+          {groups.map(group => {
+            const pct = totalPersons > 0 ? Math.round((group.count / totalPersons) * 100) : 0;
+            return (
+              <div
+                key={group.key}
+                onClick={() => onActionClick('Data Warga')}
+                className="p-2 rounded-xl border border-slate-100 bg-slate-50/70 hover:border-teal-200 text-center cursor-pointer transition-colors"
+              >
+                <div className="flex items-center justify-center gap-1">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: group.fill }}
+                  />
+                  <span className="text-[10px] font-extrabold text-slate-700 truncate">
+                    {group.name}
+                  </span>
+                </div>
+                <p className="text-sm font-black text-slate-900 mt-0.5 tabular-nums">{group.count}</p>
+                <p className="text-[9px] font-bold text-slate-500">{group.range} • {pct}%</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const mobileNavItems = [
   { name: 'Beranda', icon: icons.home, active: true },
   { name: 'Acara', icon: icons.events },
@@ -3937,15 +4159,16 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
     developer: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Smart RT AI', 'Pengaturan', 'Akses Menu'],
     admin: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Smart RT AI', 'Pengaturan'],
     sekretaris: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Laporan', 'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
-    bendahara: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'UMKM', 'Pengaturan'],
+    bendahara: ['Dashboard', 'Warga', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'UMKM', 'Pengaturan'],
     pengurus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
-    warga: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Smart RT AI', 'Pengaturan']
+    warga: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Smart RT AI', 'Pengaturan']
   };
 
   const userRole = originalUser?.role || 'warga';
   const rolePermission = menuPermissions.find(p => p.role === userRole);
   let allowedMenus = rolePermission ? rolePermission.allowedMenus : (fallbackPermissions[userRole] || fallbackPermissions.warga);
   if (Array.isArray(allowedMenus)) {
+    if (!allowedMenus.includes('Warga')) allowedMenus = [...allowedMenus, 'Warga'];
     if (!allowedMenus.includes('UMKM')) allowedMenus = [...allowedMenus, 'UMKM'];
     if (!allowedMenus.includes('Voting')) allowedMenus = [...allowedMenus, 'Voting'];
     allowedMenus = allowedMenus.filter(m => m !== 'Tamu');
@@ -4115,7 +4338,10 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                 ) : (
                   <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-8 text-teal-600"><div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
                     {activeWebTab === 'Dashboard' ? (
-                      <WebDashboardRtView/>
+                      <WebDashboardRtView
+                        user={user}
+                        onNavigateToWarga={() => setActiveWebTab('Warga')}
+                      />
                     ) : (
                       <>
                         {user.isApproved && activeWebTab === 'Warga' && <WebWargaPage user={user} />}
@@ -4308,6 +4534,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         </div>
                       )}
                       <MobileQuickActions onActionClick={setActiveMobileTab} visibleMenus={visibleMenus}/>
+                      <MobileDemographicsWidget user={user} onActionClick={setActiveMobileTab} />
                       <MobileUMKMAds onActionClick={setActiveMobileTab} />
                       <MobileCalendarWidget onActionClick={setActiveMobileTab} />
                     </>
