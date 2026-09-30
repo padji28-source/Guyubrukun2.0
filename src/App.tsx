@@ -593,7 +593,7 @@ const WebHeader = ({
                 <button onClick={() => setShowProfileModal(false)} className="w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-full text-gray-500 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-200 transition-all">✕</button>
               </div>
               <div className="p-0 overflow-y-auto w-full relative bg-slate-50">
-                 <MobileProfilPage user={user} onLogout={() => { onLogout?.(); setShowProfileModal(false); }} onUpdateUser={(d) => { if(onUpdateUser) onUpdateUser(d); setShowProfileModal(false); }} />
+                 <MobileProfilPage user={user} onLogout={() => { onLogout?.(); setShowProfileModal(false); }} onUpdateUser={(d) => { if(onUpdateUser) onUpdateUser(d); }} />
               </div>
             </motion.div>
           </div>
@@ -2705,6 +2705,11 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const [passwordError, setPasswordError] = useState('');
   const [savingPass, setSavingPass] = useState(false);
 
+  // Photo preview state (staged before saving)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoMeta, setPhotoMeta] = useState<{ name: string; sizeText: string } | null>(null);
+  const [showPhotoPreviewModal, setShowPhotoPreviewModal] = useState(false);
+
   const [profile, setProfile] = useState({
     name: user?.nama || 'Admin RT',
     address: user?.alamat || '',
@@ -2740,17 +2745,74 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const sizeKb = file.size / 1024;
+      const sizeText = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(2)} MB` : `${Math.max(1, Math.round(sizeKb))} KB`;
+
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setProfile({ ...profile, photo: e.target?.result as string });
+      reader.onload = (ev) => {
+        const rawDataUrl = ev.target?.result as string;
+        if (!rawDataUrl) return;
+
+        // Optimize image dimensions for smooth preview & reliable saving
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 600;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
+              setPhotoPreview(compressedUrl);
+            } else {
+              setPhotoPreview(rawDataUrl);
+            }
+          } catch {
+            setPhotoPreview(rawDataUrl);
+          }
+          setPhotoMeta({ name: file.name, sizeText });
+        };
+        img.onerror = () => {
+          setPhotoPreview(rawDataUrl);
+          setPhotoMeta({ name: file.name, sizeText });
+        };
+        img.src = rawDataUrl;
       };
-      reader.readAsDataURL(e.target.files[0]);
+      reader.readAsDataURL(file);
+      e.target.value = '';
     }
+  };
+
+  const handleDiscardPhotoPreview = () => {
+    setPhotoPreview(null);
+    setPhotoMeta(null);
+  };
+
+  const handleCancelEdit = () => {
+    setPhotoPreview(null);
+    setPhotoMeta(null);
+    setShowPhotoPreviewModal(false);
+    setIsEditing(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
     setSuccessMsg('');
+    const finalPhoto = photoPreview !== null ? photoPreview : profile.photo;
     try {
       const res = await apiFetch('/api/profile', {
         method: 'PUT',
@@ -2761,18 +2823,24 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
           alamat: profile.address,
           noHp: profile.phone,
           status: profile.role,
-          photo: profile.photo,
-          umur: profile.umur
+          photo: finalPhoto,
+          umur: profile.umur,
+          tglLahir: profile.tglLahir
         })
       });
       if (res.ok) {
+        setProfile(prev => ({ ...prev, photo: finalPhoto }));
+        setPhotoPreview(null);
+        setPhotoMeta(null);
+        setShowPhotoPreviewModal(false);
         onUpdateUser({
            nama: profile.name,
            alamat: profile.address,
            noHp: profile.phone,
            status: profile.role,
-           photo: profile.photo,
-           umur: profile.umur
+           photo: finalPhoto,
+           umur: profile.umur,
+           tglLahir: profile.tglLahir
         });
         setIsEditing(false);
         setSuccessMsg('✅ Profil berhasil diperbarui!');
@@ -2867,37 +2935,143 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
 
   // ================= VIEW: EDIT PROFIL =================
   if (isEditing) {
+    const activeEditPhoto = photoPreview !== null ? photoPreview : profile.photo;
+
     return (
       <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 pb-32 min-h-screen bg-slate-50 w-full relative">
         <div className="flex items-center justify-between mb-6">
-          <button onClick={() => setIsEditing(false)} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-600 hover:bg-slate-50 transition-colors shadow-sm">
+          <button onClick={handleCancelEdit} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-600 hover:bg-slate-50 transition-colors shadow-sm" title="Batal & Kembali">
             <icons.arrowLeft className="w-5 h-5" />
           </button>
           <h2 className="text-lg font-extrabold text-slate-800 tracking-tight">Edit Profil</h2>
-          <button onClick={handleSave} disabled={saving} className="text-xs text-white bg-teal-600 px-4 py-2 rounded-full font-bold shadow-sm active:scale-95 transition-transform disabled:opacity-50">
-            {saving ? '...' : 'Simpan'}
+          <button onClick={handleSave} disabled={saving} className="text-xs text-white bg-teal-600 hover:bg-teal-700 px-4 py-2 rounded-full font-bold shadow-sm active:scale-95 transition-all disabled:opacity-50">
+            {saving ? 'Menyimpan...' : 'Simpan'}
           </button>
         </div>
         
         <div className="flex flex-col items-center mb-6">
           <div className="relative group">
-            <div className="w-24 h-24 rounded-full border-4 border-white shadow-xl overflow-hidden bg-slate-100 relative">
-               {profile.photo ? (
-                  <img src={profile.photo} alt="Profile" className="w-full h-full object-cover" />
+            <div 
+              onClick={() => { if (activeEditPhoto) setShowPhotoPreviewModal(true); }}
+              className={`w-28 h-28 rounded-full border-4 ${photoPreview !== null ? 'border-teal-500 ring-4 ring-teal-500/20' : 'border-white'} shadow-xl overflow-hidden bg-slate-100 relative ${activeEditPhoto ? 'cursor-pointer' : ''} transition-all`}
+              title={activeEditPhoto ? 'Klik untuk memperbesar pratinjau foto' : 'Foto Profil'}
+            >
+               {activeEditPhoto ? (
+                  <img src={activeEditPhoto} alt="Pratinjau Foto Profil" className="w-full h-full object-cover" />
                ) : (
                   <ProfileAvatar size="24"/>
                )}
-               {/* Overlay Camera Icon on Hover */}
-               <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+               {/* Overlay Zoom / Camera Icon on Hover */}
+               <div className="absolute inset-0 bg-black/35 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                  <icons.media className="w-6 h-6 text-white"/>
+                 {activeEditPhoto && (
+                   <span className="text-[9px] font-extrabold text-white uppercase tracking-wider mt-1">Pratinjau</span>
+                 )}
                </div>
             </div>
-            <label className="absolute bottom-0 right-0 w-8 h-8 bg-teal-600 border-2 border-white rounded-full flex items-center justify-center cursor-pointer shadow-md hover:bg-teal-700 transition-colors">
+            {photoPreview !== null && (
+              <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-teal-600 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-md border border-white whitespace-nowrap">
+                Pratinjau Baru
+              </span>
+            )}
+            <label className="absolute bottom-0 right-0 w-9 h-9 bg-teal-600 border-2 border-white rounded-full flex items-center justify-center cursor-pointer shadow-md hover:bg-teal-700 transition-colors" title="Pilih Foto Profil">
                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
             </label>
           </div>
-          <p className="text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-wider">Ubah Foto Anda</p>
+
+          <div className="flex items-center gap-2 mt-3">
+            <label className="px-3.5 py-1.5 bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[11px] font-extrabold cursor-pointer shadow-xs transition-colors flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+              {photoPreview !== null ? 'Ganti Foto Lain' : 'Pilih Foto Profil'}
+              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+            </label>
+            {activeEditPhoto && (
+              <button
+                type="button"
+                onClick={() => setShowPhotoPreviewModal(true)}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-[11px] font-extrabold transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                Lihat Ukuran Penuh
+              </button>
+            )}
+          </div>
+
+          {/* Kartu Pratinjau Foto Baru Sebelum Disimpan */}
+          <AnimatePresence>
+            {photoPreview !== null && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                className="w-full mt-4 bg-gradient-to-br from-teal-50/90 via-white to-emerald-50/70 border border-teal-200/80 rounded-3xl p-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
+                    <span className="text-xs font-extrabold text-teal-900">Pratinjau Foto Profil Baru</span>
+                  </div>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                    Belum Disimpan
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 bg-white/90 p-3 rounded-2xl border border-teal-100/80">
+                  {/* Foto Saat Ini */}
+                  <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Foto Saat Ini</span>
+                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-slate-200 bg-slate-100 flex items-center justify-center shadow-xs">
+                      {profile.photo ? (
+                        <img src={profile.photo} alt="Foto Saat Ini" className="w-full h-full object-cover opacity-80" />
+                      ) : (
+                        <ProfileAvatar size="16" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Pratinjau Foto Baru */}
+                  <div 
+                    onClick={() => setShowPhotoPreviewModal(true)}
+                    className="flex flex-col items-center justify-center p-2 rounded-xl bg-teal-50/60 border border-teal-200/80 cursor-pointer hover:bg-teal-50 transition-colors"
+                  >
+                    <span className="text-[10px] font-extrabold text-teal-700 uppercase tracking-wider mb-2">Foto Baru (Dipilih)</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-teal-500 bg-white shadow-md">
+                        <img src={photoPreview} alt="Pratinjau Bulat" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-teal-300 bg-white shadow-xs hidden sm:block">
+                        <img src={photoPreview} alt="Pratinjau Kotak" className="w-full h-full object-cover" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {photoMeta && (
+                  <p className="text-[11px] font-semibold text-slate-500 mt-2.5 text-center truncate px-2">
+                    File: <span className="font-bold text-slate-700">{photoMeta.name}</span> ({photoMeta.sizeText})
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-teal-100">
+                  <button
+                    type="button"
+                    onClick={handleDiscardPhotoPreview}
+                    className="flex-1 py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-extrabold transition-colors"
+                  >
+                    Batalkan Pilihan Foto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoPreviewModal(true)}
+                    className="flex-1 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold transition-colors shadow-xs"
+                  >
+                    Perbesar Pratinjau
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="bg-white p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 space-y-4">
@@ -2940,7 +3114,90 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
                  <input type="text" value={profile.umur ? `${profile.umur} th` : ''} readOnly className="w-full p-3.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-500 outline-none cursor-not-allowed text-center" placeholder="-" />
               </div>
             </div>
+
+            <div className="pt-2 flex gap-3">
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-[2] py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs font-extrabold shadow-md transition-all disabled:opacity-50"
+              >
+                {saving ? 'Menyimpan Perubahan...' : 'Simpan Perubahan Profil'}
+              </button>
+            </div>
         </div>
+
+        {/* Modal Pratinjau Ukuran Penuh (Zoom) */}
+        <AnimatePresence>
+          {showPhotoPreviewModal && activeEditPhoto && (
+            <div 
+              className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+              onClick={() => setShowPhotoPreviewModal(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 16 }}
+                className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-5 border border-slate-100 overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800">
+                      {photoPreview !== null ? 'Pratinjau Foto Profil Baru' : 'Pratinjau Foto Profil Saat Ini'}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {photoPreview !== null ? 'Periksa tampilan foto sebelum klik Simpan' : 'Tampilan foto profil Anda'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoPreviewModal(false)}
+                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 flex items-center justify-center font-bold transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Tampilan Penuh */}
+                <div className="w-full aspect-square rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center border border-slate-200 mb-4">
+                  <img src={activeEditPhoto} alt="Pratinjau Penuh" className="w-full h-full object-contain" />
+                </div>
+
+                {/* Simulasi Tampilan Avatar di Header & Kartu Warga */}
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3 mb-4">
+                  <img src={activeEditPhoto} alt="Avatar Kecil" className="w-12 h-12 rounded-full object-cover border-2 border-teal-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-extrabold text-teal-600 uppercase tracking-wider">Tampilan Avatar Aplikasi</p>
+                    <p className="text-xs font-extrabold text-slate-800 truncate">{profile.name}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{profile.address || 'Warga RT 01'}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <label className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-extrabold text-center cursor-pointer transition-colors">
+                    Pilih Foto Lain
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoPreviewModal(false)}
+                    className="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold transition-colors"
+                  >
+                    Selesai Pratinjau
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   }
