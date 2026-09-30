@@ -2369,6 +2369,8 @@ app.get("/api/warga", async (req, res) => {
           tglLahir: u.tglLahir,
           jenisKelamin: u.jenisKelamin,
           members: u.members || [],
+          hasKk: Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== ''),
+          hasKtp: Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp),
           isApproved: u.isApproved,
           rtId: u.rtId,
           isOnline
