@@ -3253,7 +3253,7 @@ app.delete("/api/data/:resource/:id", async (req, res) => {
 
 
 // ==========================================
-// QRIS SEDEKAH / INFAQ MASJID ENDPOINT
+// SEDEKAH / INFAQ MASJID ENDPOINT
 // ==========================================
 app.post("/api/sedekah", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
@@ -3273,24 +3273,24 @@ app.post("/api/sedekah", async (req, res) => {
       type: 'Masuk',
       amount: parsedAmount,
       name: donatorName,
-      message: `[Sedekah QRIS - ${paymentMethod || 'QRIS'}] ${message || 'Infaq & Sedekah Masjid Al Ikhlas'}`,
+      message: `[Infaq & Sedekah - ${paymentMethod || 'Transfer BSI'}] ${message || 'Infaq & Sedekah Masjid Al Ikhlas'}`,
       category: 'Lainnya',
       rtId,
       status: 'selesai'
     });
 
-    await logAudit(rtId, donatorName, "CREATE_SEDEKAH_QRIS", `Menerima donasi QRIS sebesar Rp ${parsedAmount.toLocaleString('id-ID')} dari ${donatorName}`, null, newKas);
+    await logAudit(rtId, donatorName, "CREATE_SEDEKAH", `Menerima donasi sedekah sebesar Rp ${parsedAmount.toLocaleString('id-ID')} dari ${donatorName}`, null, newKas);
 
     await addNotification(
       rtId,
-      "Sedekah QRIS Diterima",
-      `Alhamdulillah, infaq/sedekah sebesar Rp ${parsedAmount.toLocaleString('id-ID')} dari ${donatorName} telah diterima melalui QRIS. Terima kasih atas kedermawanan Anda.`,
+      "Infaq/Sedekah Diterima",
+      `Alhamdulillah, infaq/sedekah sebesar Rp ${parsedAmount.toLocaleString('id-ID')} dari ${donatorName} telah diterima. Terima kasih atas kedermawanan Anda.`,
       donatorName
     );
 
     res.json({ message: "Donasi berhasil diterima. Terima kasih!", item: newKas });
   } catch (error: any) {
-    console.error("Error saving QRIS donation:", error);
+    console.error("Error saving donation:", error);
     res.status(500).json({ error: "Gagal menyimpan transaksi donasi." });
   }
 });
