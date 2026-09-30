@@ -3333,11 +3333,36 @@ app.put("/api/voting/:id", enforceRoles(['admin']), async (req, res) => {
   const voteDoc = await VotingModel.findOne({ id: req.params.id, rtId });
   if (voteDoc) {
     const beforeObj = voteDoc.toObject();
-    await VotingModel.updateOne({ id: req.params.id, rtId }, { $set: req.body });
-    const afterObj = await VotingModel.findOne({ id: req.params.id, rtId });
-    await logAudit(rtId, (req.headers['x-user-nama'] as string) || "Ketua RT", "UPDATE_VOTING", `Mengupdate status/parameter voting: ${afterObj?.title}`, beforeObj, afterObj);
+    const { title, category, description, deadline, options, status } = req.body;
+
+    if (title !== undefined) voteDoc.title = String(title).trim();
+    if (category !== undefined) voteDoc.category = category;
+    if (description !== undefined) voteDoc.description = description;
+    if (deadline !== undefined) voteDoc.deadline = deadline;
+    if (status !== undefined) voteDoc.status = status;
+
+    if (Array.isArray(options) && options.length >= 2) {
+      const validIds = new Set(options.map((o: any, idx: number) => String(o.id || idx + 1)));
+      const currentVotes = Array.isArray(voteDoc.votes) ? voteDoc.votes : [];
+      const filteredVotes = currentVotes.filter((v: any) => validIds.has(String(v.optionId)));
+      voteDoc.votes = filteredVotes;
+      voteDoc.options = options.map((opt: any, idx: number) => {
+        const optId = String(opt.id || idx + 1);
+        const count = filteredVotes.filter((v: any) => String(v.optionId) === optId).length;
+        return {
+          id: optId,
+          text: String(opt.text || '').trim(),
+          count
+        };
+      });
+      voteDoc.markModified('votes');
+      voteDoc.markModified('options');
+    }
+
+    const afterObj = await voteDoc.save();
+    await logAudit(rtId, (req.headers['x-user-nama'] as string) || "Ketua RT", "UPDATE_VOTING", `Mengupdate sesi voting: ${afterObj?.title}`, beforeObj, afterObj);
     broadcastEvent('update', { type: 'voting', rtId });
-    res.json({ message: "Voting diperbarui", data: afterObj });
+    res.json({ message: "Voting berhasil diperbarui", data: afterObj });
   } else {
     res.status(404).json({ error: "Voting tidak ditemukan" });
   }
@@ -3898,11 +3923,15 @@ export async function startServer(listen = true) {
     res.status(404).json({ error: `API route ${req.originalUrl} not found` });
   });
 
+  const distPath = path.join(process.cwd(), 'dist');
+  const distIndex = path.join(distPath, 'index.html');
+  const isDevCommand = process.env.npm_lifecycle_event === "dev";
   const isProduction =
-    process.env.NODE_ENV === "production" ||
-    process.env.npm_lifecycle_event === "start" ||
-    Boolean(process.env.K_SERVICE) ||
-    Boolean(process.env.VERCEL);
+    !isDevCommand &&
+    (process.env.NODE_ENV === "production" ||
+      process.env.npm_lifecycle_event === "start" ||
+      Boolean(process.env.VERCEL)) &&
+    fs.existsSync(distIndex);
 
   if (!isProduction) {
     const viteDynamic = "vite";
@@ -3913,10 +3942,13 @@ export async function startServer(listen = true) {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      if (fs.existsSync(distIndex)) {
+        res.sendFile(distIndex);
+      } else {
+        res.sendFile(path.join(process.cwd(), 'index.html'));
+      }
     });
   }
 
