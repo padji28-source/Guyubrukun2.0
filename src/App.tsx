@@ -12,7 +12,6 @@ const WebSuratOnlinePage = React.lazy(() => import('./components/WebSuratOnlineP
 
 const MobileDarurat = React.lazy(() => import('./MobileDarurat').then(m => ({ default: m.MobileDarurat })));
 const MobileDokumen = React.lazy(() => import('./MobileDokumen').then(m => ({ default: m.MobileDokumen })));
-const MobileTamu = React.lazy(() => import('./MobileTamu').then(m => ({ default: m.MobileTamu })));
 const MobileVoting = React.lazy(() => import('./MobileVoting').then(m => ({ default: m.MobileVoting })));
 
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
@@ -338,12 +337,11 @@ const WebSidebar = ({
         { name: 'Kas', icon: icons.kas },
         { name: 'Dokumen', icon: icons.dokumen },
         { name: 'Laporan', icon: icons.laporan },
-        { name: 'Notulen Rapat', icon: icons.laporan },
         { name: 'Voting', icon: icons.voting },
+        { name: 'Notulen Rapat', icon: icons.laporan },
         { name: 'Pengumuman', icon: icons.pengumuman },
         { name: 'Media', icon: icons.media },
         { name: 'UMKM', icon: icons.umkm },
-        { name: 'Tamu', icon: icons.warga },
         { name: 'Inventaris', icon: icons.inventaris },
         { name: 'Smart RT AI', icon: icons.gemini },
         { name: 'Pengaturan', icon: icons.pengaturan },
@@ -1181,8 +1179,14 @@ const WebMediaPage = ({ user }: { user: any }) => (
   </div>
 );
 
-const WebTamuPage = ({ user }: { user: any }) => {
-  return <WebLaporanPage user={user} initialTab="tamu" />;
+const WebVotingPage = ({ user }: { user: any }) => {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col w-full h-full min-h-[500px] overflow-auto">
+      <div className="p-2 md:p-6 relative">
+        <MobileVoting onBack={() => {}} currentUser={user} />
+      </div>
+    </div>
+  );
 };
 
 const WebPengaturanPage = ({ user, onLogout }: { user: any, onLogout: () => void }) => {
@@ -1783,6 +1787,7 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
 
   const mobileToWebMap: { [key: string]: string } = {
     'Surat': 'Surat Online',
+    'Laporan': 'Laporan',
     'Lapor RT': 'Laporan',
     'Dokumen': 'Dokumen',
     'Notulen Rapat': 'Notulen Rapat',
@@ -1791,7 +1796,6 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
     'Kas': 'Kas',
     'Data Warga': 'Warga',
     'UMKM': 'UMKM',
-    'Tamu': 'Tamu',
     'Inventaris': 'Inventaris',
     'Smart RT AI': 'Smart RT AI',
     'Voting': 'Voting'
@@ -2339,8 +2343,8 @@ export const ProfileAvatar = ({ size = '10' }: { size?: string }) => (
 
 const quickActions = [
   { name: 'Surat', icon: icons.surat, color: 'from-blue-400 to-indigo-500', shadow: 'shadow-blue-200' },
-  { name: 'Lapor RT', icon: icons.laporanrt, color: 'from-rose-400 to-red-500', shadow: 'shadow-rose-200' },
   { name: 'Laporan', icon: icons.laporan, color: 'from-sky-400 to-indigo-500', shadow: 'shadow-sky-200' },
+  { name: 'Voting', icon: icons.voting, color: 'from-indigo-400 to-indigo-600', shadow: 'shadow-indigo-200' },
   { name: 'Dokumen', icon: icons.dokumen, color: 'from-amber-400 to-orange-500', shadow: 'shadow-amber-200' },
   { name: 'UMKM', icon: icons.umkm, color: 'from-yellow-400 to-amber-500', shadow: 'shadow-yellow-200' },
   { name: 'Iuran', icon: icons.iuran, color: 'from-emerald-400 to-teal-500', shadow: 'shadow-emerald-200' },
@@ -2350,7 +2354,6 @@ const quickActions = [
   { name: 'Notulen Rapat', icon: icons.laporan, color: 'from-sky-500 to-blue-600', shadow: 'shadow-sky-200' },
   { name: 'Sedekah', icon: icons.sedekah, color: 'from-pink-400 to-rose-500', shadow: 'shadow-pink-200' },
   { name: 'Darurat', icon: icons.darurat, color: 'from-red-500 to-rose-600', shadow: 'shadow-red-200' },
-  { name: 'Voting', icon: icons.voting, color: 'from-indigo-400 to-indigo-600', shadow: 'shadow-indigo-200' },
   { name: 'Inventaris', icon: icons.inventaris, color: 'from-emerald-500 to-teal-600', shadow: 'shadow-emerald-250' },
   { name: 'Smart RT AI', icon: icons.gemini, color: 'from-teal-400 to-cyan-500', shadow: 'shadow-teal-200' },
 ];
@@ -3912,27 +3915,29 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   };
 
   const fallbackPermissions: { [key: string]: string[] } = {
-    developer: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 'Smart RT AI', 'Pengaturan', 'Akses Menu'],
-    admin: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 'Smart RT AI', 'Pengaturan'],
-    sekretaris: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
-    bendahara: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'UMKM', 'Pengaturan'],
-    pengurus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
-    warga: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Smart RT AI', 'Pengaturan']
+    developer: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Smart RT AI', 'Pengaturan', 'Akses Menu'],
+    admin: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Smart RT AI', 'Pengaturan'],
+    sekretaris: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Laporan', 'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
+    bendahara: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'UMKM', 'Pengaturan'],
+    pengurus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan'],
+    warga: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Smart RT AI', 'Pengaturan']
   };
 
   const userRole = originalUser?.role || 'warga';
   const rolePermission = menuPermissions.find(p => p.role === userRole);
   let allowedMenus = rolePermission ? rolePermission.allowedMenus : (fallbackPermissions[userRole] || fallbackPermissions.warga);
-  if (Array.isArray(allowedMenus) && !allowedMenus.includes('UMKM')) {
-    allowedMenus = [...allowedMenus, 'UMKM'];
+  if (Array.isArray(allowedMenus)) {
+    if (!allowedMenus.includes('UMKM')) allowedMenus = [...allowedMenus, 'UMKM'];
+    if (!allowedMenus.includes('Voting')) allowedMenus = [...allowedMenus, 'Voting'];
+    allowedMenus = allowedMenus.filter(m => m !== 'Tamu');
   }
   
-  const vipMenus = ['Notulen Rapat', 'Voting', 'Inventaris', 'Smart RT AI'];
+  const vipMenus = ['Notulen Rapat', 'Inventaris', 'Smart RT AI'];
   
   // Semua role bisa melihat menu, list master menu yang ada
   const allAppMenus = [
     'Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 
-    'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 
+    'Voting', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 
     'Smart RT AI', 'Pengaturan'
   ];
   if (userRole === 'developer') {
@@ -4106,11 +4111,11 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         )}
                         {user.isApproved && activeWebTab === 'Dokumen' && <WebDokumenPage user={user} onUpdateUser={onUpdateUser} />}
                         {user.isApproved && activeWebTab === 'Laporan' && <WebLaporanPage user={user} />}
+                        {user.isApproved && activeWebTab === 'Voting' && <WebVotingPage user={user} />}
                         {user.isApproved && activeWebTab === 'Notulen Rapat' && <WebNotulenPage user={user} />}
                         {user.isApproved && activeWebTab === 'Pengumuman' && <WebPengumumanPage user={user} />}
                         {user.isApproved && activeWebTab === 'Media' && <WebMediaPage user={user} />}
                         {user.isApproved && activeWebTab === 'UMKM' && <WebUMKMPage user={user} />}
-                        {user.isApproved && activeWebTab === 'Tamu' && <WebTamuPage user={user} />}
                         {user.isApproved && activeWebTab === 'Inventaris' && <WebInventarisPage user={user} />}
                         {user.isApproved && activeWebTab === 'Smart RT AI' && <WebSmartRtAiPage user={user} />}
                         {user.isApproved && activeWebTab === 'Akses Menu' && <WebMenuAccessPage user={user} />}
@@ -4310,7 +4315,6 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                   {activeMobileTab === 'Media' && <MobileMedia onBack={() => setActiveMobileTab('Beranda')} currentUser={user} />}
                   {activeMobileTab === 'Darurat' && <MobileDarurat onBack={() => setActiveMobileTab('Beranda')} currentUser={user} />}
                   {activeMobileTab === 'Dokumen' && <MobileDokumen onBack={() => setActiveMobileTab('Beranda')} currentUser={user} onUpdateUser={onUpdateUser} />}
-                  {activeMobileTab === 'Tamu' && <MobileLaporan onBack={() => setActiveMobileTab('Beranda')} currentUser={user} initialTab="tamu" />}
                   {activeMobileTab === 'Inventaris' && (
                      <div className="p-4 overflow-y-auto max-h-[calc(100vh-140px)]">
                        <button className="flex items-center gap-2 mb-4 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 px-3 py-1.5 rounded-full outline-none pointer-events-auto cursor-pointer" onClick={() => setActiveMobileTab('Beranda')}>
@@ -4337,7 +4341,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                   )}
 
                   {/* Fallback for unrecognized tabs */}
-                  {!['Beranda', 'Acara', 'Scan QR', 'Laporan', 'Surat', 'Surat Pengantar', 'Iuran', 'Kas', 'Sedekah', 'UMKM Warga', 'UMKM', 'Lapor RT', 'Data Warga', 'Media', 'Darurat', 'Dokumen', 'Tamu', 'Inventaris', 'Smart RT AI', 'Notulen Rapat'].includes(activeMobileTab) && (
+                  {!['Beranda', 'Voting', 'Acara', 'Scan QR', 'Laporan', 'Surat', 'Surat Pengantar', 'Iuran', 'Kas', 'Sedekah', 'UMKM Warga', 'UMKM', 'Lapor RT', 'Data Warga', 'Media', 'Darurat', 'Dokumen', 'Inventaris', 'Smart RT AI', 'Notulen Rapat'].includes(activeMobileTab) && (
                     <div className="flex flex-col items-center justify-center h-full opacity-50 py-20">
                       <icons.dashboard className="w-12 h-12 text-gray-300 mb-3" />
                       <h2 className="text-lg font-semibold text-gray-500">Halaman {activeMobileTab}</h2>
