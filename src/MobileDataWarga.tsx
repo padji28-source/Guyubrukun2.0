@@ -513,6 +513,14 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   };
 
   // Kumpulan seluruh individu warga (Kepala Keluarga + Anggota Keluarga) dari Data Warga
+  const isOwnAccount = (w: any) =>
+    Boolean(
+      currentUser &&
+        ((currentUser.id && String(w?.id) === String(currentUser.id)) ||
+          (currentUser.username &&
+            String(w?.username || '').toLowerCase() === String(currentUser.username).toLowerCase()))
+    );
+
   const allPersonsList = useMemo(() => {
     const rawSource =
       allWargaKkData.length > 0
@@ -520,7 +528,11 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         : allWargaFullData.length > 0
         ? allWargaFullData
         : wargaData;
-    const sourceList = rawSource.filter(w => w.role !== 'developer');
+    const sourceList = rawSource.filter(w => {
+      if (w.role === 'developer') return false;
+      if (!isKetuaRT) return isOwnAccount(w);
+      return true;
+    });
     const persons: Array<{
       id: string;
       wargaId: string;
@@ -845,12 +857,16 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   };
 
   const filteredWargaData = useMemo(() => {
-    const isFilteringAll = Boolean(filterAgeCategory || filterBlok);
+    const useFullData = !isKetuaRT || Boolean(filterAgeCategory || filterBlok);
     const sourceData =
-      isFilteringAll && allWargaFullData.length > 0 ? allWargaFullData : wargaData;
+      useFullData && allWargaFullData.length > 0 ? allWargaFullData : wargaData;
 
     const filtered = sourceData.filter(w => {
       if (w.role === 'developer') return false;
+      // Untuk bendahara, pengurus, sekretaris, dan warga: hanya tampilkan data sesuai akun yang login
+      if (!isKetuaRT) {
+        return isOwnAccount(w);
+      }
       const q = debouncedSearchQuery.toLowerCase();
       const matchName =
         !q ||
@@ -864,13 +880,13 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
     // Tempatkan akun user yang sedang aktif di urutan paling atas
     return [...filtered].sort((a, b) => {
-      const isCurrentA = currentUser && (a.id === currentUser.id || a.username === currentUser.username);
-      const isCurrentB = currentUser && (b.id === currentUser.id || b.username === currentUser.username);
+      const isCurrentA = isOwnAccount(a);
+      const isCurrentB = isOwnAccount(b);
       if (isCurrentA && !isCurrentB) return -1;
       if (!isCurrentA && isCurrentB) return 1;
       return 0;
     });
-  }, [wargaData, allWargaFullData, debouncedSearchQuery, filterBlok, filterAgeCategory, currentUser]);
+  }, [wargaData, allWargaFullData, debouncedSearchQuery, filterBlok, filterAgeCategory, currentUser, isKetuaRT]);
 
   // Summary & Filtered list for "Data Dokumen KK" menu (Ketua RT only)
   const kkStats = useMemo(() => {
@@ -1967,9 +1983,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             </div>
           )}
 
-          {/* SEARCH & FILTER */}
-          <div className="mb-6 space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2.5">
+          {/* SEARCH & FILTER (Khusus Ketua RT) */}
+          {isKetuaRT ? (
+            <div className="mb-6 space-y-3">
+              <div className="flex flex-col sm:flex-row gap-2.5">
               <div className="relative flex-grow">
                 <icons.search className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
                 <input
@@ -2102,15 +2119,23 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 </button>
               </div>
             )}
-          </div>
+            </div>
+          ) : (
+            <div className="mb-4 bg-teal-50/80 border border-teal-200 px-4 py-3 rounded-2xl flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-teal-900">
+                <span>👤</span>
+                <span>Menampilkan Data Keluarga & Dokumen Sesuai Akun Login Anda</span>
+              </div>
+            </div>
+          )}
 
           {/* LIST WARGA */}
           <div className="space-y-4">
             {filteredWargaData.map((warga, idx) => {
               const members = warga.members || [];
-              const isCurrentUser = Boolean(currentUser && (warga.id === currentUser.id || warga.username === currentUser.username));
-              const canEditFamily = isAdmin || ['sekretaris', 'bendahara', 'pengurus'].includes(currentUser?.role) || isCurrentUser;
-              const isExpanded = expandedId === warga.id;
+              const isCurrentUser = isOwnAccount(warga);
+              const canEditFamily = isKetuaRT || isCurrentUser;
+              const isExpanded = !isKetuaRT ? (expandedId === null || expandedId === warga.id) : expandedId === warga.id;
               const hasKk = Boolean(warga.dokumenKk && String(warga.dokumenKk).trim() !== '');
               const hasKtp = Array.isArray(warga.dokumenKtp) ? warga.dokumenKtp.length > 0 : Boolean(warga.dokumenKtp);
               const houseInfo = parseHouseInfo(warga);
@@ -2438,8 +2463,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               </div>
             )}
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && !filterAgeCategory && !filterBlok && (
+            {/* Pagination Controls (Khusus Ketua RT) */}
+            {isKetuaRT && totalPages > 1 && !filterAgeCategory && !filterBlok && (
               <div className="flex items-center justify-between pt-4 pb-2 border-t border-gray-100 mt-4">
                 <button
                   type="button"
