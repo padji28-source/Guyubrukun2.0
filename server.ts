@@ -230,10 +230,14 @@ const KasModel: mongoose.Model<any> = mongoose.models.Kas || mongoose.model("Kas
 const VotingSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
   title: { type: String, required: true },
+  category: { type: String, default: 'Musyawarah Warga' },
   description: { type: String },
+  deadline: { type: String },
   options: [{ id: String, text: String, count: Number }],
   votes: [{
     userId: { type: String, required: true },
+    userName: { type: String },
+    userBlok: { type: String },
     optionId: { type: String, required: true },
     date: { type: String, required: true }
   }],
@@ -817,27 +821,27 @@ async function initDb(rtId: string = '') {
     const defaultPermissions = [
       {
         role: 'developer',
-        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 'Smart RT AI', 'Pengaturan', 'Akses Menu']
+        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Smart RT AI', 'Pengaturan', 'Akses Menu']
       },
       {
         role: 'admin',
-        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Inventaris', 'Smart RT AI', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Smart RT AI', 'Pengaturan']
       },
       {
         role: 'sekretaris',
-        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Notulen Rapat', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Dokumen', 'Laporan', 'Notulen Rapat', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan']
       },
       {
         role: 'bendahara',
-        allowedMenus: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'UMKM', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'UMKM', 'Pengaturan']
       },
       {
         role: 'pengurus',
-        allowedMenus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Warga', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Inventaris', 'Pengaturan']
       },
       {
         role: 'warga',
-        allowedMenus: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Pengumuman', 'Media', 'UMKM', 'Tamu', 'Smart RT AI', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Smart RT AI', 'Pengaturan']
       }
     ];
 
@@ -845,8 +849,19 @@ async function initDb(rtId: string = '') {
       const exists = await MenuAccessModel.findOne({ role: perm.role });
       if (!exists) {
         await MenuAccessModel.create(perm);
-      } else if (!exists.allowedMenus?.includes('UMKM')) {
-        await MenuAccessModel.updateOne({ role: perm.role }, { $addToSet: { allowedMenus: 'UMKM' } });
+      } else {
+        await MenuAccessModel.updateOne(
+          { role: perm.role },
+          {
+            $addToSet: { allowedMenus: { $each: ['UMKM', 'Voting'] } }
+          }
+        );
+        await MenuAccessModel.updateOne(
+          { role: perm.role },
+          {
+            $pull: { allowedMenus: 'Tamu' }
+          }
+        );
       }
     }
 
@@ -871,6 +886,36 @@ async function initDb(rtId: string = '') {
         imageUrl: 'https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=300&q=80',
         title: 'Kerja Bakti 2024',
         uploaderName: 'Admin',
+        rtId: rtId || 'rt01',
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    // Seed initial Voting topic created by Ketua RT if none exist
+    const votingCount = await VotingModel.countDocuments({ rtId: rtId || 'rt01' });
+    if (votingCount === 0) {
+      await VotingModel.create({
+        id: `${rtId || 'rt01'}_vote1`,
+        title: 'Penentuan Jadwal Kerja Bakti & Perbaikan Taman RT',
+        category: 'Pembangunan & Lingkungan',
+        description: 'Musyawarah penentuan hari pelaksanaan kerja bakti bersama warga serta prioritas pembenahan fasilitas lingkungan bulan ini.',
+        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        options: [
+          { id: '1', text: 'Minggu Pagi (Pukul 07.00 WIB) — Fokus Saluran Air & Taman', count: 1 },
+          { id: '2', text: 'Sabtu Sore (Pukul 16.00 WIB) — Fokus Penerangan Jalan Blok', count: 0 },
+          { id: '3', text: 'Minggu Pekan Depan — Gabungan Kerja Bakti & Senam Warga', count: 0 }
+        ],
+        votes: [
+          {
+            userId: 'seed_ketua',
+            userName: 'Ketua RT 01',
+            userBlok: 'Blok A',
+            optionId: '1',
+            date: new Date().toISOString()
+          }
+        ],
+        status: 'aktif',
+        createdBy: 'Ketua RT 01',
         rtId: rtId || 'rt01',
         createdAt: new Date().toISOString()
       });
@@ -3243,7 +3288,7 @@ app.post("/api/sedekah", async (req, res) => {
 
 
 // ==========================================
-// POINT 9: SECURE CONSTANTE VOTING MECHANICS
+// POINT 9: SECURE VOTING MECHANICS (DIBUAT OLEH KETUA RT)
 // ==========================================
 app.get("/api/voting", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
@@ -3251,48 +3296,73 @@ app.get("/api/voting", async (req, res) => {
   res.json({ data });
 });
 
-app.post("/api/voting", enforceRoles(['admin', 'pengurus', 'sekretaris', 'bendahara']), async (req, res) => {
+app.post("/api/voting", enforceRoles(['admin']), async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  const { title, description, options, status, createdBy } = req.body;
+  const { title, category, description, deadline, options, status, createdBy } = req.body;
+
+  if (!title || !Array.isArray(options) || options.length < 2) {
+    return res.status(400).json({ error: "Judul dan minimal 2 opsi pilihan wajib diisi." });
+  }
 
   const newVote = await VotingModel.create({
     id: Date.now().toString(),
-    title,
-    description,
-    options: options.map((opt: any) => ({ ...opt, count: 0 })),
+    title: String(title).trim(),
+    category: category || 'Musyawarah Warga',
+    description: description || '',
+    deadline: deadline || '',
+    options: options.map((opt: any, idx: number) => ({
+      id: opt.id || String(idx + 1),
+      text: String(opt.text || '').trim(),
+      count: 0
+    })),
     votes: [],
     status: status || 'aktif',
-    createdBy: createdBy || 'Pengurus',
+    createdBy: createdBy || (req.headers['x-user-nama'] as string) || 'Ketua RT',
     rtId,
     createdAt: new Date().toISOString()
   });
 
-  await logAudit(rtId, createdBy || 'Admin', "CREATE_VOTING", `Membuat polling voting baru: ${title}`, null, newVote);
-  await addNotification(rtId, `Voting Baru: ${title}`, `Mari berpartisipasi pada voting baru: ${title}`, createdBy || 'Pengurus');
-  res.json({ message: "Voting created", data: newVote });
+  await logAudit(rtId, createdBy || 'Ketua RT', "CREATE_VOTING", `Ketua RT membuat voting baru: ${title}`, null, newVote);
+  await addNotification(rtId, `Voting Baru: ${title}`, `Ketua RT membuka voting baru: "${title}". Silakan berikan suara Anda!`, createdBy || 'Ketua RT', 'voting', newVote.id);
+  broadcastEvent('update', { type: 'voting', rtId });
+  res.json({ message: "Voting berhasil dibuat", data: newVote });
 });
 
-app.put("/api/voting/:id", enforceRoles(['admin', 'pengurus', 'sekretaris', 'bendahara']), async (req, res) => {
+app.put("/api/voting/:id", enforceRoles(['admin']), async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const voteDoc = await VotingModel.findOne({ id: req.params.id, rtId });
   if (voteDoc) {
     const beforeObj = voteDoc.toObject();
     await VotingModel.updateOne({ id: req.params.id, rtId }, { $set: req.body });
     const afterObj = await VotingModel.findOne({ id: req.params.id, rtId });
-    await logAudit(rtId, "Admin", "UPDATE_VOTING", `Mengupdate satus/parameter voting: ${afterObj?.title}`, beforeObj, afterObj);
-    res.json({ message: "Voting updated" });
+    await logAudit(rtId, (req.headers['x-user-nama'] as string) || "Ketua RT", "UPDATE_VOTING", `Mengupdate status/parameter voting: ${afterObj?.title}`, beforeObj, afterObj);
+    broadcastEvent('update', { type: 'voting', rtId });
+    res.json({ message: "Voting diperbarui", data: afterObj });
   } else {
     res.status(404).json({ error: "Voting tidak ditemukan" });
   }
 });
 
+app.delete("/api/voting/:id", enforceRoles(['admin']), async (req, res) => {
+  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const voteDoc = await VotingModel.findOne({ id: req.params.id, rtId });
+  if (!voteDoc) {
+    return res.status(404).json({ error: "Voting tidak ditemukan" });
+  }
+  const beforeObj = voteDoc.toObject();
+  await VotingModel.deleteOne({ id: req.params.id, rtId });
+  await logAudit(rtId, (req.headers['x-user-nama'] as string) || "Ketua RT", "DELETE_VOTING", `Menghapus voting: ${beforeObj.title}`, beforeObj, null);
+  broadcastEvent('update', { type: 'voting', rtId });
+  res.json({ message: "Voting berhasil dihapus" });
+});
+
 // SUBMIT VOTE WITH UNIQUE 1-PERSON-1-VOTE CONSTRAINT CHECK
 app.post("/api/voting/:id/vote", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  const { optionId, userId } = req.body;
+  const { optionId, userId, userName, userBlok } = req.body;
 
   if (!userId || !optionId) {
-    return res.status(400).json({ error: "Missing required voter specifications." });
+    return res.status(400).json({ error: "Identitas pemilih dan pilihan wajib diisi." });
   }
 
   const voteDoc = await VotingModel.findOne({ id: req.params.id, rtId });
@@ -3304,18 +3374,28 @@ app.post("/api/voting/:id/vote", async (req, res) => {
     return res.status(400).json({ error: "Sesi voting ini sudah berakhir dan ditutup." });
   }
 
+  if (voteDoc.deadline && new Date(voteDoc.deadline).getTime() < Date.now()) {
+    return res.status(400).json({ error: "Batas waktu voting ini telah berakhir." });
+  }
+
   // CONSTRAINT CHECK: Ensure voter only registers ONE unique voice
   const existingVoteIndex = voteDoc.votes.findIndex((vt: any) => vt.userId === userId);
   
   const beforeObj = voteDoc.toObject();
 
   if (existingVoteIndex !== -1) {
-    // If they already voted: edit their existing vote cleanly (or block if desired, here we allow them to update their choice)
     voteDoc.votes[existingVoteIndex].optionId = optionId;
+    if (userName) voteDoc.votes[existingVoteIndex].userName = userName;
+    if (userBlok) voteDoc.votes[existingVoteIndex].userBlok = userBlok;
     voteDoc.votes[existingVoteIndex].date = new Date().toISOString();
   } else {
-    // Registered new vote
-    voteDoc.votes.push({ userId, optionId, date: new Date().toISOString() });
+    voteDoc.votes.push({
+      userId,
+      userName: userName || (req.headers['x-user-nama'] as string) || 'Warga',
+      userBlok: userBlok || '',
+      optionId,
+      date: new Date().toISOString()
+    });
   }
 
   // Recalculate options counters to reflect truth
@@ -3325,9 +3405,10 @@ app.post("/api/voting/:id/vote", async (req, res) => {
   });
 
   const updatedVote = await voteDoc.save();
-  await logAudit(rtId, userId, "CAST_VOTE", `Warga menempatkan suara pada voting ${voteDoc.title}`, beforeObj, updatedVote);
+  await logAudit(rtId, userName || userId, "CAST_VOTE", `Memberikan suara pada voting ${voteDoc.title}`, beforeObj, updatedVote);
+  broadcastEvent('update', { type: 'voting', rtId });
 
-  res.json({ message: "Suara berhasil dikirimkan", data: updatedVote });
+  res.json({ message: "Suara berhasil disimpan", data: updatedVote });
 });
 
 
