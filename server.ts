@@ -833,7 +833,7 @@ async function initDb(rtId: string = '') {
       },
       {
         role: 'bendahara',
-        allowedMenus: ['Dashboard', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'UMKM', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Warga', 'Iuran', 'Kas', 'Dokumen', 'Laporan', 'Voting', 'UMKM', 'Pengaturan']
       },
       {
         role: 'pengurus',
@@ -841,7 +841,7 @@ async function initDb(rtId: string = '') {
       },
       {
         role: 'warga',
-        allowedMenus: ['Dashboard', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Smart RT AI', 'Pengaturan']
+        allowedMenus: ['Dashboard', 'Warga', 'Surat Online', 'Iuran', 'Dokumen', 'Laporan', 'Voting', 'Pengumuman', 'Media', 'UMKM', 'Smart RT AI', 'Pengaturan']
       }
     ];
 
@@ -853,7 +853,7 @@ async function initDb(rtId: string = '') {
         await MenuAccessModel.updateOne(
           { role: perm.role },
           {
-            $addToSet: { allowedMenus: { $each: ['UMKM', 'Voting'] } }
+            $addToSet: { allowedMenus: { $each: ['Warga', 'UMKM', 'Voting'] } }
           }
         );
         await MenuAccessModel.updateOne(
@@ -891,35 +891,13 @@ async function initDb(rtId: string = '') {
       });
     }
 
-    // Seed initial Voting topic created by Ketua RT if none exist
-    const votingCount = await VotingModel.countDocuments({ rtId: rtId || 'rt01' });
-    if (votingCount === 0) {
-      await VotingModel.create({
-        id: `${rtId || 'rt01'}_vote1`,
-        title: 'Penentuan Jadwal Kerja Bakti & Perbaikan Taman RT',
-        category: 'Pembangunan & Lingkungan',
-        description: 'Musyawarah penentuan hari pelaksanaan kerja bakti bersama warga serta prioritas pembenahan fasilitas lingkungan bulan ini.',
-        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        options: [
-          { id: '1', text: 'Minggu Pagi (Pukul 07.00 WIB) — Fokus Saluran Air & Taman', count: 1 },
-          { id: '2', text: 'Sabtu Sore (Pukul 16.00 WIB) — Fokus Penerangan Jalan Blok', count: 0 },
-          { id: '3', text: 'Minggu Pekan Depan — Gabungan Kerja Bakti & Senam Warga', count: 0 }
-        ],
-        votes: [
-          {
-            userId: 'seed_ketua',
-            userName: 'Ketua RT 01',
-            userBlok: 'Blok A',
-            optionId: '1',
-            date: new Date().toISOString()
-          }
-        ],
-        status: 'aktif',
-        createdBy: 'Ketua RT 01',
-        rtId: rtId || 'rt01',
-        createdAt: new Date().toISOString()
-      });
-    }
+    // Remove any previously seeded dummy voting records
+    await VotingModel.deleteMany({
+      $or: [
+        { id: { $in: [`${rtId || 'rt01'}_vote1`, 'rt01_vote1', 'rt02_vote1', 'rt03_vote1'] } },
+        { 'votes.userId': 'seed_ketua' }
+      ]
+    });
 
     // Seed initial verified UMKM Warga with banner images if none exist
     const umkmCount = await UmkmModel.countDocuments({ rtId: rtId || 'rt01' });
@@ -2368,11 +2346,38 @@ app.get("/api/warga", async (req, res) => {
       }
     });
   } else {
+    const isSummary = req.query.summary === '1';
+    const requesterId = (req.headers['x-user-id'] as string) || '';
+    const requesterRole = (req.headers['x-user-role'] as string) || '';
+    const isRequesterAdmin = ['admin', 'developer'].includes(requesterRole);
+
     const users = await dbQuery.lean();
-    sortedUsers = users.map((u: any) => ({
-      ...u,
-      isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000
-    }));
+    sortedUsers = users.map((u: any) => {
+      const isOnline = activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000;
+      const isOwn = Boolean(requesterId && String(u.id) === String(requesterId));
+      if (isSummary && !isRequesterAdmin && !isOwn) {
+        return {
+          id: u.id,
+          username: u.username,
+          nama: u.nama,
+          alamat: u.alamat,
+          noHp: u.noHp,
+          status: u.status,
+          role: u.role,
+          umur: u.umur,
+          tglLahir: u.tglLahir,
+          jenisKelamin: u.jenisKelamin,
+          members: u.members || [],
+          isApproved: u.isApproved,
+          rtId: u.rtId,
+          isOnline
+        };
+      }
+      return {
+        ...u,
+        isOnline
+      };
+    });
     res.json({ users: sortedUsers });
   }
 });
@@ -3817,7 +3822,7 @@ app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
     const [users, kas, iuran, laporan, acara, media] = await Promise.all([
-      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('members dokumenKk dokumenKtp').lean(),
+      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
       KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
       IuranModel.find({ rtId }).select('bulan status nominal').lean(),
       LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
@@ -3825,11 +3830,41 @@ app.get("/api/dashboard", async (req, res) => {
       MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').lean()
     ]);
 
+    const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
+      if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+        const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+        if (!isNaN(diff) && diff > 0) {
+          return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
+        }
+      }
+      const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+      return isNaN(parsed) ? -1 : parsed;
+    };
+
+    let balitaCount = 0;
+    let anakCount = 0;
+    let remajaCount = 0;
+    let dewasaCount = 0;
+
+    const categorizeAge = (age: number) => {
+      if (age < 0) return;
+      if (age <= 4) balitaCount++;
+      else if (age <= 12) anakCount++;
+      else if (age <= 20) remajaCount++;
+      else dewasaCount++;
+    };
+
     const jumlahKK = users.length;
     let totalWarga = jumlahKK;
     let docUploaded = 0;
     users.forEach((u: any) => {
       totalWarga += (u.members?.length || 0);
+      categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
+      if (Array.isArray(u.members)) {
+        u.members.forEach((m: any) => {
+          categorizeAge(resolvePersonAge(m.age, m.tglLahir));
+        });
+      }
       const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
       const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
       if (hasKk || hasKtp) {
@@ -3837,6 +3872,20 @@ app.get("/api/dashboard", async (req, res) => {
       }
     });
     const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
+    const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount;
+    const demographics = {
+      balita: balitaCount,
+      anak: anakCount,
+      remaja: remajaCount,
+      dewasa: dewasaCount,
+      totalWithAge,
+      groups: [
+        { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
+        { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
+        { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
+        { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: dewasaCount, fill: '#f97316' }
+      ]
+    };
 
     const getSaldo = (cat: string) => {
       const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
@@ -3882,6 +3931,7 @@ app.get("/api/dashboard", async (req, res) => {
         jumlahWarga: totalWarga,
         docUploaded,
         docNotUploaded,
+        demographics,
         saldoKas,
         kasDetail: { kasRT, danaKematian, danaSosial },
         iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
