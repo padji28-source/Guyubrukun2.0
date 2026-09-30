@@ -231,6 +231,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const handleUploadWargaDoc = async (warga: any, type: 'kk' | 'ktp', e: React.ChangeEvent<HTMLInputElement>, autoExtractAfterUpload = false) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    const isSelf = Boolean(
+      currentUser &&
+        ((currentUser.id && String(warga?.id) === String(currentUser.id)) ||
+          (currentUser.username &&
+            String(warga?.username || '').toLowerCase() === String(currentUser.username).toLowerCase()))
+    );
+    if (!isKetuaRT && !isSelf) {
+      showStatusBanner('Akses ditolak: Hanya Ketua RT yang dapat memperbarui dokumen warga lain.', true);
+      e.target.value = '';
+      return;
+    }
     setUploadingDocWargaId(warga.id);
     try {
       const existingKtp = Array.isArray(warga.dokumenKtp)
@@ -264,7 +275,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         if (isKetuaRT) {
           await fetchAllKkWargaForKetuaRT();
         }
-        if (autoExtractAfterUpload && type === 'kk' && uploadedKkDataUrl) {
+        if (autoExtractAfterUpload && isKetuaRT && type === 'kk' && uploadedKkDataUrl) {
           await handleExtractKK(warga.id, uploadedKkDataUrl, warga.nama);
         }
       } else {
@@ -280,6 +291,16 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   };
 
   const handleDeleteKkDoc = async (warga: any) => {
+    const isSelf = Boolean(
+      currentUser &&
+        ((currentUser.id && String(warga?.id) === String(currentUser.id)) ||
+          (currentUser.username &&
+            String(warga?.username || '').toLowerCase() === String(currentUser.username).toLowerCase()))
+    );
+    if (!isKetuaRT && !isSelf) {
+      showStatusBanner('Akses ditolak: Hanya Ketua RT yang dapat menghapus dokumen warga lain.', true);
+      return;
+    }
     setUploadingDocWargaId(warga.id);
     try {
       const res = await apiFetch(`/api/warga/${warga.id}/dokumen`, {
@@ -423,8 +444,12 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     }
   };
 
-  // Server-side AI Extract KK handler
+  // Server-side AI Extract KK handler (Khusus Ketua RT)
   const handleExtractKK = async (wargaId: string, customKkData?: string, fallbackName?: string) => {
+    if (!isKetuaRT) {
+      showStatusBanner('Akses ditolak: Fitur AI Extract KK hanya dapat digunakan oleh Ketua RT.', true);
+      return;
+    }
     setExtractingId(wargaId);
     setLastExtractedInfo(null);
     try {
@@ -1142,7 +1167,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             <button type="button" onClick={() => setDocErrorMessage('')} className="text-rose-600 hover:text-rose-900 ml-2">✕</button>
           </motion.div>
         )}
-        {lastExtractedInfo && (
+        {isKetuaRT && lastExtractedInfo && (
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -2322,7 +2347,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                     : <span className="text-orange-500 flex items-center gap-1">⚠️ Belum Lengkap</span>}
                                 </p>
                               </div>
-                              {(isAdmin || ['sekretaris', 'bendahara', 'pengurus'].includes(currentUser?.role) || currentUser?.id === warga.id) && (
+                              {(isKetuaRT || isCurrentUser) && (
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <label className="text-xs text-teal-700 font-bold bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-xl transition-colors cursor-pointer">
                                     {uploadingDocWargaId === warga.id ? 'Memproses...' : hasKk ? 'Ganti KK' : '+ Upload KK'}
@@ -2346,7 +2371,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                     />
                                   </label>
                                   {/* Lihat File KK hanya untuk Ketua RT (atau pemilik dokumen sendiri) */}
-                                  {(isKetuaRT || currentUser?.id === warga.id) && (hasKk || hasKtp) && (
+                                  {(isKetuaRT || isCurrentUser) && (hasKk || hasKtp) && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -2374,7 +2399,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                 <p className="text-[10px] text-gray-500 mt-0.5">Kepala Kel: Usia {warga.umur || '-'} Thn</p>
                               </div>
                               <div className="flex flex-wrap gap-2">
-                                {canEditFamily && (
+                                {isKetuaRT && (
                                   hasKk ? (
                                     <button
                                       type="button"
@@ -2413,7 +2438,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                             <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-gray-200">
                               <p className="text-xs text-gray-400 font-medium">
                                 Belum ada tanggungan/anggota keluarga.
-                                {hasKk && canEditFamily ? ' Klik tombol "AI Extract KK" di atas untuk mengisi anggota keluarga otomatis dari Kartu Keluarga.' : ''}
+                                {hasKk && isKetuaRT ? ' Klik tombol "AI Extract KK" di atas untuk mengisi anggota keluarga otomatis dari Kartu Keluarga.' : ''}
                               </p>
                             </div>
                           ) : (
