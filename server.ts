@@ -1471,7 +1471,14 @@ app.put("/api/password", async (req, res) => {
 app.put("/api/profile", async (req, res) => {
   const { id, username, nama, alamat, noHp, status, photo, umur, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  const targetId = id || (req.headers['x-user-id'] as string);
+  const requesterRole = (req.headers['x-user-role'] as string) || 'warga';
+  const requesterId = (req.headers['x-user-id'] as string) || '';
+  const targetId = id || requesterId;
+
+  const isKetuaRT = ['admin', 'developer'].includes(requesterRole);
+  if (requesterId && targetId && requesterId !== targetId && !isKetuaRT) {
+    return res.status(403).json({ error: "Akses ditolak: Hanya Ketua RT yang dapat memperbarui profil atau dokumen warga lain." });
+  }
 
   let user = await UserModel.findOne({ id: targetId, rtId });
   if (!user && targetId) {
@@ -1508,7 +1515,7 @@ app.put("/api/profile", async (req, res) => {
   }
 });
 
-// Dedicated endpoint for Ketua RT / Pengurus or the Warga themselves to upload/update documents
+// Dedicated endpoint for Ketua RT or the Warga themselves to upload/update documents
 app.put("/api/warga/:id/dokumen", async (req, res) => {
   const { dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
@@ -1516,9 +1523,9 @@ app.put("/api/warga/:id/dokumen", async (req, res) => {
   const requesterRole = (req.headers['x-user-role'] as string) || 'warga';
   const requesterId = (req.headers['x-user-id'] as string) || '';
 
-  const isAllowedRole = ['admin', 'developer', 'sekretaris', 'bendahara', 'pengurus'].includes(requesterRole);
-  if (!isAllowedRole && requesterId !== targetId) {
-    return res.status(403).json({ error: "Akses ditolak: Anda hanya dapat mengubah dokumen milik sendiri." });
+  const isKetuaRT = ['admin', 'developer'].includes(requesterRole);
+  if (!isKetuaRT && requesterId !== targetId) {
+    return res.status(403).json({ error: "Akses ditolak: Hanya Ketua RT yang dapat memperbarui dokumen warga lain." });
   }
 
   let user = await UserModel.findOne({ id: targetId, rtId });
@@ -1809,16 +1816,15 @@ function parseIndonesianKkOcrText(rawText: string): Array<{ name: string; role: 
   return results;
 }
 
-// Server-side AI Extract KK endpoint (Multi-Layer: SVG Parser -> Gemini AI -> Local OCR -> Smart Fallback)
+// Server-side AI Extract KK endpoint (Khusus Ketua RT)
 app.post("/api/warga/:id/extract-kk", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const targetId = req.params.id;
   const requesterRole = (req.headers['x-user-role'] as string) || 'warga';
-  const requesterId = (req.headers['x-user-id'] as string) || '';
 
-  const isCommittee = ['admin', 'developer', 'sekretaris', 'bendahara', 'pengurus'].includes(requesterRole);
-  if (!isCommittee && requesterId !== targetId) {
-    return res.status(403).json({ error: "Akses ditolak: Anda tidak memiliki izin untuk mengekstrak KK warga ini." });
+  const isKetuaRT = ['admin', 'developer'].includes(requesterRole);
+  if (!isKetuaRT) {
+    return res.status(403).json({ error: "Akses ditolak: Fitur AI Extract KK hanya dapat dilakukan oleh Ketua RT." });
   }
 
   try {
