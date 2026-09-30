@@ -2365,6 +2365,7 @@ app.get("/api/warga", async (req, res) => {
           noHp: u.noHp,
           status: u.status,
           role: u.role,
+          photo: u.photo,
           umur: u.umur,
           tglLahir: u.tglLahir,
           jenisKelamin: u.jenisKelamin,
