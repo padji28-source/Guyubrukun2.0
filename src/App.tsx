@@ -17,13 +17,25 @@ const MobileVoting = React.lazy(() => import('./MobileVoting').then(m => ({ defa
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
   const [activeVotings, setActiveVotings] = useState<any[]>([]);
   
-  useEffect(() => {
+  const loadActiveVotings = () => {
     apiFetch('/api/voting')
       .then(res => res.json())
       .then(json => {
         const votings = json.data || [];
         setActiveVotings(votings.filter((v: any) => v.status === 'aktif'));
-      });
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadActiveVotings();
+    const handleUpdate = (e: any) => {
+      if (e.detail === 'voting') {
+        loadActiveVotings();
+      }
+    };
+    window.addEventListener('app_data_update', handleUpdate);
+    return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);
 
   if (activeVotings.length === 0) return null;
@@ -34,16 +46,18 @@ const MobileVotingNotification = ({ onActionClick, notifications }: { onActionCl
         onClick={() => onActionClick('Voting')}
         className="bg-white rounded-2xl p-4 shadow-sm border border-teal-100 flex items-center justify-between cursor-pointer hover:border-teal-300 transition-colors"
       >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-50 rounded-full flex items-center justify-center animate-pulse">
-            <icons.dokumen className="w-5 h-5 text-teal-600" />
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 bg-teal-50 rounded-full flex items-center justify-center shrink-0">
+            <icons.voting className="w-5 h-5 text-teal-600" />
           </div>
-          <div>
-            <h3 className="text-13px font-bold text-gray-900 leading-tight">Voting Aktif ({activeVotings.length})</h3>
-            <p className="text-[10px] text-gray-500 mt-0.5">Mari berpartisipasi dalam musyawarah RT</p>
+          <div className="min-w-0">
+            <h3 className="text-[13px] font-bold text-gray-900 leading-tight truncate">
+              Voting Aktif ({activeVotings.length}): {activeVotings[0]?.title}
+            </h3>
+            <p className="text-[10px] text-gray-500 mt-0.5">Ketuk untuk memberikan suara & melihat hasil real-time</p>
           </div>
         </div>
-        <div className="text-teal-600">
+        <div className="text-teal-600 shrink-0 ml-2">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
         </div>
       </div>
@@ -1817,6 +1831,11 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
         if (idxB !== -1) return 1;
         return 0;
       });
+      const votingIndex = actions.findIndex(a => a.name === 'Voting');
+      if (votingIndex >= 8) {
+        const [votingItem] = actions.splice(votingIndex, 1);
+        actions.splice(2, 0, votingItem);
+      }
     }
     return actions;
   }, [visibleMenus, savedOrder]);
