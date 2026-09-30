@@ -3426,13 +3426,11 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
 
 const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanLaserPos, setScanLaserPos] = useState(0);
   const [donationAmount, setDonationAmount] = useState<string>('50000');
   const [customAmount, setCustomAmount] = useState<string>('');
   const [donationMessage, setDonationMessage] = useState<string>('');
   const [isAnonymous, setIsAnonymous] = useState<boolean>(false);
-  const [paymentMethod, setPaymentMethod] = useState<string>('GoPay');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Transfer BSI');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
   const [recentDonations, setRecentDonations] = useState<any[]>([]);
@@ -3582,10 +3580,10 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
       const res = await apiFetch('/api/data/kas');
       const json = await res.json();
       if (json.data) {
-        // Filter those logged as Sedekah/QRIS or related alms
+        // Filter those logged as Sedekah or related alms
         const filtered = json.data.filter((item: any) => 
           item.type === 'Masuk' && 
-          (item.message?.includes('Sedekah') || item.message?.includes('Infaq') || item.message?.includes('QRIS'))
+          (item.message?.includes('Sedekah') || item.message?.includes('Infaq') || item.message?.includes('BSI'))
         ).slice(0, 10); // Show top 10
         setRecentDonations(filtered);
       }
@@ -3598,29 +3596,10 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
     fetchRecentDonations();
   }, []);
 
-  // Simulating laser scan bar movement
-  useEffect(() => {
-    if (isScanning) {
-      const interval = setInterval(() => {
-        setScanLaserPos(prev => (prev >= 100 ? 0 : prev + 4));
-      }, 50);
-      return () => clearInterval(interval);
-    }
-  }, [isScanning]);
-
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text.replace(/\s/g, '')); // Hapus spasi saat disalin
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleStartScan = () => {
-    setIsScanning(true);
-    // Simulate scanner detecting code in 2 seconds
-    setTimeout(() => {
-      setIsScanning(false);
-      // Auto scroll or set focus
-    }, 2000);
+    setTimeout(() => setCopiedId(null), 2500);
   };
 
   const handleDonateSubmit = async () => {
@@ -3673,29 +3652,17 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
     }
   };
 
-  const bankAccounts = [
-    {
-      id: 'bsi',
-      bankName: 'Bank Syariah Indonesia (BSI)',
-      accountNumber: '712 345 6789',
-      owner: 'a.n DKM Masjid Al Ikhlas',
-      themeText: 'text-emerald-700',
-      themeBg: 'bg-emerald-50',
-    },
-    {
-      id: 'mandiri',
-      bankName: 'Bank Mandiri',
-      accountNumber: '137 00 1234567 8',
-      owner: 'a.n DKM Masjid Al Ikhlas',
-      themeText: 'text-blue-700',
-      themeBg: 'bg-blue-50',
-    },
-  ];
+  const bankAccount = {
+    id: 'bsi',
+    bankName: 'Bank Syariah Indonesia (BSI)',
+    accountNumber: '7318895281',
+    owner: 'Atas Nama Eka (Bendahara DKM)',
+  };
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-4 pb-28 font-sans">
       {/* Header & Back Button */}
-      <div className="flex flex-col mb-6 space-y-3">
+      <div className="flex flex-col mb-5 space-y-3">
         <button
           onClick={onBack}
           className="w-fit text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
@@ -3712,143 +3679,87 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
         <p className="text-gray-500 text-xs">Salurkan donasi terbaik Anda untuk operasional dan kemakmuran Masjid Al Ikhlas.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* LEFT COLUMN: QRIS Scanner & Fast Donation Form */}
-        <div className="lg:col-span-7 space-y-6">
-          
-          {/* Card QRIS Scanner / Interactive Hub */}
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-teal-50 rounded-full blur-3xl opacity-60"></div>
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-50 rounded-full blur-3xl opacity-60"></div>
+      {/* REKENING RESMI UTAMA (DITAMPILKAN PALING ATAS) */}
+      <div className="mb-6 bg-gradient-to-br from-emerald-800 via-teal-900 to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden border border-emerald-500/30">
+        <div className="absolute top-0 right-0 w-60 h-60 bg-emerald-500/10 rounded-full blur-3xl -translate-y-12 translate-x-12 pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-teal-500/10 rounded-full blur-2xl translate-y-12 -translate-x-12 pointer-events-none"></div>
 
-            <div className="flex items-center justify-between gap-2 mb-4 z-10 relative">
-              <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-gray-800 text-sm tracking-wide">Pindai / Bayar QRIS</h4>
-                <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-full">QRIS Dinamis</span>
+        <div className="relative z-10">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-xl shrink-0 shadow-xs">
+                🕌
               </div>
-              <span className="text-[10px] text-gray-400 font-bold">NMID: ID1234567890</span>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">
+                  Rekening Donasi & Sedekah Utama
+                </span>
+                <h4 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  {bankAccount.bankName}
+                </h4>
+              </div>
             </div>
-
-            {/* QRIS Layout Frame */}
-            <div className="flex flex-col items-center justify-center py-4 z-10 relative">
-              
-              {isScanning ? (
-                /* Interactive QRIS Camera Scanner Simulator */
-                <div className="relative w-52 h-52 bg-slate-950 rounded-2xl p-1 shadow-2xl border border-teal-500 mb-4 overflow-hidden flex flex-col items-center justify-center">
-                  {/* Glowing Scanner Target corners */}
-                  <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-teal-400 rounded-tl-md"></div>
-                  <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-teal-400 rounded-tr-md"></div>
-                  <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-teal-400 rounded-bl-md"></div>
-                  <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-teal-400 rounded-br-md"></div>
-                  
-                  {/* Moving scanning line */}
-                  <div 
-                    className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent shadow-[0_0_10px_2px_rgba(20,184,166,0.8)] z-20"
-                    style={{ top: `${scanLaserPos}%` }}
-                  ></div>
-
-                  {/* Matrix digital abstract background */}
-                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#14b8a6_1px,transparent_1px)] [background-size:16px_16px] animate-[pulse_2s_infinite]"></div>
-                  
-                  {/* Scanning Status Text */}
-                  <div className="z-10 flex flex-col items-center gap-1.5">
-                    <svg className="w-10 h-10 text-teal-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4H15" />
-                    </svg>
-                    <span className="text-teal-400 font-mono text-[9px] font-bold tracking-widest uppercase">MENGHUBUNGKAN KAMERA...</span>
-                  </div>
-                </div>
-              ) : (
-                /* Static Admin QRIS Display / Static QR Layout */
-                <div className="relative w-52 h-52 bg-white rounded-2xl p-2.5 shadow-md border border-gray-100 mb-4 flex items-center justify-center transition-transform hover:scale-[1.01] group">
-                  {/* Grid overlay corners */}
-                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-teal-500 rounded-tl-lg"></div>
-                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-teal-500 rounded-tr-lg"></div>
-                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-teal-500 rounded-bl-lg"></div>
-                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-teal-500 rounded-br-lg"></div>
-
-                  {/* Clean SVG QR Code */}
-                  <svg className="w-full h-full text-gray-900" viewBox="0 0 100 100" fill="currentColor">
-                    {/* QR Code Anchor Blocks (Top-Left, Top-Right, Bottom-Left) */}
-                    <rect x="5" y="5" width="25" height="25" fill="#0f766e" rx="2" />
-                    <rect x="10" y="10" width="15" height="15" fill="white" rx="1" />
-                    <rect x="13" y="13" width="9" height="9" fill="#14b8a6" />
-
-                    <rect x="70" y="5" width="25" height="25" fill="#0f766e" rx="2" />
-                    <rect x="75" y="10" width="15" height="15" fill="white" rx="1" />
-                    <rect x="78" y="13" width="9" height="9" fill="#14b8a6" />
-
-                    <rect x="5" y="70" width="25" height="25" fill="#0f766e" rx="2" />
-                    <rect x="10" y="75" width="15" height="15" fill="white" rx="1" />
-                    <rect x="13" y="78" width="9" height="9" fill="#14b8a6" />
-
-                    {/* QR Code Scattered Pixel Blocks Simulation */}
-                    <rect x="35" y="10" width="5" height="5" />
-                    <rect x="45" y="5" width="10" height="5" />
-                    <rect x="40" y="15" width="5" height="10" />
-                    <rect x="50" y="20" width="5" height="5" />
-                    <rect x="60" y="10" width="5" height="15" />
-                    <rect x="35" y="30" width="10" height="5" />
-                    <rect x="50" y="30" width="5" height="10" />
-                    <rect x="10" y="35" width="5" height="10" />
-                    <rect x="25" y="40" width="5" height="5" />
-                    <rect x="5" y="50" width="10" height="5" />
-                    <rect x="20" y="55" width="5" height="10" />
-                    <rect x="35" y="45" width="15" height="5" />
-                    <rect x="45" y="55" width="5" height="5" />
-                    <rect x="55" y="40" width="10" height="10" />
-                    <rect x="70" y="35" width="5" height="15" />
-                    <rect x="80" y="45" width="15" height="5" />
-                    <rect x="90" y="35" width="5" height="5" />
-                    <rect x="35" y="65" width="5" height="10" />
-                    <rect x="45" y="70" width="10" height="5" />
-                    <rect x="40" y="80" width="15" height="5" />
-                    <rect x="50" y="90" width="5" height="5" />
-                    <rect x="65" y="60" width="5" height="15" />
-                    <rect x="60" y="80" width="5" height="10" />
-                    <rect x="75" y="65" width="15" height="5" />
-                    <rect x="85" y="75" width="5" height="15" />
-                    <rect x="70" y="85" width="10" height="5" />
-                    
-                    {/* Small QRIS style badge in center */}
-                    <rect x="38" y="38" width="24" height="24" fill="white" rx="3" stroke="#0f766e" strokeWidth="2" />
-                    <text x="50" y="52" fontSize="7" fontWeight="black" textAnchor="middle" fill="#0f766e" fontFamily="sans-serif">QRIS</text>
-                  </svg>
-                  
-                  {/* Subtle Scan Overlay Instruction on Hover */}
-                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-2xl p-4">
-                    <span className="text-[10px] font-black text-white bg-teal-600 px-3 py-1.5 rounded-lg shadow-md tracking-wider">PINDAI INSTAN</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Scan Trigger Button */}
-              {!isScanning && (
-                <button
-                  onClick={handleStartScan}
-                  className="px-4 py-2 text-xs bg-teal-50 text-teal-700 hover:bg-teal-100 font-extrabold rounded-full transition flex items-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer mb-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Gunakan Kamera Pindai
-                </button>
-              )}
-
-              <p className="text-xs font-bold text-gray-800 uppercase mt-2">DKM MASJID AL IKHLAS</p>
-              <p className="text-[10px] text-gray-500 mt-1 max-w-xs text-center leading-normal">
-                QRIS resmi rukun tetangga & masjid. Silakan pindai langsung dengan aplikasi pembayaran Anda atau gunakan formulir otomatis di bawah.
-              </p>
-            </div>
+            <span className="bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full">
+              BSI Resmi
+            </span>
           </div>
 
+          <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-bold text-teal-200/80 uppercase tracking-wider">
+                Nomor Rekening
+              </p>
+              <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-wider mt-0.5 select-all">
+                {bankAccount.accountNumber}
+              </p>
+              <p className="text-xs sm:text-sm font-extrabold text-emerald-300 mt-1 flex items-center gap-1.5">
+                <span>👤</span>
+                <span>{bankAccount.owner}</span>
+              </p>
+            </div>
+
+            <button
+              onClick={() => handleCopy(bankAccount.accountNumber, bankAccount.id)}
+              className={`px-5 py-3 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-lg active:scale-95 ${
+                copiedId === bankAccount.id
+                  ? 'bg-emerald-400 text-slate-950 ring-4 ring-emerald-400/30'
+                  : 'bg-white text-teal-900 hover:bg-teal-50 hover:text-teal-950'
+              }`}
+            >
+              {copiedId === bankAccount.id ? (
+                <>
+                  <svg className="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Nomor Rekening Tersalin!</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>Salin No. Rekening BSI</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <p className="text-[11px] text-teal-100/70 mt-3.5 leading-relaxed">
+            * Silakan lakukan transfer antar-bank atau sesama BSI ke nomor rekening resmi di atas. Anda juga dapat mengonfirmasi donasi melalui formulir online di bawah agar tercatat di pembukuan kas masjid.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* LEFT COLUMN: Fast Donation Form */}
+        <div className="lg:col-span-7 space-y-6">
+          
           {/* Core Interactive Fast Donation Form */}
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-xs space-y-5">
             <h4 className="font-extrabold text-gray-800 text-sm tracking-wide border-b border-gray-100 pb-3 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-teal-500"></span>
-              Formulir Sedekah & Infaq Online
+              Formulir Konfirmasi Sedekah & Infaq Online
             </h4>
 
             {/* Donation Presets */}
@@ -3863,7 +3774,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                       setDonationAmount(amt);
                       setCustomAmount('');
                     }}
-                    className={`py-2 px-1 text-xs font-extrabold rounded-xl border transition-all text-center
+                    className={`py-2.5 px-1 text-xs font-extrabold rounded-xl border transition-all text-center cursor-pointer
                       ${donationAmount === amt && !customAmount
                         ? 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-100'
                         : 'bg-gray-50 text-gray-700 border-gray-100 hover:bg-gray-100 hover:border-gray-200'
@@ -3924,26 +3835,27 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
               />
             </div>
 
-            {/* Payment channel selection */}
+            {/* Payment channel selection - Hanya Transfer BSI */}
             <div className="space-y-2">
-              <label className="text-[11px] font-black text-gray-500 uppercase tracking-wider">Pilih Metode E-Wallet / Bank</label>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                {['GoPay', 'OVO', 'Dana', 'ShopeePay', 'LinkAja'].map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    onClick={() => setPaymentMethod(method)}
-                    className={`py-2 px-2 text-xs font-extrabold rounded-xl border transition-all text-center flex flex-col items-center justify-center gap-1
-                      ${paymentMethod === method
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-500 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-100 hover:bg-gray-50'
-                      }`}
-                  >
-                    {/* Tiny visual representation of branding */}
-                    <span className="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block shrink-0"></span>
-                    <span>{method}</span>
-                  </button>
-                ))}
+              <label className="text-[11px] font-black text-gray-500 uppercase tracking-wider">Metode Penyaluran / Transfer</label>
+              <div className="bg-emerald-50/70 border-2 border-teal-500/50 rounded-2xl p-3.5 flex items-center justify-between shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                    🕌
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-gray-900">Transfer BSI</span>
+                      <span className="text-[9px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Metode Resmi</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-medium mt-0.5">Bank Syariah Indonesia • Rek. 7318895281 a/n Eka</p>
+                  </div>
+                </div>
+                <div className="w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
               </div>
             </div>
 
@@ -3951,12 +3863,12 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
             <button
               onClick={handleDonateSubmit}
               disabled={isSubmitting}
-              className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black transition shadow-lg shadow-teal-100 active:scale-[0.98] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+              className="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black transition shadow-lg shadow-teal-100 active:scale-[0.98] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
             >
               {isSubmitting ? (
                 <>
                   <svg className="w-4 h-4 animate-spin text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4H15" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4H15" />
                   </svg>
                   MEMPROSES DONASI...
                 </>
@@ -3965,7 +3877,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
-                  DONASI SEKARANG (Rp {(customAmount ? parseInt(customAmount, 10) : parseInt(donationAmount, 10) || 0).toLocaleString('id-ID')})
+                  KONFIRMASI INFAQ & SEDEKAH (Rp {(customAmount ? parseInt(customAmount, 10) : parseInt(donationAmount, 10) || 0).toLocaleString('id-ID')})
                 </>
               )}
             </button>
@@ -3973,7 +3885,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
 
         </div>
 
-        {/* RIGHT COLUMN: Recent Donations feed & Manual bank Transfer */}
+        {/* RIGHT COLUMN: Recent Donations feed & Jadwal Sholat */}
         <div className="lg:col-span-5 space-y-6">
 
           {/* Jadwal Sholat Widget */}
@@ -4085,12 +3997,12 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                       {/* Message prayer */}
                       {item.message && (
                         <p className="text-[10px] text-gray-500 italic mt-1 bg-white p-1.5 rounded-lg border border-gray-100 leading-normal font-medium">
-                          "{item.message.replace(/\[Sedekah QRIS - [a-zA-Z]+\]\s*/g, '')}"
+                          "{item.message.replace(/\[Infaq & Sedekah - [a-zA-Z\s]+\]\s*/g, '').replace(/\[Sedekah QRIS - [a-zA-Z\s]+\]\s*/g, '')}"
                         </p>
                       )}
 
                       <p className="text-[9px] text-gray-400 font-bold mt-1.5 font-mono">
-                        {new Date(item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} • QRIS
+                        {new Date(item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} • Sedekah
                       </p>
                     </div>
                   </div>
@@ -4105,59 +4017,6 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Manual Transfer Option */}
-          <div className="flex flex-col gap-3">
-            <h4 className="font-bold text-gray-800 text-sm mb-1 px-1">Transfer Bank Manual</h4>
-            
-            {bankAccounts.map((bank) => (
-              <div key={bank.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    {/* Ikon Bank */}
-                    <div className={`w-10 h-10 ${bank.themeBg} ${bank.themeText} rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-gray-500 mb-1 font-medium">{bank.bankName}</p>
-                      <p className="font-extrabold text-gray-900 text-sm tracking-wide">{bank.accountNumber}</p>
-                      <p className={`text-[10px] font-bold ${bank.themeText} mt-1.5 inline-flex items-center gap-1 bg-gray-50 px-2 py-0.5 rounded`}>
-                        {bank.owner}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Tombol Salin */}
-                  <button
-                    onClick={() => handleCopy(bank.accountNumber, bank.id)}
-                    className={`px-3 py-2 text-[10px] font-bold rounded-xl transition-all flex items-center gap-1.5 flex-shrink-0
-                      ${copiedId === bank.id 
-                        ? 'bg-green-500 text-white shadow-sm shadow-green-200' 
-                        : 'bg-gray-50 text-gray-600 hover:bg-teal-50 hover:text-teal-600 border border-gray-100'
-                      }`}
-                  >
-                    {copiedId === bank.id ? (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Tersalin
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        Salin
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
 
         </div>
@@ -4193,7 +4052,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
               </div>
 
               <div>
-                <h3 className="font-black text-gray-900 text-lg">Infaq/Sedekah Diterima!</h3>
+                <h3 className="font-black text-gray-900 text-lg">Infaq/Sedekah Berhasil Dicatat!</h3>
                 <p className="text-[10px] text-gray-400 font-bold tracking-widest uppercase mt-1">Metode: {lastTx.paymentMethod}</p>
               </div>
 
@@ -4230,7 +4089,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
                 onClick={() => setPaymentSuccess(false)}
                 className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black shadow-md transition-all active:scale-[0.98] cursor-pointer"
               >
-                Kembali ke Alms
+                Selesai
               </button>
             </motion.div>
           </div>
