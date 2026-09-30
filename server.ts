@@ -69,7 +69,7 @@ const apiLimiter = rateLimit({
 
 export const app = express();
 app.set("trust proxy", 1);
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -458,58 +458,41 @@ const MenuAccessModel: mongoose.Model<any> = mongoose.models.MenuAccess || mongo
 // DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE)
 // ==========================================
 UserSchema.index({ username: 1 });
-UserSchema.index({ id: 1 }, { unique: true });
 UserSchema.index({ rtId: 1, role: 1 });
 UserSchema.index({ rtId: 1, nama: 1 });
 UserSchema.index({ rtId: 1, isApproved: 1 });
 
-IuranSchema.index({ id: 1 }, { unique: true });
 IuranSchema.index({ rtId: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 
-KasSchema.index({ id: 1 }, { unique: true });
 KasSchema.index({ rtId: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, type: 1, createdAt: -1 });
 
-VotingSchema.index({ id: 1 }, { unique: true });
 VotingSchema.index({ rtId: 1, createdAt: -1 });
 
-AcaraSchema.index({ id: 1 }, { unique: true });
 AcaraSchema.index({ rtId: 1, date: -1 });
 
-LaporanSchema.index({ id: 1 }, { unique: true });
 LaporanSchema.index({ rtId: 1, createdAt: -1 });
 
-SuratSchema.index({ id: 1 }, { unique: true });
 SuratSchema.index({ rtId: 1, createdAt: -1 });
 
-UmkmSchema.index({ id: 1 }, { unique: true });
 UmkmSchema.index({ rtId: 1, createdAt: -1 });
 
-TamuSchema.index({ id: 1 }, { unique: true });
 TamuSchema.index({ rtId: 1, createdAt: -1 });
 
-MediaSchema.index({ id: 1 }, { unique: true });
 MediaSchema.index({ rtId: 1, createdAt: -1 });
 
-AuditLogSchema.index({ id: 1 }, { unique: true });
 AuditLogSchema.index({ rtId: 1, timestamp: -1 });
 
-NotificationSchema.index({ id: 1 }, { unique: true });
 NotificationSchema.index({ rtId: 1, time: -1 });
 
-DokumenSchema.index({ id: 1 }, { unique: true });
 DokumenSchema.index({ rtId: 1, createdAt: -1 });
 
-InventarisSchema.index({ id: 1 }, { unique: true });
 InventarisSchema.index({ rtId: 1, createdAt: -1 });
 
-NotulenSchema.index({ id: 1 }, { unique: true });
 NotulenSchema.index({ rtId: 1, date: -1 });
-
-MenuAccessSchema.index({ role: 1 }, { unique: true });
 
 
 
@@ -1045,19 +1028,18 @@ async function initDb(rtId: string = '') {
       { blok: 'F', no: '26', username: 'F26', password: 'F26', nama: 'Warga Blok F No. 26' }
     ];
 
-    for (const acc of blokAccounts) {
-      const targetRtId = rtId || 'rt01';
-      const alamat = `Blok ${acc.blok} No. ${acc.no}`;
-      const existing = await UserModel.findOne({
-        rtId: targetRtId,
-        $or: [
-          { username: new RegExp(`^${acc.username}$`, 'i') },
-          { alamat: new RegExp(`^${alamat}$`, 'i') }
-        ]
-      });
+    const targetRtId = rtId || 'rt01';
+    const existingUsernames = new Set(list.map((u: any) => String(u.username || '').toLowerCase()));
+    const existingAlamats = new Set(list.map((u: any) => String(u.alamat || '').toLowerCase()));
+    const toInsertUsers: any[] = [];
 
-      if (!existing) {
-        await UserModel.create({
+    for (const acc of blokAccounts) {
+      const alamat = `Blok ${acc.blok} No. ${acc.no}`;
+      if (
+        !existingUsernames.has(acc.username.toLowerCase()) &&
+        !existingAlamats.has(alamat.toLowerCase())
+      ) {
+        toInsertUsers.push({
           id: `${Date.now()}_${acc.username}_${targetRtId}`,
           username: acc.username,
           nama: acc.nama,
@@ -1074,6 +1056,10 @@ async function initDb(rtId: string = '') {
           members: []
         });
       }
+    }
+
+    if (toInsertUsers.length > 0) {
+      await UserModel.insertMany(toInsertUsers, { ordered: false }).catch(() => {});
     }
 
     // Seed sample Kartu Keluarga (KK) documents if no KK uploaded yet in this RT
@@ -2492,6 +2478,8 @@ app.delete("/api/warga/:id/members/:memberId", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const targetId = req.params.id;
   const memberId = req.params.memberId;
+  const requesterRole = (req.headers['x-user-role'] as string) || '';
+  const requesterId = (req.headers['x-user-id'] as string) || '';
 
   try {
     await connectDB();
@@ -2502,6 +2490,13 @@ app.delete("/api/warga/:id/members/:memberId", async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ error: "Data warga tidak ditemukan" });
+    }
+
+    const isKetua = requesterRole === 'admin' || requesterRole === 'developer';
+    const isOwner = user.id === requesterId || user.username === requesterId;
+
+    if (requesterRole && !isKetua && !isOwner) {
+      return res.status(403).json({ error: "Hanya pemilik akun keluarga atau Ketua RT yang dapat menghapus anggota keluarga." });
     }
 
     const beforeObj = Array.isArray(user.members)
@@ -3799,14 +3794,6 @@ app.get("/api/health", (req, res) => {
 });
 
 export async function startServer(listen = true) {
-  await connectDB();
-  
-  if (!process.env.VERCEL) {
-    await initDb('rt01');
-    await initDb('rt02');
-    await initDb('rt03');
-  }
-
   // Global Error Handler for APIs
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.path.startsWith('/api/')) {
@@ -3824,7 +3811,13 @@ export async function startServer(listen = true) {
     res.status(404).json({ error: `API route ${req.originalUrl} not found` });
   });
 
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.npm_lifecycle_event === "start" ||
+    Boolean(process.env.K_SERVICE) ||
+    Boolean(process.env.VERCEL);
+
+  if (!isProduction) {
     const viteDynamic = "vite";
     const viteModule = await import(viteDynamic);
     const vite = await viteModule.createServer({
@@ -3845,6 +3838,20 @@ export async function startServer(listen = true) {
       console.log(`Server launched successfully on port ${PORT}`);
     });
   }
+
+  // Initialize DB and seed in background so port 3000 is open immediately for Cloud Run startup probe
+  (async () => {
+    try {
+      await connectDB();
+      if (!process.env.VERCEL) {
+        await initDb('rt01');
+        await initDb('rt02');
+        await initDb('rt03');
+      }
+    } catch (err) {
+      console.error("Background DB initialization warning:", err);
+    }
+  })();
 }
 
 if (!process.env.VERCEL) {
