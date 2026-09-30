@@ -1492,7 +1492,7 @@ app.put("/api/password", async (req, res) => {
 });
 
 app.put("/api/profile", async (req, res) => {
-  const { id, username, nama, alamat, noHp, status, photo, umur, dokumenKk, dokumenKtp } = req.body;
+  const { id, username, nama, alamat, noHp, status, photo, umur, tglLahir, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const requesterRole = (req.headers['x-user-role'] as string) || 'warga';
   const requesterId = (req.headers['x-user-id'] as string) || '';
@@ -1516,6 +1516,7 @@ app.put("/api/profile", async (req, res) => {
     if (status !== undefined) user.status = status;
     if (photo !== undefined) user.photo = photo;
     if (umur !== undefined) user.umur = Number(umur);
+    if (tglLahir !== undefined) user.tglLahir = tglLahir;
     if (dokumenKk !== undefined) {
       user.dokumenKk = dokumenKk;
       user.markModified('dokumenKk');
