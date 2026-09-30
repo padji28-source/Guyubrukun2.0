@@ -59,7 +59,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [memberForm, setMemberForm] = useState({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // State khusus Ketua RT untuk klik kategori usia (Balita, Anak, Remaja, Dewasa)
+  // State untuk klik kategori usia (Balita, Anak, Remaja, Dewasa) bagi semua peran
   const [selectedAgeCategory, setSelectedAgeCategory] = useState<'balita' | 'anak' | 'remaja' | 'dewasa' | null>(null);
   const [ageCategorySearch, setAgeCategorySearch] = useState('');
   const [ageCategoryGenderFilter, setAgeCategoryGenderFilter] = useState<'semua' | 'Laki-laki' | 'Perempuan'>('semua');
@@ -553,11 +553,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         : allWargaFullData.length > 0
         ? allWargaFullData
         : wargaData;
-    const sourceList = rawSource.filter(w => {
-      if (w.role === 'developer') return false;
-      if (!isKetuaRT) return isOwnAccount(w);
-      return true;
-    });
+    // Demografi Usia Warga menampilkan seluruh warga RT (untuk Ketua RT, Bendahara, Pengurus, Sekretaris, dan Warga)
+    const sourceList = rawSource.filter(w => w.role !== 'developer');
     const persons: Array<{
       id: string;
       wargaId: string;
@@ -1644,7 +1641,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
           {/* STATS CARDS (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Demografi Usia Warga
+              Demografi Usia Warga (Semua Warga)
             </span>
             <span className="text-[10px] font-extrabold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
               ✨ Klik kategori usia untuk lihat daftar warga
