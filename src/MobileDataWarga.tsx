@@ -969,7 +969,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         blok,
         nomor,
         hasSpecific: true,
-        shortCode: nomor ? `${blok}-${nomor}` : blok,
+        shortCode: nomor ? `${blok}${nomor}` : blok,
         fullFormatted: nomor ? `Blok ${blok} • No. ${nomor}` : `Blok ${blok}`
       };
     }
@@ -983,7 +983,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         blok,
         nomor,
         hasSpecific: true,
-        shortCode: `${blok}-${nomor}`,
+        shortCode: `${blok}${nomor}`,
         fullFormatted: `Blok ${blok} • No. ${nomor}`
       };
     }
@@ -998,7 +998,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
           blok,
           nomor,
           hasSpecific: true,
-          shortCode: `${blok}-${nomor}`,
+          shortCode: `${blok}${nomor}`,
           fullFormatted: `Blok ${blok} • No. ${nomor}`
         };
       }
@@ -1009,7 +1009,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       nomor: '',
       hasSpecific: false,
       shortCode: (warga?.nama || 'W').charAt(0).toUpperCase(),
-      fullFormatted: alamat || 'Alamat Belum Diisi'
+      fullFormatted: alamat || 'Alamat belum diisi'
     };
   };
 
@@ -1021,58 +1021,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     return parseHouseInfo(warga).fullFormatted;
   };
 
-  // Komponen Badge Blok & No Rumah dengan kontras tinggi disesuaikan dengan tema aplikasi Smart RT (Teal & Emerald / Obsidian Dark)
+  // Komponen Badge Blok & No Rumah yang konsisten dengan tampilan di menu Dokumen
   const HouseBadge = ({ warga, size = 'md' }: { warga: any; size?: 'sm' | 'md' | 'lg' }) => {
     const info = parseHouseInfo(warga);
-
-    if (size === 'sm') {
-      if (info.hasSpecific) {
-        return (
-          <div className="inline-flex items-stretch rounded-lg shadow-sm border border-teal-400 bg-slate-950 overflow-hidden select-none shrink-0 ring-1 ring-teal-400/30">
-            <span className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-[10px] px-2 py-0.5 flex items-center gap-0.5 uppercase tracking-tight">
-              <span className="text-[7.5px] font-extrabold text-teal-100 opacity-90">BLOK</span>
-              <span className="text-[11px] font-black">{info.blok}</span>
-            </span>
-            {info.nomor && (
-              <span className="bg-slate-950 text-teal-300 font-black text-[10px] px-2 py-0.5 flex items-center gap-0.5 border-l border-teal-500/40">
-                <span className="text-[7.5px] text-teal-400 font-bold">NO.</span>
-                <span className="text-[11px] font-black text-white">{info.nomor}</span>
-              </span>
-            )}
-          </div>
-        );
-      }
-      return (
-        <span className="inline-flex items-center gap-1 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-[10px] px-2 py-0.5 rounded-lg shadow-xs border border-teal-400 shrink-0">
-          <span>🏠</span>
-          <span className="truncate max-w-[120px] font-black">{info.fullFormatted}</span>
-        </span>
-      );
-    }
-
-    // Default 'md' size
-    if (info.hasSpecific) {
-      return (
-        <div className="inline-flex items-stretch rounded-xl shadow-md border-2 border-teal-500 bg-slate-950 overflow-hidden select-none shrink-0 ring-2 ring-teal-500/20">
-          <div className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-xs px-2.5 py-1 flex items-center gap-1 uppercase tracking-tight shadow-inner">
-            <span className="text-[8.5px] font-extrabold text-teal-100 opacity-90">BLOK</span>
-            <span className="text-sm font-black tracking-tight">{info.blok}</span>
-          </div>
-          {info.nomor && (
-            <div className="bg-slate-950 text-teal-300 font-black text-xs px-2.5 py-1 flex items-center gap-1 border-l-2 border-teal-500/40">
-              <span className="text-[8.5px] text-teal-400 font-extrabold opacity-95">NO.</span>
-              <span className="text-sm font-black text-white tracking-tight">{info.nomor}</span>
-            </div>
-          )}
-        </div>
-      );
-    }
-
     return (
-      <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white border-2 border-teal-400 font-black text-xs px-3 py-1 rounded-xl shadow-md ring-2 ring-teal-500/20 shrink-0">
-        <span className="text-xs">🏠</span>
-        <span className="font-black text-[12px] truncate max-w-[170px]">{info.fullFormatted}</span>
-      </div>
+      <span
+        className={`inline-flex items-center gap-1 bg-teal-50 text-teal-800 border border-teal-200 rounded-lg font-extrabold shrink-0 ${
+          size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2 py-0.5 text-xs'
+        }`}
+      >
+        🏠 {info.fullFormatted}
+      </span>
     );
   };
 
@@ -2171,82 +2130,89 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                     className="p-4 flex items-start sm:items-center gap-3.5 cursor-pointer select-none"
                     onClick={() => setExpandedId(isExpanded ? null : warga.id)}
                   >
-                    {/* Avatar / Unit Icon */}
+                    {/* Avatar / Unit Icon (sama dengan tampilan di menu Dokumen) */}
                     <div className="relative shrink-0 mt-0.5 sm:mt-0">
-                      {warga.photo ? (
-                        <img
-                          src={warga.photo}
-                          alt={warga.nama}
-                          className="w-[52px] h-[52px] rounded-2xl object-cover border-2 border-teal-500 shadow-md bg-slate-100"
-                        />
-                      ) : (
-                        <div className="w-[52px] h-[52px] rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-teal-950 border-2 border-teal-400 flex flex-col items-center justify-center text-white shadow-md px-1 select-none ring-2 ring-teal-500/20">
-                          {houseInfo.hasSpecific ? (
-                            <>
-                              <span className="text-[7px] font-black uppercase tracking-widest text-teal-400 leading-none">BLOK</span>
-                              <span className="font-black text-[13px] leading-tight text-white tracking-tight mt-0.5">{houseInfo.shortCode}</span>
-                            </>
-                          ) : (
-                            <span className="font-black text-lg text-teal-300">{(warga.nama || 'W').charAt(0).toUpperCase()}</span>
-                          )}
-                        </div>
-                      )}
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white font-extrabold text-sm flex flex-col items-center justify-center shrink-0 overflow-hidden border border-slate-100 px-1">
+                        {warga.photo ? (
+                          <img
+                            src={warga.photo}
+                            alt={warga.nama}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : houseInfo.hasSpecific && houseInfo.shortCode.length > 1 ? (
+                          <>
+                            <span className="text-[8px] font-bold uppercase tracking-wider opacity-85 leading-none">BLOK</span>
+                            <span className="font-black text-xs leading-tight mt-0.5">{houseInfo.shortCode}</span>
+                          </>
+                        ) : (
+                          houseInfo.shortCode
+                        )}
+                      </div>
 
                       <span className={`absolute bottom-[-2px] right-[-2px] w-3.5 h-3.5 ${warga.isOnline ? 'bg-emerald-500 ring-2 ring-white' : 'bg-slate-300'} rounded-full shadow-xs`}></span>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                          <h5 className="font-extrabold text-slate-900 text-[15px] leading-snug break-words">
-                            {warga.nama}
-                          </h5>
-                          {isCurrentUser && (
-                            <span className="bg-gradient-to-r from-teal-700 to-emerald-700 text-white text-[9px] px-2.5 py-0.5 rounded-full uppercase font-black tracking-widest shrink-0 border border-teal-400 shadow-xs flex items-center gap-1">
-                              <span>★</span>
-                              <span>Akun Anda</span>
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h5 className="font-extrabold text-slate-800 text-sm leading-snug break-words">
+                          {warga.nama}
+                        </h5>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          warga.role === 'admin'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : warga.role === 'pengurus'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : warga.role === 'bendahara'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : warga.role === 'sekretaris'
+                            ? 'bg-violet-50 text-violet-700 border-violet-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {warga.role === 'admin'
+                            ? 'Ketua RT / Admin'
+                            : warga.role === 'pengurus'
+                            ? 'Pengurus RT'
+                            : warga.role === 'bendahara'
+                            ? 'Bendahara'
+                            : warga.role === 'sekretaris'
+                            ? 'Sekretaris'
+                            : 'Warga'}
+                        </span>
+                        {isCurrentUser && (
+                          <span className="bg-gradient-to-r from-teal-700 to-emerald-700 text-white text-[9px] px-2.5 py-0.5 rounded-full uppercase font-black tracking-widest shrink-0 border border-teal-400 shadow-xs flex items-center gap-1">
+                            <span>★</span>
+                            <span>Akun Anda</span>
+                          </span>
+                        )}
+                      </div>
 
-                        {/* HIGH-CONTRAST BLOK & NO RUMAH BADGE */}
-                        <div className="shrink-0">
-                          <HouseBadge warga={warga} size="md" />
-                        </div>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <HouseBadge warga={warga} size="md" />
+                        {warga.username && (
+                          <span className="text-[11px] text-slate-400 font-semibold">@{warga.username}</span>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between gap-2 mt-1.5">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-lg font-extrabold uppercase tracking-wider">
+                          <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                             {warga.rt || 'RT 01'}
                           </span>
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg uppercase tracking-wider border ${
-                            warga.role === 'admin'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : warga.role === 'pengurus'
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : warga.role === 'bendahara'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : warga.role === 'sekretaris'
-                              ? 'bg-violet-50 text-violet-700 border-violet-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}>
-                            {warga.role === 'admin'
-                              ? 'Ketua RT'
-                              : warga.role === 'pengurus'
-                              ? 'Pengurus'
-                              : warga.role === 'bendahara'
-                              ? 'Bendahara'
-                              : warga.role === 'sekretaris'
-                              ? 'Sekretaris'
-                              : (warga.status || 'Warga').split(' ')[0]}
-                          </span>
-                          <span className="inline-flex items-center bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg text-[11px] font-extrabold">
+                          <span className="inline-flex items-center bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[10px] font-bold">
                             👨‍👩‍👧‍👦 {members.length + 1} Jiwa
                           </span>
-                          {hasKk && (
-                            <span className="inline-flex items-center bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold">
-                              ✓ KK
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                              hasKk
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            KK: {hasKk ? '✓ Tersedia' : 'Belum Ada'}
+                          </span>
+                          {hasKtp && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              KTP: ✓ Tersedia
                             </span>
                           )}
                         </div>
