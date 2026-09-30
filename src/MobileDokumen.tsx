@@ -47,10 +47,11 @@ const getRoleBadgeClass = (role?: string) => {
 };
 
 export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: () => void, currentUser: any, onUpdateUser: (u: any) => void }) => {
+  const isKetuaRT = currentUser?.role === 'admin' || currentUser?.role === 'developer';
   const isPengurus = ['admin', 'developer', 'sekretaris', 'bendahara', 'pengurus'].includes(currentUser?.role);
 
   const [activeTab, setActiveTab] = useState<'warga_pengurus' | 'pribadi' | 'arsip'>(
-    isPengurus ? 'warga_pengurus' : 'pribadi'
+    isKetuaRT ? 'warga_pengurus' : 'pribadi'
   );
   const [loading, setLoading] = useState(false);
   const [processingFile, setProcessingFile] = useState(false);
@@ -137,7 +138,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
   }, [currentUser?.id]);
 
   const fetchWargaAndPengurus = async () => {
-    if (!isPengurus) return;
+    if (!isKetuaRT) return;
     setLoadingWarga(true);
     try {
       const res = await apiFetch('/api/warga');
@@ -174,10 +175,10 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
 
   useEffect(() => {
     fetchArsipDokumen();
-    if (isPengurus) {
+    if (isKetuaRT) {
       fetchWargaAndPengurus();
     }
-  }, [isPengurus]);
+  }, [isKetuaRT]);
 
   const processFileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -271,7 +272,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         setHasUploaded(Boolean(nextKk) || nextKtp.length > 0);
         showToast(customSuccessMsg || 'Dokumen berhasil disimpan!');
         window.dispatchEvent(new CustomEvent('app_data_update', { detail: 'users' }));
-        if (isPengurus) fetchWargaAndPengurus();
+        if (isKetuaRT) fetchWargaAndPengurus();
         return true;
       } else {
         showToast(data.error || 'Gagal menyimpan dokumen ke server', true);
@@ -286,13 +287,18 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
     }
   };
 
-  // Upload or update documents for any Warga or Pengurus (by Ketua RT / Pengurus)
+  // Upload or update documents for any Warga or Pengurus (Hanya Ketua RT untuk warga lain)
   const updateWargaOrPengurusDocuments = async (
     targetUser: any,
     nextKk: string | undefined,
     nextKtp: string[] | undefined,
     customSuccessMsg?: string
   ) => {
+    const isSelf = Boolean(currentUser?.id && targetUser?.id === currentUser.id);
+    if (!isKetuaRT && !isSelf) {
+      showToast('Akses ditolak: Hanya Ketua RT yang dapat memperbarui dokumen warga lain.', true);
+      return false;
+    }
     setUploadingTargetId(targetUser.id);
     try {
       const payload: any = {};
@@ -343,6 +349,12 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
   ) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    const isSelf = Boolean(currentUser?.id && targetUser?.id === currentUser.id);
+    if (!isKetuaRT && !isSelf) {
+      showToast('Akses ditolak: Hanya Ketua RT yang dapat memperbarui dokumen warga lain.', true);
+      e.target.value = '';
+      return;
+    }
     setUploadingTargetId(targetUser.id);
     try {
       const existingKtp = Array.isArray(targetUser.dokumenKtp)
@@ -411,6 +423,11 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
     const targetUser = wargaList.find(u => u.id === quickTargetUserId);
     if (!targetUser) {
       showToast('Silakan pilih nama Warga atau Pengurus terlebih dahulu', true);
+      return;
+    }
+    const isSelf = Boolean(currentUser?.id && targetUser?.id === currentUser.id);
+    if (!isKetuaRT && !isSelf) {
+      showToast('Akses ditolak: Hanya Ketua RT yang dapat memperbarui dokumen warga lain.', true);
       return;
     }
     if (!quickKkData && quickKtpList.length === 0) {
@@ -490,6 +507,10 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
   };
 
   const handleExtractKkForUser = async (targetUser: any) => {
+    if (!isKetuaRT) {
+      showToast('Akses ditolak: Fitur AI Extract KK hanya dapat digunakan oleh Ketua RT.', true);
+      return;
+    }
     if (!targetUser?.id) return;
     setExtractingKkUserId(targetUser.id);
     try {
@@ -671,7 +692,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
           </div>
 
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 overflow-x-auto no-scrollbar">
-            {isPengurus && (
+            {isKetuaRT && (
               <button
                 type="button"
                 onClick={() => setActiveTab('warga_pengurus')}
@@ -746,20 +767,20 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
             )}
           </AnimatePresence>
 
-          {/* TAB 1: KELOLA DOKUMEN WARGA & PENGURUS (UNTUK KETUA RT / PENGURUS) */}
-          {activeTab === 'warga_pengurus' && isPengurus && (
+          {/* TAB 1: KELOLA DOKUMEN WARGA & PENGURUS (KHUSUS KETUA RT) */}
+          {activeTab === 'warga_pengurus' && isKetuaRT && (
             <div className="space-y-4">
               {/* Top Banner & Quick Upload Button */}
               <div className="bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl p-5 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <span className="inline-block px-2.5 py-0.5 rounded-full bg-white/20 text-[10px] font-extrabold uppercase tracking-wider mb-1.5">
-                    Panel Ketua RT & Pengurus
+                    Khusus Ketua RT
                   </span>
                   <h3 className="text-base sm:text-lg font-extrabold leading-snug">
                     Upload Dokumen Warga & Pengurus RT
                   </h3>
                   <p className="text-xs text-teal-100 mt-0.5">
-                    Ketua RT dapat mengunggah, memperbarui, atau melihat KK & KTP milik seluruh Warga maupun Pengurus.
+                    Hanya Ketua RT yang dapat mengunggah, memperbarui, atau mengekstrak KK & KTP milik Warga maupun Pengurus lain.
                   </p>
                 </div>
                 <button
@@ -974,7 +995,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                               </button>
                             )}
 
-                            {hasKk && (
+                            {isKetuaRT && hasKk && (
                               <button
                                 type="button"
                                 onClick={() => handleExtractKkForUser(person)}
@@ -1058,14 +1079,16 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                         >
                           Ganti KK
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => handleExtractKkForUser(currentUser)}
-                          disabled={extractingKkUserId === currentUser?.id}
-                          className="flex-1 py-2 px-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {extractingKkUserId === currentUser?.id ? 'Mengekstrak...' : '✨ AI Extract KK'}
-                        </button>
+                        {isKetuaRT && (
+                          <button
+                            type="button"
+                            onClick={() => handleExtractKkForUser(currentUser)}
+                            disabled={extractingKkUserId === currentUser?.id}
+                            className="flex-1 py-2 px-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            {extractingKkUserId === currentUser?.id ? 'Mengekstrak...' : '✨ AI Extract KK'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={handleRemoveKk}
@@ -1304,7 +1327,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
 
       {/* Modal Quick Upload Dokumen Warga / Pengurus oleh Ketua RT */}
       <AnimatePresence>
-        {showQuickUploadModal && (
+        {isKetuaRT && showQuickUploadModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1466,7 +1489,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
 
       {/* Modal Detail & Kelola Dokumen Satu Warga / Pengurus */}
       <AnimatePresence>
-        {selectedMemberDetail && (
+        {isKetuaRT && selectedMemberDetail && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1505,6 +1528,16 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Kartu Keluarga (KK)</h4>
                   <div className="flex items-center gap-2">
+                    {isKetuaRT && selectedMemberDetail.dokumenKk && (
+                      <button
+                        type="button"
+                        onClick={() => handleExtractKkForUser(selectedMemberDetail)}
+                        disabled={extractingKkUserId === selectedMemberDetail.id}
+                        className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg text-xs font-extrabold cursor-pointer disabled:opacity-50"
+                      >
+                        {extractingKkUserId === selectedMemberDetail.id ? 'Mengekstrak...' : '✨ AI Extract KK'}
+                      </button>
+                    )}
                     <label className="px-3 py-1 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-bold cursor-pointer">
                       {selectedMemberDetail.dokumenKk ? 'Ganti KK' : '+ Upload KK'}
                       <input
