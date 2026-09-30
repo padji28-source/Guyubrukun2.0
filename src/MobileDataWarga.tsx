@@ -892,31 +892,30 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   };
 
   const filteredWargaData = useMemo(() => {
-    const useFullData = !isKetuaRT || Boolean(filterAgeCategory || filterBlok);
-    const sourceData =
-      useFullData && allWargaFullData.length > 0 ? allWargaFullData : wargaData;
+    const baseList = allWargaFullData.length > 0 ? allWargaFullData : wargaData;
+    const ownDetailed = wargaData.find(w => isOwnAccount(w));
+
+    const sourceData = baseList.map(w => {
+      if (ownDetailed && isOwnAccount(w)) {
+        return { ...w, ...ownDetailed };
+      }
+      return w;
+    });
 
     const filtered = sourceData.filter(w => {
       if (w.role === 'developer') return false;
-      // Untuk bendahara, pengurus, sekretaris, dan warga: bagian bawah hanya menampilkan data keluarga & dokumen sesuai akun yang login
-      if (!isKetuaRT) {
-        return isOwnAccount(w);
-      }
       const q = debouncedSearchQuery.toLowerCase();
+      const canSearchMembers = isKetuaRT || isOwnAccount(w);
       const matchName =
         !q ||
         (w.nama || '').toLowerCase().includes(q) ||
-        (w.members || []).some((m: any) => (m.name || '').toLowerCase().includes(q));
+        (w.alamat || '').toLowerCase().includes(q) ||
+        (canSearchMembers && (w.members || []).some((m: any) => (m.name || '').toLowerCase().includes(q)));
       const matchBlok = !filterBlok || w.alamat?.match(/Blok\s+([a-zA-Z0-9]+)/i)?.[1] === filterBlok;
       const matchAge =
         !filterAgeCategory || getMatchingPersonsInWarga(w, filterAgeCategory).length > 0;
       return matchName && matchBlok && matchAge;
     });
-
-    if (!isKetuaRT && filtered.length === 0 && currentUser && currentUser.role !== 'developer') {
-      const fromWargaData = wargaData.find(w => isOwnAccount(w));
-      return [fromWargaData || currentUser];
-    }
 
     // Tempatkan akun user yang sedang aktif di urutan paling atas
     return [...filtered].sort((a, b) => {
@@ -2085,15 +2084,14 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             </div>
           )}
 
-          {/* SEARCH & FILTER (Khusus Ketua RT) */}
-          {isKetuaRT ? (
-            <div className="mb-6 space-y-3">
-              <div className="flex flex-col sm:flex-row gap-2.5">
+          {/* SEARCH & FILTER WARGA */}
+          <div className="mb-6 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2.5">
               <div className="relative flex-grow">
                 <icons.search className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  placeholder="Cari warga / anggota..."
+                  placeholder="Cari nama warga / blok rumah..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 text-sm bg-white border border-gray-200 rounded-2xl focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none shadow-sm"
@@ -2128,80 +2126,26 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                   </div>
                 </div>
 
-                {/* Filter Usia (Kategori Umur) */}
-                <div className="relative flex-1 sm:flex-initial">
-                  <select
-                    value={filterAgeCategory}
-                    onChange={(e) => setFilterAgeCategory(e.target.value as any)}
-                    className={`w-full px-3.5 py-3 h-full text-xs sm:text-sm border rounded-2xl focus:border-teal-500 focus:ring-2 focus:ring-teal-100 outline-none shadow-sm appearance-none pr-8 font-bold cursor-pointer transition-colors ${
-                      filterAgeCategory
-                        ? 'bg-teal-50 border-teal-400 text-teal-800'
-                        : 'bg-white border-gray-200 text-slate-700'
-                    }`}
-                  >
-                    <option value="">Semua Usia</option>
-                    <option value="balita">Balita (0 - 4 Thn)</option>
-                    <option value="anak">Anak (5 - 12 Thn)</option>
-                    <option value="remaja">Remaja (13 - 20 Thn)</option>
-                    <option value="dewasa">Dewasa (&gt; 20 Thn)</option>
-                    <option value="lansia">Lansia (&ge; 60 Thn)</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-gray-500">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                  </div>
-                </div>
-
                 {/* Tombol Unduh Excel (CSV) untuk Pelaporan Offline */}
-                <button
-                  type="button"
-                  onClick={exportFilteredWargaToCsv}
-                  title="Unduh data warga yang sedang difilter ke dalam format CSV/Excel"
-                  className="px-3.5 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
-                >
-                  <span>📥</span>
-                  <span>Unduh Excel</span>
-                </button>
+                {isKetuaRT && (
+                  <button
+                    type="button"
+                    onClick={exportFilteredWargaToCsv}
+                    title="Unduh data warga yang sedang difilter ke dalam format CSV/Excel"
+                    className="px-3.5 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl text-xs sm:text-sm font-extrabold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    <span>📥</span>
+                    <span>Unduh Excel</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Tombol Cepat Filter Rentang Usia untuk Semua Peran (Bendahara, Pengurus, Warga, Ketua RT) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              {[
-                { id: '' as const, label: 'Semua Usia' },
-                { id: 'balita' as const, label: '👶 Balita (0-4 Thn)' },
-                { id: 'anak' as const, label: '🧒 Anak (5-12 Thn)' },
-                { id: 'remaja' as const, label: '🧑 Remaja (13-20 Thn)' },
-                { id: 'dewasa' as const, label: '👨 Dewasa (>20 Thn)' },
-                { id: 'lansia' as const, label: '🧓 Lansia (≥60 Thn)' }
-              ].map(chip => {
-                const active = filterAgeCategory === chip.id;
-                return (
-                  <button
-                    key={chip.id || 'all'}
-                    type="button"
-                    onClick={() => setFilterAgeCategory(prev => (prev === chip.id ? '' : chip.id))}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer shrink-0 border ${
-                      active
-                        ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300 hover:bg-teal-50/40'
-                    }`}
-                  >
-                    {chip.label}
-                  </button>
-                );
-              })}
-            </div>
-
             {/* Info Filter Aktif */}
-            {(filterAgeCategory || filterBlok || searchQuery) && (
+            {(filterBlok || searchQuery) && (
               <div className="flex items-center justify-between bg-teal-50/80 border border-teal-200 px-3.5 py-2 rounded-xl text-xs">
                 <div className="text-teal-900 font-bold flex flex-wrap items-center gap-1.5">
                   <span>🔍 Menampilkan {filteredWargaData.length} Kepala Keluarga</span>
-                  {filterAgeCategory && (
-                    <span className="bg-teal-600 text-white px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase">
-                      Usia: {filterAgeCategory}
-                    </span>
-                  )}
                   {filterBlok && (
                     <span className="bg-slate-800 text-white px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase">
                       Blok {filterBlok}
@@ -2221,15 +2165,16 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 </button>
               </div>
             )}
-            </div>
-          ) : (
-            <div className="mb-4 bg-teal-50/80 border border-teal-200 px-4 py-3 rounded-2xl flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-extrabold text-teal-900">
-                <span>👤</span>
-                <span>Menampilkan Data Keluarga & Dokumen Sesuai Akun Login Anda</span>
+
+            {!isKetuaRT && (
+              <div className="bg-teal-50/80 border border-teal-200 px-4 py-2.5 rounded-2xl flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-teal-900">
+                  <span>👥</span>
+                  <span>Menampilkan seluruh Data Warga RT ({filteredWargaData.length} KK) — Rincian Data Keluarga hanya muncul pada akun login Anda</span>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* LIST WARGA */}
           <div className="space-y-4">
@@ -2237,16 +2182,21 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               const members = warga.members || [];
               const isCurrentUser = isOwnAccount(warga);
               const canEditFamily = isKetuaRT || isCurrentUser;
-              const isExpanded = !isKetuaRT ? (expandedId === null || expandedId === warga.id) : expandedId === warga.id;
-              const hasKk = Boolean(warga.dokumenKk && String(warga.dokumenKk).trim() !== '');
-              const hasKtp = Array.isArray(warga.dokumenKtp) ? warga.dokumenKtp.length > 0 : Boolean(warga.dokumenKtp);
+              const canViewFamily = isKetuaRT || isCurrentUser;
+              const isExpanded = canViewFamily && (!isKetuaRT ? (expandedId === null || expandedId === warga.id) : expandedId === warga.id);
+              const hasKk = Boolean(warga.hasKk || (warga.dokumenKk && String(warga.dokumenKk).trim() !== ''));
+              const hasKtp = Boolean(warga.hasKtp || (Array.isArray(warga.dokumenKtp) ? warga.dokumenKtp.length > 0 : Boolean(warga.dokumenKtp)));
               const houseInfo = parseHouseInfo(warga);
 
               return (
                 <div key={`${warga.id || 'warga'}_${idx}`} className={`bg-white rounded-[1.5rem] border ${isCurrentUser ? 'border-teal-500 shadow-md ring-2 ring-teal-500/20' : isExpanded ? 'border-teal-400 shadow-xl ring-2 ring-teal-500/15' : 'border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] hover:border-teal-300 hover:shadow-md'} overflow-hidden transition-all duration-300`}>
                   <div
-                    className="p-4 flex items-start sm:items-center gap-3.5 cursor-pointer select-none"
-                    onClick={() => setExpandedId(isExpanded ? null : warga.id)}
+                    className={`p-4 flex items-start sm:items-center gap-3.5 select-none ${canViewFamily ? 'cursor-pointer' : 'cursor-default'}`}
+                    onClick={() => {
+                      if (canViewFamily) {
+                        setExpandedId(isExpanded ? '__closed__' : warga.id);
+                      }
+                    }}
                   >
                     {/* Avatar / Unit Icon (sama dengan tampilan di menu Dokumen) */}
                     <div className="relative shrink-0 mt-0.5 sm:mt-0">
@@ -2335,33 +2285,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                           )}
                         </div>
 
-                        <div className={`p-1.5 rounded-xl transition-colors flex items-center justify-center shrink-0 ${isExpanded ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
-                          <icons.lainnya className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                        </div>
+                        {canViewFamily && (
+                          <div className={`p-1.5 rounded-xl transition-colors flex items-center justify-center shrink-0 ${isExpanded ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
+                            <icons.lainnya className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                          </div>
+                        )}
                       </div>
-
-                      {/* Highlight Anggota yang Sesuai dengan Filter Usia */}
-                      {filterAgeCategory && (
-                        <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] font-extrabold text-teal-700 uppercase tracking-wider">
-                            Sesuai Usia:
-                          </span>
-                          {getMatchingPersonsInWarga(warga, filterAgeCategory).map((mp, mIdx) => (
-                            <span
-                              key={mIdx}
-                              className="inline-flex items-center gap-1 bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-lg text-[10px] font-extrabold"
-                            >
-                              <span>{mp.name}</span>
-                              <span className="text-teal-600">({mp.age} Thn)</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
 
                   <AnimatePresence>
-                    {isExpanded && (
+                    {canViewFamily && isExpanded && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
@@ -2572,8 +2506,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               </div>
             )}
 
-            {/* Pagination Controls (Khusus Ketua RT) */}
-            {isKetuaRT && totalPages > 1 && !filterAgeCategory && !filterBlok && (
+            {/* Pagination Controls (hanya bila data penuh belum dimuat) */}
+            {allWargaFullData.length === 0 && totalPages > 1 && !filterBlok && (
               <div className="flex items-center justify-between pt-4 pb-2 border-t border-gray-100 mt-4">
                 <button
                   type="button"
