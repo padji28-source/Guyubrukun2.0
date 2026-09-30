@@ -102,6 +102,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [filterBlok, setFilterBlok] = useState('');
   const [filterAgeCategory, setFilterAgeCategory] = useState<'' | 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia'>('');
   const [previewDocs, setPreviewDocs] = useState<{ docs: { url: string; title: string }[]; currentIndex: number; wargaName: string } | null>(null);
+  const [previewPhotoWarga, setPreviewPhotoWarga] = useState<any | null>(null);
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
 
@@ -1970,14 +1971,19 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                             {filteredSelectedAgePersons.map((person, idx) => (
                               <tr
                                 key={person.id ? `person_${person.id}_${idx}` : `person_${idx}`}
-                                className="hover:bg-teal-50/40 transition-colors group"
+                                className="hover:bg-teal-50/40 transition-colors group cursor-pointer"
+                                onClick={() => {
+                                  const targetW = person.wargaObj || allWargaFullData.find(w => w.id === person.wargaId) || wargaData.find(w => w.id === person.wargaId);
+                                  if (targetW) setPreviewPhotoWarga(targetW);
+                                }}
                               >
                                 <td className="py-3 px-3 font-bold text-slate-400">
                                   {idx + 1}
                                 </td>
                                 <td className="py-3 px-3">
-                                  <div className="font-extrabold text-slate-900 text-sm">
-                                    {person.nama}
+                                  <div className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5 hover:text-teal-700">
+                                    <span>{person.nama}</span>
+                                    <span className="text-[10px] text-teal-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">👁️ Foto</span>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                     <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
@@ -2191,16 +2197,25 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               return (
                 <div key={`${warga.id || 'warga'}_${idx}`} className={`bg-white rounded-[1.5rem] border ${isCurrentUser ? 'border-teal-500 shadow-md ring-2 ring-teal-500/20' : isExpanded ? 'border-teal-400 shadow-xl ring-2 ring-teal-500/15' : 'border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] hover:border-teal-300 hover:shadow-md'} overflow-hidden transition-all duration-300`}>
                   <div
-                    className={`p-4 flex items-start sm:items-center gap-3.5 select-none ${canViewFamily ? 'cursor-pointer' : 'cursor-default'}`}
+                    className="p-4 flex items-start sm:items-center gap-3.5 select-none cursor-pointer"
                     onClick={() => {
                       if (canViewFamily) {
                         setExpandedId(isExpanded ? '__closed__' : warga.id);
+                      } else {
+                        setPreviewPhotoWarga(warga);
                       }
                     }}
                   >
-                    {/* Avatar / Unit Icon (sama dengan tampilan di menu Dokumen) */}
-                    <div className="relative shrink-0 mt-0.5 sm:mt-0">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white font-extrabold text-sm flex flex-col items-center justify-center shrink-0 overflow-hidden border border-slate-100 px-1">
+                    {/* Avatar / Foto Profil Warga (Klik untuk Pratinjau Foto) */}
+                    <div 
+                      className="relative shrink-0 mt-0.5 sm:mt-0 group/avatar cursor-pointer"
+                      title="Klik untuk melihat pratinjau foto profil"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewPhotoWarga(warga);
+                      }}
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white font-extrabold text-sm flex flex-col items-center justify-center shrink-0 overflow-hidden border border-slate-100 px-0.5 transition-transform group-hover/avatar:scale-105 shadow-xs">
                         {warga.photo ? (
                           <img
                             src={warga.photo}
@@ -2285,11 +2300,26 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                           )}
                         </div>
 
-                        {canViewFamily && (
-                          <div className={`p-1.5 rounded-xl transition-colors flex items-center justify-center shrink-0 ${isExpanded ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
-                            <icons.lainnya className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewPhotoWarga(warga);
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-extrabold bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                            title="Pratinjau foto profil"
+                          >
+                            <span>📷</span>
+                            <span className="hidden sm:inline">Foto</span>
+                          </button>
+
+                          {canViewFamily && (
+                            <div className={`p-1.5 rounded-xl transition-colors flex items-center justify-center shrink-0 ${isExpanded ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
+                              <icons.lainnya className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2533,6 +2563,89 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
           </div>
         </>
       )}
+
+      {/* MODAL PRATINJAU FOTO PROFIL WARGA (PHOTO ONLY PREVIEW) */}
+      <AnimatePresence>
+        {previewPhotoWarga && (
+          <div 
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md"
+            onClick={() => setPreviewPhotoWarga(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 15 }}
+              transition={{ type: "spring", stiffness: 320, damping: 25 }}
+              className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full overflow-hidden border border-slate-100 relative p-5"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header Modal */}
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                <div className="min-w-0 pr-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-slate-800 text-base truncate">
+                      {previewPhotoWarga.nama}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200">
+                      {previewPhotoWarga.role === 'admin'
+                        ? 'Ketua RT'
+                        : previewPhotoWarga.role === 'pengurus'
+                        ? 'Pengurus RT'
+                        : previewPhotoWarga.role === 'bendahara'
+                        ? 'Bendahara'
+                        : previewPhotoWarga.role === 'sekretaris'
+                        ? 'Sekretaris'
+                        : 'Warga'}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {previewPhotoWarga.alamat || 'RT 01'}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewPhotoWarga(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 flex items-center justify-center font-bold text-sm transition-colors cursor-pointer shrink-0"
+                  title="Tutup"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Tampilan Foto Profil Utama */}
+              <div className="w-full aspect-square rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center relative shadow-inner border border-slate-200">
+                {previewPhotoWarga.photo ? (
+                  <img 
+                    src={previewPhotoWarga.photo} 
+                    alt={previewPhotoWarga.nama} 
+                    className="w-full h-full object-contain" 
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400">
+                    <div className="w-20 h-20 rounded-full bg-slate-800 text-teal-400 flex items-center justify-center text-3xl font-black mb-3 border-2 border-slate-700">
+                      {(previewPhotoWarga.nama || 'W').charAt(0).toUpperCase()}
+                    </div>
+                    <p className="text-xs font-bold text-slate-300">Belum Mengunggah Foto Profil</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Foto kustom belum diatur pada akun ini</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Tombol Tutup */}
+              <button
+                type="button"
+                onClick={() => setPreviewPhotoWarga(null)}
+                className="w-full mt-4 py-3 bg-teal-600 hover:bg-teal-700 active:scale-98 text-white font-extrabold text-xs rounded-2xl shadow-md transition-all cursor-pointer"
+              >
+                Tutup Pratinjau Foto
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Document Preview Modal */}
       <AnimatePresence>
