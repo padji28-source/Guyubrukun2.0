@@ -1,6 +1,16 @@
 import { apiFetch } from './apiInterceptor';
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell
+} from 'recharts';
 
 // Icon Set - Diperbarui dan ditambah beberapa icon untuk mendukung UI baru
 const icons = {
@@ -17,6 +27,7 @@ const icons = {
 };
 
 let cachedDataWarga: any[] | null = null;
+let cachedAllWargaFull: any[] | null = null;
 
 export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, currentUser: any }) => {
   const isDeveloper = currentUser?.role === 'developer';
@@ -27,7 +38,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [activeSubMenu, setActiveSubMenu] = useState<'direktori' | 'dokumen_kk'>('direktori');
 
   const [wargaData, setWargaData] = useState<any[]>(cachedDataWarga || []);
-  const [allWargaFullData, setAllWargaFullData] = useState<any[]>([]);
+  const [allWargaFullData, setAllWargaFullData] = useState<any[]>(cachedAllWargaFull || []);
   const [allWargaKkData, setAllWargaKkData] = useState<any[]>([]);
   const [loadingKkMenu, setLoadingKkMenu] = useState(false);
   const [kkFilterStatus, setKkFilterStatus] = useState<'terupload' | 'semua' | 'belum'>('terupload');
@@ -123,10 +134,12 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   const fetchAllWargaFull = async () => {
     try {
-      const res = await apiFetch('/api/warga?limit=0');
+      const res = await apiFetch('/api/warga?limit=0&summary=1');
       if (res.ok) {
         const data = await res.json();
-        setAllWargaFullData(data.users || []);
+        const list = data.users || [];
+        cachedAllWargaFull = list;
+        setAllWargaFullData(list);
       }
     } catch (e) {
       console.error('Gagal memuat seluruh data warga untuk demografi:', e);
@@ -885,7 +898,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
     const filtered = sourceData.filter(w => {
       if (w.role === 'developer') return false;
-      // Untuk bendahara, pengurus, sekretaris, dan warga: hanya tampilkan data sesuai akun yang login
+      // Untuk bendahara, pengurus, sekretaris, dan warga: bagian bawah hanya menampilkan data keluarga & dokumen sesuai akun yang login
       if (!isKetuaRT) {
         return isOwnAccount(w);
       }
@@ -899,6 +912,11 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         !filterAgeCategory || getMatchingPersonsInWarga(w, filterAgeCategory).length > 0;
       return matchName && matchBlok && matchAge;
     });
+
+    if (!isKetuaRT && filtered.length === 0 && currentUser && currentUser.role !== 'developer') {
+      const fromWargaData = wargaData.find(w => isOwnAccount(w));
+      return [fromWargaData || currentUser];
+    }
 
     // Tempatkan akun user yang sedang aktif di urutan paling atas
     return [...filtered].sort((a, b) => {
@@ -1638,17 +1656,119 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         <>
           <h2 className="text-xl font-extrabold text-gray-800 mb-4 tracking-tight">Direktori Warga & Pengurus</h2>
 
-          {/* STATS CARDS (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Demografi Usia Warga (Semua Warga)
-            </span>
-            <span className="text-[10px] font-extrabold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
-              ✨ Klik kategori usia untuk lihat daftar warga
-            </span>
-          </div>
+          {/* STATS CARDS & BAR CHART (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs mb-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
+                  Demografi Usia Warga (Semua Warga)
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Distribusi usia seluruh warga RT ({allPersonsList.length} jiwa terdata)
+                </span>
+              </div>
+              <span className="text-[10px] font-extrabold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full">
+                ✨ Klik grafik / kategori usia untuk lihat daftar warga
+              </span>
+            </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {/* Bar Chart Visualisasi Distribusi Usia Seluruh Warga */}
+            <div className="h-44 w-full bg-slate-50/70 border border-slate-100 rounded-2xl p-3 mb-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={[
+                    {
+                      key: 'balita',
+                      name: 'Balita',
+                      range: '0 - 4 Thn',
+                      count: allPersonsList.filter(p => p.category === 'balita').length,
+                      fill: '#3b82f6'
+                    },
+                    {
+                      key: 'anak',
+                      name: 'Anak',
+                      range: '5 - 12 Thn',
+                      count: allPersonsList.filter(p => p.category === 'anak').length,
+                      fill: '#10b981'
+                    },
+                    {
+                      key: 'remaja',
+                      name: 'Remaja',
+                      range: '13 - 20 Thn',
+                      count: allPersonsList.filter(p => p.category === 'remaja').length,
+                      fill: '#8b5cf6'
+                    },
+                    {
+                      key: 'dewasa',
+                      name: 'Dewasa',
+                      range: '> 20 Thn',
+                      count: allPersonsList.filter(p => p.category === 'dewasa').length,
+                      fill: '#f97316'
+                    }
+                  ]}
+                  margin={{ top: 8, right: 12, left: -18, bottom: 0 }}
+                  barSize={38}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: '#334155', fontSize: 11, fontWeight: 700 }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(13, 148, 136, 0.06)' }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length > 0) {
+                        const item = payload[0].payload as any;
+                        const pct =
+                          allPersonsList.length > 0
+                            ? Math.round((item.count / allPersonsList.length) * 100)
+                            : 0;
+                        return (
+                          <div className="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-md text-xs">
+                            <p className="font-extrabold text-teal-300">
+                              {item.name} ({item.range})
+                            </p>
+                            <p className="font-bold mt-0.5">
+                              {item.count} Warga ({pct}%)
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar
+                    dataKey="count"
+                    radius={[8, 8, 0, 0]}
+                    className="cursor-pointer"
+                    onClick={(data: any) => {
+                      if (data?.key) {
+                        setSelectedAgeCategory(prev => (prev === data.key ? null : data.key));
+                      }
+                    }}
+                  >
+                    {[
+                      { key: 'balita', fill: '#3b82f6' },
+                      { key: 'anak', fill: '#10b981' },
+                      { key: 'remaja', fill: '#8b5cf6' },
+                      { key: 'dewasa', fill: '#f97316' }
+                    ].map(entry => (
+                      <Cell key={entry.key} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               {
                 key: 'balita' as const,
@@ -1735,6 +1855,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 </div>
               );
             })}
+          </div>
           </div>
 
           {/* PANEL DAFTAR WARGA BERDASARKAN KATEGORI USIA */}
