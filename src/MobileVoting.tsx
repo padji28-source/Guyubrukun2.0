@@ -18,12 +18,14 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
   const [loading, setLoading] = useState(!cachedVotingData);
   const [submitting, setSubmitting] = useState(false);
   const [votingOptionLoading, setVotingOptionLoading] = useState<string | null>(null);
+  const [justVotedKey, setJustVotedKey] = useState<string | null>(null);
 
-  // Hanya Ketua RT (admin / developer) yang dapat membuat, menutup, atau menghapus sesi voting
+  // Hanya Ketua RT (Admin / Developer) yang memiliki akses membuat atau mengedit polling
   const isKetuaRT = currentUser?.role === 'admin' || currentUser?.role === 'developer';
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<'semua' | 'aktif' | 'selesai'>('semua');
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [editingVotingId, setEditingVotingId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<'aktif' | 'semua' | 'selesai'>('aktif');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedVotersId, setExpandedVotersId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -32,12 +34,12 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Form states for creating a new voting (Ketua RT)
+  // Form states for creating / editing a voting poll (Ketua RT only)
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Musyawarah Warga');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [options, setOptions] = useState([
+  const [options, setOptions] = useState<{ id: string; text: string }[]>([
     { id: '1', text: '' },
     { id: '2', text: '' }
   ]);
@@ -81,6 +83,50 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
     return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);
 
+  const openCreateModal = () => {
+    if (!isKetuaRT) return;
+    setEditingVotingId(null);
+    setTitle('');
+    setCategory('Musyawarah Warga');
+    setDescription('');
+    setDeadline('');
+    setOptions([
+      { id: '1', text: '' },
+      { id: '2', text: '' }
+    ]);
+    setShowFormModal(true);
+  };
+
+  const openEditModal = (voting: any) => {
+    if (!isKetuaRT) return;
+    setEditingVotingId(voting.id);
+    setTitle(voting.title || '');
+    setCategory(voting.category || 'Musyawarah Warga');
+    setDescription(voting.description || '');
+    // Format ISO string to datetime-local input format if present
+    let formattedDeadline = '';
+    if (voting.deadline) {
+      const dt = new Date(voting.deadline);
+      if (!isNaN(dt.getTime())) {
+        const tzOffset = dt.getTimezoneOffset() * 60000;
+        formattedDeadline = new Date(dt.getTime() - tzOffset).toISOString().slice(0, 16);
+      }
+    }
+    setDeadline(formattedDeadline);
+    const existingOpts =
+      Array.isArray(voting.options) && voting.options.length >= 2
+        ? voting.options.map((o: any, idx: number) => ({
+            id: String(o.id || idx + 1),
+            text: String(o.text || '')
+          }))
+        : [
+            { id: '1', text: '' },
+            { id: '2', text: '' }
+          ];
+    setOptions(existingOpts);
+    setShowFormModal(true);
+  };
+
   const handleAddOption = () => {
     setOptions(prev => [...prev, { id: String(Date.now() + prev.length), text: '' }]);
   };
@@ -93,10 +139,10 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
     setOptions(prev => prev.filter(o => o.id !== id));
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSavePoll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isKetuaRT) {
-      showBanner('Akses ditolak: Hanya Ketua RT yang dapat membuat voting baru.', true);
+      showBanner('Akses ditolak: Hanya Ketua RT yang dapat membuat atau mengedit voting.', true);
       return;
     }
 
@@ -114,8 +160,12 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
 
     setSubmitting(true);
     try {
-      const res = await apiFetch('/api/voting', {
-        method: 'POST',
+      const isEditing = Boolean(editingVotingId);
+      const url = isEditing ? `/api/voting/${editingVotingId}` : '/api/voting';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await apiFetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: trimmedTitle,
@@ -128,22 +178,19 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
-        setShowCreateModal(false);
-        setTitle('');
-        setCategory('Musyawarah Warga');
-        setDescription('');
-        setDeadline('');
-        setOptions([
-          { id: '1', text: '' },
-          { id: '2', text: '' }
-        ]);
-        showBanner('Voting baru berhasil diterbitkan untuk seluruh warga!');
+        setShowFormModal(false);
+        setEditingVotingId(null);
+        showBanner(
+          isEditing
+            ? 'Polling voting berhasil diperbarui oleh Ketua RT!'
+            : 'Voting baru berhasil diterbitkan untuk seluruh warga!'
+        );
         await fetchVotings();
       } else {
-        showBanner(json.error || 'Gagal membuat sesi voting.', true);
+        showBanner(json.error || 'Gagal menyimpan sesi voting.', true);
       }
     } catch {
-      showBanner('Terjadi kesalahan jaringan saat membuat voting.', true);
+      showBanner('Terjadi kesalahan jaringan saat menyimpan voting.', true);
     } finally {
       setSubmitting(false);
     }
@@ -182,7 +229,6 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
         showBanner('Sesi voting berhasil dihapus.');
         fetchVotings();
       } else {
-        // Fallback if DELETE not supported
         await apiFetch(`/api/voting/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -202,7 +248,45 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
       showBanner('Silakan login terlebih dahulu untuk memberikan suara.', true);
       return;
     }
-    setVotingOptionLoading(`${votingId}_${optionId}`);
+
+    const voteKey = `${votingId}_${optionId}`;
+    setVotingOptionLoading(voteKey);
+    setJustVotedKey(voteKey);
+    setTimeout(() => {
+      setJustVotedKey(prev => (prev === voteKey ? null : prev));
+    }, 1200);
+
+    // Optimistic UI update for immediate checkmark morph & progress bar fill animation
+    const previousVotings = votings;
+    setVotings(prev =>
+      prev.map(v => {
+        if (v.id !== votingId) return v;
+        const existingVotes = Array.isArray(v.votes) ? [...v.votes] : [];
+        const existingIdx = existingVotes.findIndex((vt: any) => vt.userId === currentUser.id);
+        const voteEntry = {
+          userId: currentUser.id,
+          userName: currentUser.nama || currentUser.username || 'Warga',
+          userBlok: currentUser.alamat || '',
+          optionId,
+          date: new Date().toISOString()
+        };
+        if (existingIdx !== -1) {
+          existingVotes[existingIdx] = voteEntry;
+        } else {
+          existingVotes.push(voteEntry);
+        }
+        const updatedOptions = (v.options || []).map((opt: any) => ({
+          ...opt,
+          count: existingVotes.filter((vt: any) => vt.optionId === opt.id).length
+        }));
+        return {
+          ...v,
+          votes: existingVotes,
+          options: updatedOptions
+        };
+      })
+    );
+
     try {
       const res = await apiFetch(`/api/voting/${votingId}/vote`, {
         method: 'POST',
@@ -216,12 +300,18 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
-        showBanner('Suara Anda berhasil disimpan!');
-        await fetchVotings();
+        if (json.data) {
+          setVotings(prev => prev.map(v => (v.id === votingId ? json.data : v)));
+        } else {
+          await fetchVotings();
+        }
+        showBanner('Suara Anda berhasil tercatat secara real-time!');
       } else {
+        setVotings(previousVotings);
         showBanner(json.error || 'Gagal menyimpan pilihan suara Anda.', true);
       }
     } catch {
+      setVotings(previousVotings);
       showBanner('Terjadi kesalahan saat mengirim suara.', true);
     } finally {
       setVotingOptionLoading(null);
@@ -231,8 +321,8 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
   const stats = useMemo(() => {
     const activeCount = votings.filter(v => v.status === 'aktif').length;
     const completedCount = votings.filter(v => v.status === 'selesai').length;
-    const myVotedCount = votings.filter(v =>
-      Array.isArray(v.votes) && v.votes.some((vt: any) => vt.userId === currentUser?.id)
+    const myVotedCount = votings.filter(
+      v => Array.isArray(v.votes) && v.votes.some((vt: any) => vt.userId === currentUser?.id)
     ).length;
     return {
       total: votings.length,
@@ -276,7 +366,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                 Voting & Musyawarah Warga
               </h1>
               <p className="text-xs text-slate-500 font-medium">
-                Pengambilan keputusan bersama warga RT secara transparan (1 Akun = 1 Suara)
+                Polling aktif & hasil suara warga secara real-time (1 Akun = 1 Suara)
               </p>
             </div>
           </div>
@@ -284,7 +374,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
           {isKetuaRT && (
             <button
               type="button"
-              onClick={() => setShowCreateModal(true)}
+              onClick={openCreateModal}
               className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -334,19 +424,19 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
               </p>
               <h2 className="text-base sm:text-lg font-extrabold leading-snug">
                 {isKetuaRT
-                  ? 'Buat & Kelola Topik Pemungutan Suara Warga'
-                  : 'Salurkan Pendapat Anda untuk Kemajuan Lingkungan RT'}
+                  ? 'Buat, Edit & Kelola Polling Pemungutan Suara Warga'
+                  : 'Salurkan Suara Anda pada Polling Musyawarah Aktif'}
               </h2>
               <p className="text-xs text-teal-100/90 max-w-xl leading-relaxed">
                 {isKetuaRT
-                  ? 'Sebagai Ketua RT, Anda dapat membuat topik voting baru, memantau perolehan suara warga secara langsung, serta mengakhiri sesi voting.'
-                  : 'Setiap topik voting dibuat resmi oleh Ketua RT. Pilih salah satu opsi pada sesi yang sedang aktif untuk memberikan suara Anda.'}
+                  ? 'Hanya Ketua RT yang dapat membuat atau mengedit topik voting, memantau grafik perolehan suara warga secara langsung, serta mengakhiri sesi voting.'
+                  : 'Setiap topik voting dibuat resmi oleh Ketua RT. Ketuk salah satu opsi pada sesi yang sedang aktif untuk memberikan suara dan melihat hasil real-time.'}
               </p>
             </div>
             {isKetuaRT && (
               <button
                 type="button"
-                onClick={() => setShowCreateModal(true)}
+                onClick={openCreateModal}
                 className="px-4 py-2.5 bg-white text-teal-800 hover:bg-teal-50 rounded-xl text-xs font-extrabold shadow-xs transition-all shrink-0 cursor-pointer self-start sm:self-center"
               >
                 + Buat Topik Voting
@@ -357,15 +447,15 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
           {/* Summary Metrics */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200/70 shadow-xs">
-              <p className="text-[11px] font-semibold text-slate-500">Voting Aktif</p>
+              <p className="text-[11px] font-semibold text-slate-500">Polling Aktif</p>
               <p className="text-xl font-black text-teal-700 mt-0.5">{stats.activeCount}</p>
             </div>
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200/70 shadow-xs">
-              <p className="text-[11px] font-semibold text-slate-500">Sudah Anda Pilih</p>
+              <p className="text-[11px] font-semibold text-slate-500">Suara Anda</p>
               <p className="text-xl font-black text-slate-900 mt-0.5">{stats.myVotedCount}</p>
             </div>
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200/70 shadow-xs">
-              <p className="text-[11px] font-semibold text-slate-500">Voting Selesai</p>
+              <p className="text-[11px] font-semibold text-slate-500">Polling Selesai</p>
               <p className="text-xl font-black text-slate-600 mt-0.5">{stats.completedCount}</p>
             </div>
           </div>
@@ -385,8 +475,8 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
 
             <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl shrink-0">
               {[
+                { id: 'aktif', label: `Polling Aktif (${stats.activeCount})` },
                 { id: 'semua', label: `Semua (${stats.total})` },
-                { id: 'aktif', label: `Aktif (${stats.activeCount})` },
                 { id: 'selesai', label: `Selesai (${stats.completedCount})` }
               ].map(tab => (
                 <button
@@ -417,22 +507,37 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                 <icons.voting className="w-7 h-7" />
               </div>
               <div>
-                <p className="text-sm font-extrabold text-slate-800">Belum Ada Sesi Voting</p>
+                <p className="text-sm font-extrabold text-slate-800">
+                  {filterStatus === 'aktif' ? 'Tidak Ada Polling Aktif Saat Ini' : 'Belum Ada Sesi Voting'}
+                </p>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                   {isKetuaRT
                     ? 'Klik tombol "Buat Voting Baru" di atas untuk memulai pemungutan suara warga.'
+                    : filterStatus === 'aktif' && stats.completedCount > 0
+                    ? 'Seluruh sesi voting telah selesai. Anda dapat melihat hasil akhir pada tab Semua atau Selesai.'
                     : 'Ketua RT belum membuka topik pemungutan suara baru saat ini.'}
                 </p>
               </div>
-              {isKetuaRT && (
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(true)}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-                >
-                  + Buat Voting Pertama
-                </button>
-              )}
+              <div className="flex items-center justify-center gap-2">
+                {filterStatus === 'aktif' && stats.completedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterStatus('semua')}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Lihat Semua Riwayat Voting
+                  </button>
+                )}
+                {isKetuaRT && (
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
+                  >
+                    + Buat Voting Baru
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -452,7 +557,8 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                 );
 
                 return (
-                  <div
+                  <motion.div
+                    layout
                     key={voting.id}
                     className={`bg-white rounded-2xl p-5 border transition-all ${
                       isSelesai
@@ -481,11 +587,16 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                       </div>
 
                       <span
-                        className={`text-[11px] font-extrabold ${
+                        className={`text-[11px] font-extrabold flex items-center gap-1.5 ${
                           isSelesai ? 'text-slate-500' : 'text-emerald-600'
                         }`}
                       >
-                        {isSelesai ? '● Selesai Ditutup' : '● Sedang Berlangsung'}
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isSelesai ? 'bg-slate-400' : 'bg-emerald-500 animate-pulse'
+                          }`}
+                        />
+                        {isSelesai ? 'Selesai Ditutup' : 'Polling Aktif • Live'}
                       </span>
                     </div>
 
@@ -508,54 +619,126 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                       </p>
                     )}
 
-                    {/* Options List */}
+                    {/* Options List with Checkmark Morphing & Progress Bar Fill Animation */}
                     <div className="mt-4 space-y-2.5">
                       {(voting.options || []).map((opt: any, optIdx: number) => {
                         const optVotes = votesList.filter((v: any) => v.optionId === opt.id).length;
                         const percentage = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
                         const isSelected = userVote?.optionId === opt.id;
                         const isLeading = maxVotes > 0 && optVotes === maxVotes;
-                        const isVotingThis = votingOptionLoading === `${voting.id}_${opt.id}`;
+                        const optKey = `${voting.id}_${opt.id}`;
+                        const isVotingThis = votingOptionLoading === optKey;
+                        const isJustVoted = justVotedKey === optKey;
 
                         return (
-                          <button
+                          <motion.button
                             key={opt.id || optIdx}
                             type="button"
+                            whileTap={!isSelesai ? { scale: 0.985 } : undefined}
                             disabled={isSelesai || Boolean(votingOptionLoading)}
                             onClick={() => !isSelesai && handleVote(voting.id, opt.id)}
-                            className={`w-full text-left relative overflow-hidden rounded-xl border p-3.5 flex items-center justify-between gap-3 transition-all ${
+                            className={`w-full text-left relative overflow-hidden rounded-xl border p-3.5 flex items-center justify-between gap-3 transition-colors ${
                               isSelesai ? 'cursor-default' : 'cursor-pointer'
                             } ${
                               isSelected
-                                ? 'border-teal-500 bg-teal-50/40 ring-1 ring-teal-500/40'
+                                ? 'border-teal-500 bg-teal-50/35 ring-1 ring-teal-500/40'
                                 : 'border-slate-200 hover:border-teal-300 bg-white'
                             }`}
                           >
-                            {/* Progress fill bar */}
-                            <div
-                              className={`absolute top-0 left-0 bottom-0 transition-all duration-700 ease-out ${
-                                isSelected ? 'bg-teal-500/15' : isLeading ? 'bg-emerald-500/10' : 'bg-slate-100/80'
+                            {/* Animated Horizontal Progress Bar Fill */}
+                            <motion.div
+                              initial={{ width: '0%' }}
+                              animate={{ width: `${percentage}%` }}
+                              transition={{
+                                type: 'spring',
+                                stiffness: 110,
+                                damping: 20,
+                                mass: 0.8
+                              }}
+                              className={`absolute top-0 left-0 bottom-0 pointer-events-none ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-teal-500/20 to-emerald-500/25'
+                                  : isLeading
+                                  ? 'bg-emerald-500/12'
+                                  : 'bg-slate-100/90'
                               }`}
-                              style={{ width: `${percentage}%` }}
                             />
 
-                            <div className="relative z-10 flex items-center gap-3 min-w-0">
-                              <div
-                                className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                            {/* Bottom thin accent progress track for visual clarity */}
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100/80 pointer-events-none">
+                              <motion.div
+                                initial={{ width: '0%' }}
+                                animate={{ width: `${percentage}%` }}
+                                transition={{
+                                  type: 'spring',
+                                  stiffness: 110,
+                                  damping: 20
+                                }}
+                                className={`h-full ${
                                   isSelected
-                                    ? 'border-teal-600 bg-teal-600 text-white'
-                                    : 'border-slate-300 bg-white'
+                                    ? 'bg-gradient-to-r from-teal-500 to-emerald-500'
+                                    : isLeading
+                                    ? 'bg-teal-400'
+                                    : 'bg-slate-300'
                                 }`}
-                              >
-                                {isSelected && (
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                                  </svg>
-                                )}
+                              />
+                            </div>
+
+                            <div className="relative z-10 flex items-center gap-3 min-w-0">
+                              {/* Checkmark Morphing Circle */}
+                              <div className="relative flex items-center justify-center shrink-0">
+                                <AnimatePresence>
+                                  {isJustVoted && (
+                                    <motion.span
+                                      key="pulse-ring"
+                                      initial={{ scale: 0.8, opacity: 0.75 }}
+                                      animate={{ scale: 2.1, opacity: 0 }}
+                                      exit={{ opacity: 0 }}
+                                      transition={{ duration: 0.65, ease: 'easeOut' }}
+                                      className="absolute inset-0 rounded-full bg-teal-400 pointer-events-none"
+                                    />
+                                  )}
+                                </AnimatePresence>
+
+                                <motion.div
+                                  animate={{
+                                    scale: isJustVoted ? [0.85, 1.2, 1] : isSelected ? 1 : 0.95,
+                                    backgroundColor: isSelected ? '#0d9488' : '#ffffff',
+                                    borderColor: isSelected ? '#0d9488' : '#cbd5e1'
+                                  }}
+                                  transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+                                  className="w-5 h-5 rounded-full border-2 flex items-center justify-center text-white shadow-2xs"
+                                >
+                                  <AnimatePresence mode="wait">
+                                    {isSelected ? (
+                                      <motion.svg
+                                        key="checked-svg"
+                                        initial={{ scale: 0.5, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.5, opacity: 0 }}
+                                        className="w-3 h-3 text-white"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <motion.path
+                                          initial={{ pathLength: 0 }}
+                                          animate={{ pathLength: 1 }}
+                                          transition={{ duration: 0.32, ease: 'easeOut' }}
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth="3.2"
+                                          d="M5 13l4 4L19 7"
+                                        />
+                                      </motion.svg>
+                                    ) : null}
+                                  </AnimatePresence>
+                                </motion.div>
                               </div>
+
                               <div className="min-w-0">
                                 <span
-                                  className={`text-xs sm:text-sm block break-words ${
+                                  className={`text-xs sm:text-sm block break-words transition-colors ${
                                     isSelected ? 'font-extrabold text-teal-950' : 'font-bold text-slate-800'
                                   }`}
                                 >
@@ -563,7 +746,13 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                                 </span>
                                 <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px]">
                                   {isSelected && (
-                                    <span className="font-extrabold text-teal-700">✓ Pilihan Anda</span>
+                                    <motion.span
+                                      initial={{ opacity: 0, x: -4 }}
+                                      animate={{ opacity: 1, x: 0 }}
+                                      className="font-extrabold text-teal-700"
+                                    >
+                                      ✓ Pilihan Anda
+                                    </motion.span>
                                   )}
                                   {isLeading && totalVotes > 0 && (
                                     <span className="font-bold text-amber-700">
@@ -578,10 +767,20 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                             </div>
 
                             <div className="relative z-10 text-right shrink-0">
-                              <span className="text-xs font-extrabold text-slate-900 block">{percentage}%</span>
-                              <span className="text-[10px] font-semibold text-slate-500">{optVotes} suara</span>
+                              <motion.span
+                                key={`${opt.id}_${percentage}`}
+                                initial={{ opacity: 0.5, y: -3 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.25 }}
+                                className="text-xs font-extrabold text-slate-900 block tabular-nums"
+                              >
+                                {percentage}%
+                              </motion.span>
+                              <span className="text-[10px] font-semibold text-slate-500 tabular-nums">
+                                {optVotes} suara
+                              </span>
                             </div>
-                          </button>
+                          </motion.button>
                         );
                       })}
                     </div>
@@ -589,7 +788,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                     {/* Footer Bar: Total Votes, Voter Transparency, and Ketua RT Actions */}
                     <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3 text-xs text-slate-600">
-                        <span className="font-bold text-slate-700">Total: {totalVotes} Suara</span>
+                        <span className="font-bold text-slate-700">Total Partisipasi: {totalVotes} Suara</span>
                         {totalVotes > 0 && (
                           <button
                             type="button"
@@ -604,7 +803,15 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                       </div>
 
                       {isKetuaRT && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(voting)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            Edit Polling
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleToggleStatus(voting)}
@@ -687,7 +894,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                         </motion.div>
                       )}
                     </AnimatePresence>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -695,32 +902,36 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
         </div>
       </div>
 
-      {/* Modal Buat Voting Baru (Khusus Ketua RT) */}
+      {/* Modal Buat / Edit Voting (Khusus Ketua RT) */}
       <AnimatePresence>
-        {isKetuaRT && showCreateModal && (
+        {isKetuaRT && showFormModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
-            onClick={() => setShowCreateModal(false)}
+            onClick={() => setShowFormModal(false)}
           >
             <motion.form
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              onSubmit={handleCreate}
+              onSubmit={handleSavePoll}
               className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-900">Buat Topik Voting Baru</h3>
-                  <p className="text-xs text-slate-500">Khusus Ketua RT — Terbitkan pemungutan suara untuk warga</p>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    {editingVotingId ? 'Edit Polling Voting' : 'Buat Topik Voting Baru'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Khusus Ketua RT — {editingVotingId ? 'Perbarui rincian atau opsi polling' : 'Terbitkan pemungutan suara untuk warga'}
+                  </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => setShowFormModal(false)}
                   className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 cursor-pointer"
                 >
                   ✕
@@ -826,7 +1037,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
               <div className="flex gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => setShowFormModal(false)}
                   className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   Batal
@@ -836,7 +1047,11 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
                   disabled={submitting}
                   className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-sm disabled:opacity-50 transition-all cursor-pointer"
                 >
-                  {submitting ? 'Menerbitkan...' : 'Terbitkan Voting'}
+                  {submitting
+                    ? 'Menyimpan...'
+                    : editingVotingId
+                    ? 'Simpan Perubahan'
+                    : 'Terbitkan Voting'}
                 </button>
               </div>
             </motion.form>
