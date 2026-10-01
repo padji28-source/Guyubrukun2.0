@@ -1252,6 +1252,35 @@ function enforceRoles(allowed: string[]) {
 }
 
 
+// Helper function to extract and normalize Blok and House Number
+function parseBlokAndNo(inputStr: string): { blok: string; no: string; display: string } | null {
+  if (!inputStr || typeof inputStr !== 'string') return null;
+  const s = inputStr.trim();
+  if (!s) return null;
+
+  // Pattern 1: standard "Blok <Blok> No. <Nomor>" or "Blok <Blok> Nomor <Nomor>" or "Blok <Blok>/<Nomor>"
+  const match1 = s.match(/Blok\s*([a-zA-Z0-9]+)\s*(?:No\.?|Nomor|\/|-|,)?\s*([a-zA-Z0-9]+)?/i);
+  if (match1 && match1[1] && match1[2]) {
+    const blok = match1[1].toUpperCase();
+    const rawNo = match1[2].toUpperCase();
+    const isPureNum = /^\d+$/.test(rawNo);
+    const no = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
+    return { blok, no, display: `Blok ${blok} No. ${rawNo}` };
+  }
+
+  // Pattern 2: short code e.g. "A01", "C04", "D11A", "A-1", "B_02"
+  const match2 = s.match(/^([a-zA-Z])\s*[-_/\s]?\s*([0-9]+[a-zA-Z]?)$/i);
+  if (match2 && match2[1] && match2[2]) {
+    const blok = match2[1].toUpperCase();
+    const rawNo = match2[2].toUpperCase();
+    const isPureNum = /^\d+$/.test(rawNo);
+    const no = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
+    return { blok, no, display: `Blok ${blok} No. ${rawNo}` };
+  }
+
+  return null;
+}
+
 // ==========================================
 // API REST ROUTES GROUPINGS (POINT 5)
 // ==========================================
@@ -1265,6 +1294,32 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
   const userExists = await UserModel.findOne({ rtId, username });
   if (userExists) {
     return res.status(400).json({ error: "Username sudah terdaftar" });
+  }
+
+  // VALIDASI KETAT: Cek apakah Blok dan Nomor Rumah sudah pernah terdaftar di RT ini
+  if (alamat) {
+    const parsedTarget = parseBlokAndNo(alamat);
+    if (parsedTarget) {
+      const allUsers = await UserModel.find({ rtId, role: { $ne: 'developer' } }).lean();
+      const duplicate = allUsers.find((u: any) => {
+        const parsedAlamat = parseBlokAndNo(u.alamat || '');
+        const parsedUsername = parseBlokAndNo(u.username || '');
+        
+        if (parsedAlamat && parsedAlamat.blok === parsedTarget.blok && parsedAlamat.no === parsedTarget.no) {
+          return true;
+        }
+        if (parsedUsername && parsedUsername.blok === parsedTarget.blok && parsedUsername.no === parsedTarget.no) {
+          return true;
+        }
+        return false;
+      });
+
+      if (duplicate) {
+        return res.status(400).json({
+          error: `Blok ${parsedTarget.blok} No. ${parsedTarget.no} sudah terdaftar atas nama ${duplicate.nama || duplicate.username}. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.`
+        });
+      }
+    }
   }
 
   const validRoles = ['warga', 'pengurus', 'sekretaris', 'bendahara', 'admin'];
@@ -1511,7 +1566,31 @@ app.put("/api/profile", async (req, res) => {
     const beforeObj = user.toObject();
     
     if (nama !== undefined && nama !== '') user.nama = nama;
-    if (alamat !== undefined) user.alamat = alamat;
+    if (alamat !== undefined && alamat !== user.alamat) {
+      const parsedTarget = parseBlokAndNo(alamat);
+      if (parsedTarget) {
+        const allUsers = await UserModel.find({ rtId: user.rtId || rtId, id: { $ne: user.id }, role: { $ne: 'developer' } }).lean();
+        const duplicate = allUsers.find((u: any) => {
+          const parsedAlamat = parseBlokAndNo(u.alamat || '');
+          const parsedUsername = parseBlokAndNo(u.username || '');
+          
+          if (parsedAlamat && parsedAlamat.blok === parsedTarget.blok && parsedAlamat.no === parsedTarget.no) {
+            return true;
+          }
+          if (parsedUsername && parsedUsername.blok === parsedTarget.blok && parsedUsername.no === parsedTarget.no) {
+            return true;
+          }
+          return false;
+        });
+
+        if (duplicate) {
+          return res.status(400).json({
+            error: `Blok ${parsedTarget.blok} No. ${parsedTarget.no} sudah digunakan oleh warga lain (${duplicate.nama || duplicate.username}). Silakan gunakan nomor rumah yang berbeda.`
+          });
+        }
+      }
+      user.alamat = alamat;
+    }
     if (noHp !== undefined) user.noHp = noHp;
     if (status !== undefined) user.status = status;
     if (photo !== undefined) user.photo = photo;
