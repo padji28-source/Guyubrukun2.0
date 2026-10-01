@@ -179,6 +179,7 @@ const UserSchema = new mongoose.Schema({
     jenisKelamin: String
   }],
   photo: String,
+  noKk: { type: String },
   dokumenKk: mongoose.Schema.Types.Mixed,
   dokumenKtp: mongoose.Schema.Types.Mixed,
 }, { timestamps: true, strict: false });
@@ -1123,6 +1124,7 @@ async function initDb(rtId: string = '') {
 
       const a01 = await UserModel.findOne({ rtId: rtId || 'rt01', username: /^A01$/i });
       if (a01 && !a01.dokumenKk) {
+        a01.noKk = '3603120101200001';
         a01.dokumenKk = makeSampleKkSvg('3603120101200001', a01.nama, a01.alamat || 'Blok A No. 01', [
           { nama: a01.nama, nik: '3603121504880001', jk: 'Laki-Laki', tglLahir: '1988-04-15', usia: '38', hubungan: 'Kepala Keluarga' },
           { nama: 'Rina Marlina', nik: '3603125208910002', jk: 'Perempuan', tglLahir: '1991-08-12', usia: '35', hubungan: 'Istri' },
@@ -1135,6 +1137,7 @@ async function initDb(rtId: string = '') {
 
       const a03 = await UserModel.findOne({ rtId: rtId || 'rt01', username: /^A03$/i });
       if (a03 && !a03.dokumenKk) {
+        a03.noKk = '3603120301200002';
         a03.dokumenKk = makeSampleKkSvg('3603120301200002', a03.nama, a03.alamat || 'Blok A No. 03', [
           { nama: a03.nama, nik: '3603122002850001', jk: 'Laki-Laki', tglLahir: '1985-02-20', usia: '41', hubungan: 'Kepala Keluarga' },
           { nama: 'Siti Aminah', nik: '3603124506870002', jk: 'Perempuan', tglLahir: '1987-06-05', usia: '39', hubungan: 'Istri' },
@@ -1142,6 +1145,16 @@ async function initDb(rtId: string = '') {
         ]);
         a03.markModified('dokumenKk');
         await a03.save();
+      }
+
+      // Backfill existing users with noKk extracted from their uploaded dokumenKk
+      const usersToBackfill = await UserModel.find({ rtId: rtId || 'rt01', dokumenKk: { $exists: true, $nin: ['', null] }, noKk: { $in: ['', null, undefined] } });
+      for (const u of usersToBackfill) {
+        const extractedNo = extractNoKkFromDocument(String(u.dokumenKk));
+        if (extractedNo) {
+          u.noKk = extractedNo;
+          await u.save();
+        }
       }
     }
 
@@ -1200,6 +1213,7 @@ const RegisterValidator = z.object({
   jenisKelamin: z.string().optional(),
   role: z.string().optional(),
   isApproved: z.boolean().optional(),
+  noKk: z.string().optional(),
   dokumenKk: z.any().optional(),
   dokumenKtp: z.any().optional()
 });
@@ -1252,6 +1266,49 @@ function enforceRoles(allowed: string[]) {
 }
 
 
+// Helper function to extract No. KK from SVG, text, or OCR content
+function extractNoKkFromDocument(kkDoc: string): string | null {
+  if (!kkDoc || typeof kkDoc !== 'string') return null;
+  const s = kkDoc.trim();
+  if (!s) return null;
+
+  // 1. If SVG XML
+  if (s.startsWith('data:image/svg+xml') || s.includes('<svg')) {
+    let svgText = s;
+    if (s.startsWith('data:image/svg+xml')) {
+      const base64Part = s.split(',')[1] || '';
+      try {
+        svgText = s.includes(';base64,')
+          ? Buffer.from(base64Part, 'base64').toString('utf-8')
+          : decodeURIComponent(base64Part);
+      } catch {}
+    }
+    const svgMatch = svgText.match(/No\.?\s*KK\s*:?\s*([0-9\s]{12,20})/i) ||
+                     svgText.match(/NOMOR\s*:?\s*([0-9\s]{12,20})/i) ||
+                     svgText.match(/>\s*No\.?\s*KK\s*:\s*([0-9]{12,18})\s*</i) ||
+                     svgText.match(/>\s*([1-9][0-9]{15})\s*</);
+    if (svgMatch && svgMatch[1]) {
+      const clean = svgMatch[1].replace(/\D/g, '');
+      if (clean.length >= 12 && clean.length <= 18) return clean;
+    }
+  }
+
+  // 2. Direct text search
+  const textMatch = s.match(/(?:No\.?\s*KK|NOMOR\s*KARTU\s*KELUARGA|No\.?\s*Kartu\s*Keluarga|NOMOR\s*KK|No\.\s*KK)\s*[:.]?\s*([0-9\s]{12,22})/i);
+  if (textMatch && textMatch[1]) {
+    const clean = textMatch[1].replace(/\D/g, '');
+    if (clean.length >= 12 && clean.length <= 18) return clean;
+  }
+
+  // 3. Fallback: Any 16 digit number
+  const digit16Match = s.match(/\b([1-9][0-9]{15})\b/);
+  if (digit16Match && digit16Match[1]) {
+    return digit16Match[1];
+  }
+
+  return null;
+}
+
 // Helper function to extract and normalize Blok and House Number
 function parseBlokAndNo(inputStr: string): { blok: string; no: string; display: string } | null {
   if (!inputStr || typeof inputStr !== 'string') return null;
@@ -1287,13 +1344,19 @@ function parseBlokAndNo(inputStr: string): { blok: string; no: string; display: 
 
 // --- AUTH & SIGNUP ---
 app.post("/api/register", validateRequest(RegisterValidator), async (req, res) => {
-  const { username, nama, password, alamat, noHp, status, umur, tglLahir, jenisKelamin, role, isApproved, dokumenKk, dokumenKtp } = req.body;
+  const { username, nama, password, alamat, noHp, status, umur, tglLahir, jenisKelamin, role, isApproved, noKk, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
 
   await connectDB();
   const userExists = await UserModel.findOne({ rtId, username });
   if (userExists) {
     return res.status(400).json({ error: "Username sudah terdaftar" });
+  }
+
+  // Auto extract No. KK from document if not explicitly passed
+  let resolvedNoKk = (noKk || '').trim();
+  if (!resolvedNoKk && dokumenKk) {
+    resolvedNoKk = extractNoKkFromDocument(String(dokumenKk)) || '';
   }
 
   // VALIDASI KETAT: Cek apakah Blok dan Nomor Rumah sudah pernah terdaftar di RT ini
@@ -1338,6 +1401,7 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
     umur: Number(umur) || undefined,
     tglLahir: tglLahir || undefined,
     jenisKelamin: jenisKelamin || undefined,
+    noKk: resolvedNoKk || undefined,
     dokumenKk: dokumenKk || undefined,
     dokumenKtp: dokumenKtp || undefined,
     rtId,
@@ -1547,7 +1611,7 @@ app.put("/api/password", async (req, res) => {
 });
 
 app.put("/api/profile", async (req, res) => {
-  const { id, username, nama, alamat, noHp, status, photo, umur, tglLahir, dokumenKk, dokumenKtp } = req.body;
+  const { id, username, nama, alamat, noHp, status, photo, umur, tglLahir, noKk, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const requesterRole = (req.headers['x-user-role'] as string) || 'warga';
   const requesterId = (req.headers['x-user-id'] as string) || '';
@@ -1596,9 +1660,14 @@ app.put("/api/profile", async (req, res) => {
     if (photo !== undefined) user.photo = photo;
     if (umur !== undefined) user.umur = Number(umur);
     if (tglLahir !== undefined) user.tglLahir = tglLahir;
+    if (noKk !== undefined) user.noKk = noKk;
     if (dokumenKk !== undefined) {
       user.dokumenKk = dokumenKk;
       user.markModified('dokumenKk');
+      const extractedNo = extractNoKkFromDocument(String(dokumenKk));
+      if (extractedNo) {
+        user.noKk = extractedNo;
+      }
     }
     if (dokumenKtp !== undefined) {
       user.dokumenKtp = dokumenKtp;
@@ -1620,7 +1689,7 @@ app.put("/api/profile", async (req, res) => {
 
 // Dedicated endpoint for Ketua RT or the Warga themselves to upload/update documents
 app.put("/api/warga/:id/dokumen", async (req, res) => {
-  const { dokumenKk, dokumenKtp } = req.body;
+  const { noKk, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const targetId = req.params.id;
   const requesterRole = (req.headers['x-user-role'] as string) || 'warga';
@@ -1640,9 +1709,16 @@ app.put("/api/warga/:id/dokumen", async (req, res) => {
   }
 
   const beforeObj = user.toObject();
+  if (noKk !== undefined) {
+    user.noKk = noKk;
+  }
   if (dokumenKk !== undefined) {
     user.dokumenKk = dokumenKk;
     user.markModified('dokumenKk');
+    const extractedNo = extractNoKkFromDocument(String(dokumenKk));
+    if (extractedNo) {
+      user.noKk = extractedNo;
+    }
   }
   if (dokumenKtp !== undefined) {
     user.dokumenKtp = dokumenKtp;
@@ -2321,6 +2397,11 @@ Kembalikan hasil dalam bentuk JSON Array.`;
       }
     }
 
+    const extractedNoKk = extractNoKkFromDocument(kkDoc);
+    if (extractedNoKk) {
+      user.noKk = extractedNoKk;
+    }
+
     user.markModified('members');
     const updatedUser = await user.save();
 
@@ -2400,7 +2481,10 @@ app.get("/api/warga", async (req, res) => {
   if (search) {
     query.$or = [
       { nama: { $regex: search, $options: 'i' } },
-      { username: { $regex: search, $options: 'i' } }
+      { username: { $regex: search, $options: 'i' } },
+      { alamat: { $regex: search, $options: 'i' } },
+      { noKk: { $regex: search, $options: 'i' } },
+      { 'members.name': { $regex: search, $options: 'i' } }
     ];
   }
 
@@ -2445,6 +2529,7 @@ app.get("/api/warga", async (req, res) => {
           status: u.status,
           role: u.role,
           photo: u.photo,
+          noKk: u.noKk,
           umur: u.umur,
           tglLahir: u.tglLahir,
           jenisKelamin: u.jenisKelamin,
