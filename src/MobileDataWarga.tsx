@@ -199,8 +199,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [memberForm, setMemberForm] = useState({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // State untuk klik kategori usia (Balita, Anak, Remaja, Dewasa) bagi semua peran
-  const [selectedAgeCategory, setSelectedAgeCategory] = useState<'balita' | 'anak' | 'remaja' | 'dewasa' | null>(null);
+  // State untuk klik kategori usia (Balita, Anak, Remaja, Dewasa, Lansia) bagi semua peran
+  const [selectedAgeCategory, setSelectedAgeCategory] = useState<'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' | null>(null);
   const [ageCategorySearch, setAgeCategorySearch] = useState('');
   const [ageCategoryGenderFilter, setAgeCategoryGenderFilter] = useState<'semua' | 'Laki-laki' | 'Perempuan'>('semua');
 
@@ -736,7 +736,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       tglLahirRaw: string;
       tglLahirFormatted: string;
       umur: number;
-      category: 'balita' | 'anak' | 'remaja' | 'dewasa';
+      category: 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia';
     }> = [];
 
     const resolveAge = (rawAge: any, rawDob?: string): number => {
@@ -750,11 +750,12 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       return isNaN(parsed) ? -1 : parsed;
     };
 
-    const getCat = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' => {
+    const getCat = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' => {
       if (age <= 4) return 'balita';
       if (age <= 12) return 'anak';
       if (age <= 20) return 'remaja';
-      return 'dewasa';
+      if (age <= 70) return 'dewasa';
+      return 'lansia';
     };
 
     sourceList.forEach(w => {
@@ -894,8 +895,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       if (age <= 4) return 'Balita (0-4 Thn)';
       if (age <= 12) return 'Anak (5-12 Thn)';
       if (age <= 20) return 'Remaja (13-20 Thn)';
-      if (age >= 60) return 'Lansia (≥60 Thn)';
-      return 'Dewasa (>20 Thn)';
+      if (age <= 70) return 'Dewasa (21-70 Thn)';
+      return 'Lansia (>70 Thn)';
     };
 
     const headers = [
@@ -1038,9 +1039,9 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       case 'remaja':
         return age >= 13 && age <= 20;
       case 'dewasa':
-        return age > 20;
+        return age >= 21 && age <= 70;
       case 'lansia':
-        return age >= 60;
+        return age > 70;
       default:
         return true;
     }
@@ -1921,13 +1922,20 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                     {
                       key: 'dewasa',
                       name: 'Dewasa',
-                      range: '> 20 Thn',
+                      range: '21 - 70 Thn',
                       count: allPersonsList.filter(p => p.category === 'dewasa').length,
                       fill: '#f97316'
+                    },
+                    {
+                      key: 'lansia',
+                      name: 'Lansia',
+                      range: '> 70 Thn',
+                      count: allPersonsList.filter(p => p.category === 'lansia').length,
+                      fill: '#f43f5e'
                     }
                   ]}
                   margin={{ top: 8, right: 12, left: -18, bottom: 0 }}
-                  barSize={38}
+                  barSize={34}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis
@@ -1979,7 +1987,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                       { key: 'balita', fill: '#3b82f6' },
                       { key: 'anak', fill: '#10b981' },
                       { key: 'remaja', fill: '#8b5cf6' },
-                      { key: 'dewasa', fill: '#f97316' }
+                      { key: 'dewasa', fill: '#f97316' },
+                      { key: 'lansia', fill: '#f43f5e' }
                     ].map(entry => (
                       <Cell key={entry.key} fill={entry.fill} />
                     ))}
@@ -1988,7 +1997,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               </ResponsiveContainer>
             </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {[
               {
                 key: 'balita' as const,
@@ -2029,7 +2038,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               {
                 key: 'dewasa' as const,
                 label: 'Dewasa',
-                range: '> 20 Thn',
+                range: '21 - 70 Thn',
                 count: allPersonsList.filter(p => p.category === 'dewasa').length,
                 bg: 'from-orange-50 to-white',
                 border: 'border-orange-200',
@@ -2037,6 +2046,18 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 textLabel: 'text-orange-600',
                 textCount: 'text-orange-900',
                 badgeBg: 'bg-orange-100 text-orange-800'
+              },
+              {
+                key: 'lansia' as const,
+                label: 'Lansia',
+                range: '> 70 Thn',
+                count: allPersonsList.filter(p => p.category === 'lansia').length,
+                bg: 'from-rose-50 to-white',
+                border: 'border-rose-200',
+                activeRing: 'ring-2 ring-rose-500 border-rose-500 bg-rose-50/90 shadow-md',
+                textLabel: 'text-rose-600',
+                textCount: 'text-rose-900',
+                badgeBg: 'bg-rose-100 text-rose-800'
               }
             ].map(card => {
               const isSelected = selectedAgeCategory === card.key;
@@ -2108,7 +2129,9 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                             ? 'Anak (5 - 12 Tahun)'
                             : selectedAgeCategory === 'remaja'
                             ? 'Remaja (13 - 20 Tahun)'
-                            : 'Dewasa (> 20 Tahun)'}
+                            : selectedAgeCategory === 'dewasa'
+                            ? 'Dewasa (21 - 70 Tahun)'
+                            : 'Lansia (> 70 Tahun)'}
                         </span>
                       </h3>
                     </div>
