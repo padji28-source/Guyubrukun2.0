@@ -191,23 +191,28 @@ export function Register({ onRegister, onNavLogin }: any) {
           <h1 className="text-2xl font-bold text-teal-600 mb-2">Daftar Akun</h1>
           <p className="text-sm text-gray-500">Bergabung dengan Guyub Rukun</p>
         </div>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>}
+        {error && (
+          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-start gap-2">
+            <span className="text-base leading-none">⚠️</span>
+            <span className="flex-1 leading-relaxed">{error}</span>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Username</label>
-            <input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan username Anda"/>
+            <input type="text" value={formData.username} onChange={e => { setError(''); setFormData({...formData, username: e.target.value}); }} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan username Anda"/>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Lengkap</label>
-            <input type="text" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan nama Anda"/>
+            <input type="text" value={formData.nama} onChange={e => { setError(''); setFormData({...formData, nama: e.target.value}); }} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan nama Anda"/>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Password</label>
-            <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} onFocus={() => setIsFocusedPassword(true)} onBlur={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan password"/>
+            <input type="password" value={formData.password} onChange={e => { setError(''); setFormData({...formData, password: e.target.value}); }} onFocus={() => setIsFocusedPassword(true)} onBlur={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan password"/>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Blok Rumah</label>
-            <select value={blok} onChange={e => setBlok(e.target.value)} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500">
+            <select value={blok} onChange={e => { setError(''); setBlok(e.target.value); }} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500">
               <option value="">Pilih Blok</option>
               <option value="A">Blok A</option>
               <option value="B">Blok B</option>
@@ -223,7 +228,7 @@ export function Register({ onRegister, onNavLogin }: any) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Nomor Rumah</label>
-            <input type="text" value={nomorRumah} onChange={e => setNomorRumah(e.target.value)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Cth: 12" />
+            <input type="text" value={nomorRumah} onChange={e => { setError(''); setNomorRumah(e.target.value); }} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Cth: 12" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">No. HP</label>
