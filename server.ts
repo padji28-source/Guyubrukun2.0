@@ -4189,13 +4189,15 @@ app.get("/api/dashboard", async (req, res) => {
     let anakCount = 0;
     let remajaCount = 0;
     let dewasaCount = 0;
+    let lansiaCount = 0;
 
     const categorizeAge = (age: number) => {
       if (age < 0) return;
       if (age <= 4) balitaCount++;
       else if (age <= 12) anakCount++;
       else if (age <= 20) remajaCount++;
-      else dewasaCount++;
+      else if (age <= 70) dewasaCount++;
+      else lansiaCount++;
     };
 
     const jumlahKK = users.length;
@@ -4216,18 +4218,20 @@ app.get("/api/dashboard", async (req, res) => {
       }
     });
     const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
-    const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount;
+    const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
     const demographics = {
       balita: balitaCount,
       anak: anakCount,
       remaja: remajaCount,
       dewasa: dewasaCount,
+      lansia: lansiaCount,
       totalWithAge,
       groups: [
         { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
         { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
         { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
-        { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: dewasaCount, fill: '#f97316' }
+        { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316' },
+        { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
       ]
     };
 
