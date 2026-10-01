@@ -26,15 +26,65 @@ const icons = {
   upload: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
 };
 
+// Client-side helper to extract No. KK from document preview/base64
+function extractNoKkFromDoc(kkDoc: string): string | null {
+  if (!kkDoc || typeof kkDoc !== 'string') return null;
+  const s = kkDoc.trim();
+  if (!s) return null;
+
+  if (s.startsWith('data:image/svg+xml') || s.includes('<svg')) {
+    let svgText = s;
+    if (s.startsWith('data:image/svg+xml')) {
+      const base64Part = s.split(',')[1] || '';
+      try {
+        svgText = s.includes(';base64,')
+          ? atob(base64Part)
+          : decodeURIComponent(base64Part);
+      } catch {}
+    }
+    const svgMatch = svgText.match(/No\.?\s*KK\s*:?\s*([0-9\s]{12,20})/i) ||
+                     svgText.match(/NOMOR\s*:?\s*([0-9\s]{12,20})/i) ||
+                     svgText.match(/>\s*No\.?\s*KK\s*:\s*([0-9]{12,18})\s*</i) ||
+                     svgText.match(/>\s*([1-9][0-9]{15})\s*</);
+    if (svgMatch && svgMatch[1]) {
+      const clean = svgMatch[1].replace(/\D/g, '');
+      if (clean.length >= 12 && clean.length <= 18) return clean;
+    }
+  }
+
+  const textMatch = s.match(/(?:No\.?\s*KK|NOMOR\s*KARTU\s*KELUARGA|No\.?\s*Kartu\s*Keluarga|NOMOR\s*KK|No\.\s*KK)\s*[:.]?\s*([0-9\s]{12,22})/i);
+  if (textMatch && textMatch[1]) {
+    const clean = textMatch[1].replace(/\D/g, '');
+    if (clean.length >= 12 && clean.length <= 18) return clean;
+  }
+
+  const digit16Match = s.match(/\b([1-9][0-9]{15})\b/);
+  if (digit16Match && digit16Match[1]) return digit16Match[1];
+
+  return null;
+}
+
+// Helper to resolve No. KK from citizen object or document fallback
+const getResolvedNoKk = (w: any): string => {
+  if (w?.noKk && String(w.noKk).trim() !== '') return String(w.noKk).trim();
+  if (w?.dokumenKk) {
+    const extracted = extractNoKkFromDoc(String(w.dokumenKk));
+    if (extracted) return extracted;
+  }
+  return '';
+};
+
 let cachedDataWarga: any[] | null = null;
 let cachedAllWargaFull: any[] | null = null;
 
 export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, currentUser: any }) => {
   const isDeveloper = currentUser?.role === 'developer';
   const isKetuaRT = currentUser?.role === 'admin' || isDeveloper;
+  const isSekretaris = currentUser?.role === 'sekretaris';
+  const isPrivilegedKkViewer = isKetuaRT || isSekretaris;
   const isAdmin = isKetuaRT;
 
-  // Sub-menu state inside Data Warga: 'direktori' vs 'dokumen_kk' (only Ketua RT can access 'dokumen_kk')
+  // Sub-menu state inside Data Warga: 'direktori' vs 'dokumen_kk' (Hanya Ketua RT & Sekretaris yang dapat mengakses 'dokumen_kk')
   const [activeSubMenu, setActiveSubMenu] = useState<'direktori' | 'dokumen_kk'>('direktori');
 
   const [wargaData, setWargaData] = useState<any[]>(cachedDataWarga || []);
@@ -55,7 +105,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   // Forms states
   const [showAddWarga, setShowAddWarga] = useState(false);
-  const [newWarga, setNewWarga] = useState({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '', jenisKelamin: 'Laki-laki', role: 'warga', dokumenKk: '', dokumenKtp: [] as string[] });
+  const [newWarga, setNewWarga] = useState({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '', jenisKelamin: 'Laki-laki', role: 'warga', noKk: '', dokumenKk: '', dokumenKtp: [] as string[] });
   const [newWargaBlok, setNewWargaBlok] = useState('');
   const [newWargaNomor, setNewWargaNomor] = useState('');
   const [uploadingDocWargaId, setUploadingDocWargaId] = useState<string | null>(null);
@@ -148,7 +198,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   };
 
   const fetchAllKkWargaForKetuaRT = async () => {
-    if (!isKetuaRT) return;
+    if (!isPrivilegedKkViewer) return;
     setLoadingKkMenu(true);
     try {
       const res = await apiFetch('/api/warga-dokumen-kk');
@@ -169,10 +219,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   useEffect(() => {
     fetchAllWargaFull();
-    if (isKetuaRT) {
+    if (isPrivilegedKkViewer) {
       fetchAllKkWargaForKetuaRT();
     }
-  }, [isKetuaRT, activeSubMenu]);
+  }, [isPrivilegedKkViewer, activeSubMenu]);
 
   useEffect(() => {
     setPage(1);
@@ -183,14 +233,14 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       if (e.detail === 'users' || e.detail === 'online_status') {
         fetchWarga();
         fetchAllWargaFull();
-        if (isKetuaRT) {
+        if (isPrivilegedKkViewer) {
           fetchAllKkWargaForKetuaRT();
         }
       }
     };
     window.addEventListener('app_data_update', handleUpdate);
     return () => window.removeEventListener('app_data_update', handleUpdate);
-  }, [page, limit, debouncedSearchQuery, isKetuaRT]);
+  }, [page, limit, debouncedSearchQuery, isPrivilegedKkViewer]);
 
   const processFileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -381,7 +431,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         return;
       }
       setShowAddWarga(false);
-      setNewWarga({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '', jenisKelamin: 'Laki-laki', role: 'warga', dokumenKk: '', dokumenKtp: [] });
+      setNewWarga({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '', jenisKelamin: 'Laki-laki', role: 'warga', noKk: '', dokumenKk: '', dokumenKtp: [] });
       setNewWargaBlok('');
       setNewWargaNomor('');
       showStatusBanner('Warga / Pengurus baru berhasil ditambahkan!');
@@ -759,6 +809,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
     const headers = [
       'No',
+      'No. KK',
       'Nama Lengkap',
       'Status Hubungan',
       'Kepala Keluarga',
@@ -779,6 +830,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       const headAge = resolvePersonAge(w.umur, w.tglLahir);
       const headJk = inferJenisKelamin(w.nama || '', 'Kepala Keluarga', w.jenisKelamin);
       const headDob = formatTanggalLahirWarga(w.tglLahir, headAge >= 0 ? headAge : undefined);
+      const headNoKk = getResolvedNoKk(w) || '-';
       const roleLabel =
         w.role === 'admin'
           ? 'Ketua RT'
@@ -794,6 +846,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       if (includeHead) {
         rows.push([
           String(rowNo++),
+          headNoKk,
           w.nama || '-',
           'Kepala Keluarga',
           w.nama || '-',
@@ -817,13 +870,15 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
           const nameMatchesQuery =
             !q ||
             (m.name || '').toLowerCase().includes(q) ||
-            (w.nama || '').toLowerCase().includes(q);
+            (w.nama || '').toLowerCase().includes(q) ||
+            (headNoKk && headNoKk.toLowerCase().includes(q));
 
           if (includeMember && nameMatchesQuery) {
             const mJk = inferJenisKelamin(m.name || '', m.role, m.jenisKelamin);
             const mDob = formatTanggalLahirWarga(m.tglLahir, mAge >= 0 ? mAge : undefined);
             rows.push([
               String(rowNo++),
+              headNoKk,
               m.name || '-',
               m.role || 'Anggota Keluarga',
               w.nama || '-',
@@ -930,10 +985,13 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       if (w.role === 'developer') return false;
       const q = debouncedSearchQuery.toLowerCase();
       const canSearchMembers = isKetuaRT || isOwnAccount(w);
+      const resolvedNoKk = getResolvedNoKk(w).toLowerCase();
       const matchName =
         !q ||
         (w.nama || '').toLowerCase().includes(q) ||
+        (w.username || '').toLowerCase().includes(q) ||
         (w.alamat || '').toLowerCase().includes(q) ||
+        resolvedNoKk.includes(q) ||
         (canSearchMembers && (w.members || []).some((m: any) => (m.name || '').toLowerCase().includes(q)));
       const matchBlok = !filterBlok || w.alamat?.match(/Blok\s+([a-zA-Z0-9]+)/i)?.[1] === filterBlok;
       const matchAge =
@@ -1095,8 +1153,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         </div>
       </div>
 
-      {/* MENU TAB NAVIGATION INSIDE DATA WARGA (DATA DOKUMEN KK HANYA UNTUK KETUA RT) */}
-      {isKetuaRT && (
+      {/* MENU TAB NAVIGATION INSIDE DATA WARGA (DATA DOKUMEN KK HANYA UNTUK KETUA RT & SEKRETARIS) */}
+      {isPrivilegedKkViewer && (
         <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200/80 mb-5 flex items-center gap-1.5">
           <button
             type="button"
@@ -1206,20 +1264,20 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       </AnimatePresence>
 
       {/* ===================================================================== */}
-      {/* SUB-MENU 2: DATA DOKUMEN KK (HANYA BISA DILIHAT OLEH KETUA RT)        */}
+      {/* SUB-MENU 2: DATA DOKUMEN KK (HANYA BISA DILIHAT OLEH KETUA RT & SEKRETARIS) */}
       {/* ===================================================================== */}
-      {isKetuaRT && activeSubMenu === 'dokumen_kk' ? (
+      {isPrivilegedKkViewer && activeSubMenu === 'dokumen_kk' ? (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
           {/* Header Banner Data Dokumen KK */}
           <div className="bg-gradient-to-br from-teal-700 via-teal-600 to-emerald-600 rounded-3xl p-5 text-white shadow-md relative overflow-hidden">
             <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider mb-2">
-                  <span>🔒 Khusus Ketua RT</span>
+                  <span>🔒 Khusus Ketua RT & Sekretaris</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-black tracking-tight">Data Dokumen Kartu Keluarga (KK)</h2>
                 <p className="text-xs text-teal-100 mt-1 max-w-xl">
-                  Daftar seluruh dokumen Kartu Keluarga (KK) warga yang telah diunggah. Ketua RT dapat memeriksa dokumen KK asli dan menjalankan <strong>AI Extract KK</strong> secara langsung.
+                  Daftar seluruh dokumen Kartu Keluarga (KK) warga yang telah diunggah. Ketua RT dan Sekretaris dapat memeriksa dokumen KK asli dan menjalankan <strong>AI Extract KK</strong> secara langsung.
                 </p>
               </div>
               <button
@@ -1366,6 +1424,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 const isUploadingThis = uploadingDocWargaId === warga.id;
                 const canEditFamily = isKetuaRT || currentUser?.id === warga.id || currentUser?.role === 'admin' || currentUser?.role === 'developer';
 
+                const citizenKkNum = getResolvedNoKk(warga);
+
                 return (
                   <div
                     key={warga.id ? `kk_${warga.id}_${idx}` : `kk_row_${idx}`}
@@ -1403,6 +1463,11 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                 ✓ KK Terupload
                               </span>
                               <HouseBadge warga={warga} size="sm" />
+                              {citizenKkNum && (
+                                <span className="inline-block bg-teal-900/90 text-teal-200 border border-teal-500/40 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full">
+                                  No. KK: {citizenKkNum}
+                                </span>
+                              )}
                             </div>
                             <p className="text-white font-extrabold text-sm leading-snug break-words">{warga.nama}</p>
                           </div>
@@ -1427,6 +1492,30 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                     {/* Card Details & Actions */}
                     <div className="p-4 flex-1 flex flex-col justify-between space-y-3.5">
                       <div>
+                        {/* No. KK Detail Box */}
+                        {citizenKkNum && (
+                          <div className="bg-teal-50/70 border border-teal-200/80 rounded-xl px-3 py-2 flex items-center justify-between gap-2 mb-2.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs">📋</span>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-bold text-teal-700 uppercase tracking-wider">No. Kartu Keluarga (KK)</p>
+                                <p className="font-mono font-black text-xs text-teal-950 tracking-wide truncate">{citizenKkNum}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(citizenKkNum);
+                                showStatusBanner('No. KK berhasil disalin!');
+                              }}
+                              className="text-[9px] font-extrabold bg-white hover:bg-teal-100 text-teal-700 border border-teal-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs shrink-0"
+                            >
+                              Salin
+                            </button>
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between text-xs text-slate-600 mb-2">
                           <span className="font-bold text-slate-700">
                             Anggota Keluarga ({members.length + 1} Orang)
@@ -1639,7 +1728,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                     const f = e.target.files?.[0];
                     if (f) {
                       const dataUrl = await processFileToBase64(f);
-                      setNewWarga(prev => ({ ...prev, dokumenKk: dataUrl }));
+                      const extracted = extractNoKkFromDoc(dataUrl);
+                      setNewWarga(prev => ({ ...prev, dokumenKk: dataUrl, noKk: extracted || prev.noKk }));
                     }
                   }}
                 />
@@ -1668,6 +1758,19 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 />
               </label>
             </div>
+
+            {newWarga.dokumenKk && (
+              <div>
+                <label className="block text-[11px] font-bold text-teal-700 mb-1 pl-1">No. Kartu Keluarga (Hasil Ekstraksi KK)</label>
+                <input
+                  type="text"
+                  placeholder="Nomor KK (16 digit)"
+                  value={newWarga.noKk}
+                  onChange={e => setNewWarga({ ...newWarga, noKk: e.target.value })}
+                  className="w-full text-sm font-mono p-3 bg-teal-50/50 border border-teal-200 focus:bg-white focus:border-teal-500 rounded-xl transition-all outline-none"
+                />
+              </div>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setShowAddWarga(false)} className="flex-1 py-3 text-sm font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors">Batal</button>
@@ -2100,7 +2203,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 <span className="text-lg leading-none">+</span> Tambah Data Warga Baru
               </motion.button>
 
-              {isKetuaRT && (
+              {isPrivilegedKkViewer && (
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setActiveSubMenu('dokumen_kk')}
@@ -2216,6 +2319,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               const hasKk = Boolean(warga.hasKk || (warga.dokumenKk && String(warga.dokumenKk).trim() !== ''));
               const hasKtp = Boolean(warga.hasKtp || (Array.isArray(warga.dokumenKtp) ? warga.dokumenKtp.length > 0 : Boolean(warga.dokumenKtp)));
               const houseInfo = parseHouseInfo(warga);
+              const citizenNoKk = getResolvedNoKk(warga);
+              const canViewCitizenNoKk = isPrivilegedKkViewer || isCurrentUser;
 
               return (
                 <div key={`${warga.id || 'warga'}_${idx}`} className={`bg-white rounded-[1.5rem] border ${isCurrentUser ? 'border-teal-500 shadow-md ring-2 ring-teal-500/20' : isExpanded ? 'border-teal-400 shadow-xl ring-2 ring-teal-500/15' : 'border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] hover:border-teal-300 hover:shadow-md'} overflow-hidden transition-all duration-300`}>
@@ -2299,7 +2404,41 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 mt-1.5">
+                      {/* Baris No. Kartu Keluarga (Hanya Terlihat oleh Ketua RT, Sekretaris, dan Akun Warga Terkait) */}
+                      {canViewCitizenNoKk && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {citizenNoKk ? (
+                            <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200/90 text-teal-950 px-2.5 py-1 rounded-xl shadow-2xs text-[11px] font-mono font-bold">
+                              <span className="text-teal-700 font-sans text-[10px] uppercase tracking-wider font-extrabold">📋 No. KK:</span>
+                              <span className="font-extrabold tracking-wider">{citizenNoKk}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(citizenNoKk);
+                                  showStatusBanner(`No. KK ${citizenNoKk} disalin!`);
+                                }}
+                                title="Salin No. KK"
+                                className="text-[9px] bg-white text-teal-700 border border-teal-200 hover:bg-teal-100 px-1.5 py-0.5 rounded-md font-sans font-extrabold cursor-pointer transition-colors ml-0.5"
+                              >
+                                Salin
+                              </button>
+                            </div>
+                          ) : hasKk ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                              <span>📋 No. KK:</span>
+                              <span className="font-normal italic">Terunggah di KK</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 bg-slate-50 text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg text-[10px] font-medium">
+                              <span>📋 No. KK:</span>
+                              <span className="italic">Belum ada</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between gap-2 mt-2">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                             {warga.rt || 'RT 01'}
@@ -2331,10 +2470,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                               setPreviewPhotoWarga(warga);
                             }}
                             className="px-2.5 py-1 text-[11px] font-extrabold bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-                            title="Pratinjau foto profil"
+                            title="Pratinjau profil & identitas warga"
                           >
                             <span>📷</span>
-                            <span className="hidden sm:inline">Foto</span>
+                            <span className="hidden sm:inline">Profil</span>
                           </button>
 
                           {canViewFamily && (
@@ -2356,6 +2495,32 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                         className="px-4 pb-4 border-t border-gray-100 bg-slate-50/70"
                       >
                         <div className="pt-4 space-y-4">
+                          {/* DETAIL NO. KK & DOKUMEN (Hanya Ketua RT, Sekretaris, dan Akun Warga Terkait) */}
+                          {citizenNoKk && canViewCitizenNoKk && (
+                            <div className="bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200/90 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                                  KK
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wider">No. Kartu Keluarga (KK)</p>
+                                  <p className="font-mono font-black text-sm text-teal-950 tracking-wide mt-0.5 truncate">{citizenNoKk}</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(citizenNoKk);
+                                  showStatusBanner('No. KK berhasil disalin ke clipboard!');
+                                }}
+                                className="px-3 py-1.5 bg-white hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs shrink-0 flex items-center gap-1"
+                              >
+                                <span>Salin</span>
+                              </button>
+                            </div>
+                          )}
+
                           {/* DETAIL RUMAH & ALAMAT */}
                           <div className="bg-white p-3.5 rounded-2xl border border-teal-100/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
                             <div>
@@ -2655,6 +2820,44 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                     <p className="text-[10px] text-slate-500 mt-0.5">Foto kustom belum diatur pada akun ini</p>
                   </div>
                 )}
+              </div>
+
+              {/* Rincian Profil & No. KK di Modal Pratinjau */}
+              <div className="mt-3 space-y-2">
+                {getResolvedNoKk(previewPhotoWarga) ? (
+                  <div className="bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200/90 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-extrabold text-teal-700 uppercase tracking-wider">No. Kartu Keluarga (KK)</p>
+                      <p className="font-mono font-black text-xs sm:text-sm text-teal-950 tracking-wider mt-0.5 truncate">
+                        {getResolvedNoKk(previewPhotoWarga)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const num = getResolvedNoKk(previewPhotoWarga);
+                        navigator.clipboard.writeText(num);
+                        showStatusBanner(`No. KK ${num} berhasil disalin!`);
+                      }}
+                      className="px-2.5 py-1 text-[10px] font-extrabold bg-white hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl transition-colors cursor-pointer shadow-xs shrink-0"
+                    >
+                      Salin
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-2 gap-2 text-left">
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Status Warga</p>
+                    <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{previewPhotoWarga.status || 'Warga Tetap'}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Keluarga</p>
+                    <p className="text-xs font-bold text-teal-700 mt-0.5 truncate">
+                      👨‍👩‍👧‍👦 {((previewPhotoWarga.members || []).length) + 1} Jiwa
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Tombol Tutup */}
