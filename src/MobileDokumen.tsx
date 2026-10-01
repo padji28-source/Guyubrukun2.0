@@ -46,8 +46,47 @@ const getRoleBadgeClass = (role?: string) => {
   }
 };
 
+function extractNoKkFromDoc(kkDoc: string): string | null {
+  if (!kkDoc || typeof kkDoc !== 'string') return null;
+  const s = kkDoc.trim();
+  if (!s) return null;
+
+  if (s.startsWith('data:image/svg+xml') || s.includes('<svg')) {
+    let svgText = s;
+    if (s.startsWith('data:image/svg+xml')) {
+      const base64Part = s.split(',')[1] || '';
+      try {
+        svgText = s.includes(';base64,')
+          ? atob(base64Part)
+          : decodeURIComponent(base64Part);
+      } catch {}
+    }
+    const svgMatch = svgText.match(/No\.?\s*KK\s*:?\s*([0-9\s]{12,20})/i) ||
+                     svgText.match(/NOMOR\s*:?\s*([0-9\s]{12,20})/i) ||
+                     svgText.match(/>\s*No\.?\s*KK\s*:\s*([0-9]{12,18})\s*</i) ||
+                     svgText.match(/>\s*([1-9][0-9]{15})\s*</);
+    if (svgMatch && svgMatch[1]) {
+      const clean = svgMatch[1].replace(/\D/g, '');
+      if (clean.length >= 12 && clean.length <= 18) return clean;
+    }
+  }
+
+  const textMatch = s.match(/(?:No\.?\s*KK|NOMOR\s*KARTU\s*KELUARGA|No\.?\s*Kartu\s*Keluarga|NOMOR\s*KK|No\.\s*KK)\s*[:.]?\s*([0-9\s]{12,22})/i);
+  if (textMatch && textMatch[1]) {
+    const clean = textMatch[1].replace(/\D/g, '');
+    if (clean.length >= 12 && clean.length <= 18) return clean;
+  }
+
+  const digit16Match = s.match(/\b([1-9][0-9]{15})\b/);
+  if (digit16Match && digit16Match[1]) return digit16Match[1];
+
+  return null;
+}
+
 export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: () => void, currentUser: any, onUpdateUser: (u: any) => void }) => {
   const isKetuaRT = currentUser?.role === 'admin' || currentUser?.role === 'developer';
+  const isSekretaris = currentUser?.role === 'sekretaris';
+  const isPrivilegedKkViewer = isKetuaRT || isSekretaris;
   const isPengurus = ['admin', 'developer', 'sekretaris', 'bendahara', 'pengurus'].includes(currentUser?.role);
 
   const [activeTab, setActiveTab] = useState<'warga_pengurus' | 'pribadi' | 'arsip'>(
@@ -1050,6 +1089,36 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                       exit={{ opacity: 0, scale: 0.97 }}
                       className="space-y-3"
                     >
+                      {/* No. KK Highlight Box */}
+                      {(currentUser?.noKk || extractNoKkFromDoc(dokumenKk)) && (
+                        <div className="bg-teal-50/80 border border-teal-200/90 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                              KK
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wider">No. Kartu Keluarga (KK)</p>
+                              <p className="font-mono font-black text-xs sm:text-sm text-teal-950 tracking-wide truncate">
+                                {currentUser?.noKk || extractNoKkFromDoc(dokumenKk)}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const num = currentUser?.noKk || extractNoKkFromDoc(dokumenKk);
+                              if (num) {
+                                navigator.clipboard.writeText(num);
+                                setSuccessMsg('No. KK berhasil disalin!');
+                              }
+                            }}
+                            className="px-2.5 py-1.5 bg-white hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs shrink-0"
+                          >
+                            Salin
+                          </button>
+                        </div>
+                      )}
+
                       <div
                         onClick={() => setPreviewItem({ url: dokumenKk, title: 'Kartu Keluarga (KK)' })}
                         className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 cursor-pointer group"
@@ -1565,6 +1634,36 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                     )}
                   </div>
                 </div>
+
+                {/* No. KK Display in Detail Popup (Khusus Ketua RT, Sekretaris, dan Akun Pemilik) */}
+                {(isPrivilegedKkViewer || currentUser?.id === selectedMemberDetail.id) && (selectedMemberDetail.noKk || (selectedMemberDetail.dokumenKk && extractNoKkFromDoc(selectedMemberDetail.dokumenKk))) && (
+                  <div className="bg-teal-50/80 border border-teal-200/90 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                        KK
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wider">No. Kartu Keluarga (KK)</p>
+                        <p className="font-mono font-black text-xs sm:text-sm text-teal-950 tracking-wide truncate">
+                          {selectedMemberDetail.noKk || extractNoKkFromDoc(selectedMemberDetail.dokumenKk)}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const num = selectedMemberDetail.noKk || extractNoKkFromDoc(selectedMemberDetail.dokumenKk);
+                        if (num) {
+                          navigator.clipboard.writeText(num);
+                          setSuccessMsg('No. KK berhasil disalin!');
+                        }
+                      }}
+                      className="px-2.5 py-1.5 bg-white hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs shrink-0"
+                    >
+                      Salin
+                    </button>
+                  </div>
+                )}
 
                 {selectedMemberDetail.dokumenKk ? (
                   <div
