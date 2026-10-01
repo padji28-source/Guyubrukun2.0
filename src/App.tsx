@@ -2487,7 +2487,8 @@ const MobileDemographicsWidget = ({
       { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
       { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
       { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
-      { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: 0, fill: '#f97316' }
+      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 0, fill: '#f97316' },
+      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e' }
     ]
   );
   const [jumlahKK, setJumlahKK] = useState<number>(cachedDemographicsWidget?.jumlahKK || 0);
@@ -2528,13 +2529,15 @@ const MobileDemographicsWidget = ({
         let balita = 0,
           anak = 0,
           remaja = 0,
-          dewasa = 0;
+          dewasa = 0,
+          lansia = 0;
         const addAge = (age: number) => {
           if (age < 0) return;
           if (age <= 4) balita++;
           else if (age <= 12) anak++;
           else if (age <= 20) remaja++;
-          else dewasa++;
+          else if (age <= 70) dewasa++;
+          else lansia++;
         };
 
         users.forEach((u: any) => {
@@ -2548,7 +2551,8 @@ const MobileDemographicsWidget = ({
           { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balita, fill: '#3b82f6' },
           { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anak, fill: '#10b981' },
           { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remaja, fill: '#8b5cf6' },
-          { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: dewasa, fill: '#f97316' }
+          { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasa, fill: '#f97316' },
+          { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansia, fill: '#f43f5e' }
         ];
         setGroups(nextGroups);
         setJumlahKK(users.length);
@@ -2654,7 +2658,7 @@ const MobileDemographicsWidget = ({
         </div>
 
         {/* Summary Age Group Pills */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {groups.map(group => {
             const pct = totalPersons > 0 ? Math.round((group.count / totalPersons) * 100) : 0;
             return (
