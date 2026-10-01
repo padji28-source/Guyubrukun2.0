@@ -338,6 +338,29 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   const handleAddWarga = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validasi Duplikat Blok & No Rumah sebelum submit
+    if (newWargaBlok && newWargaNomor) {
+      const targetBlok = newWargaBlok.trim().toUpperCase();
+      const rawNo = newWargaNomor.trim().toUpperCase();
+      const isPureNum = /^\d+$/.test(rawNo);
+      const normNo = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
+
+      const fullList = allWargaFullData.length > 0 ? allWargaFullData : wargaData;
+      const duplicateWarga = fullList.find((w: any) => {
+        const info = parseHouseInfo(w);
+        if (!info || !info.blok || !info.nomor) return false;
+        const wRawNo = info.nomor.trim().toUpperCase();
+        const wNormNo = /^\d+$/.test(wRawNo) ? String(parseInt(wRawNo, 10)) : wRawNo;
+        return info.blok === targetBlok && wNormNo === normNo;
+      });
+
+      if (duplicateWarga) {
+        showStatusBanner(`Blok ${targetBlok} No. ${newWargaNomor} sudah terdaftar atas nama ${duplicateWarga.nama || duplicateWarga.username}. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.`, true);
+        return;
+      }
+    }
+
     try {
       const alamat = `Blok ${newWargaBlok} No. ${newWargaNomor}`;
       const rtValue = localStorage.getItem('selected_rt') || 'rt01';
