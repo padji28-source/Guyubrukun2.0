@@ -53,6 +53,7 @@ export const WebDashboardRtView = ({
       anak: 0,
       remaja: 0,
       dewasa: 0,
+      lansia: 0,
       totalWithAge: 0,
       groups: [] as DemographicGroup[]
     },
@@ -77,13 +78,15 @@ export const WebDashboardRtView = ({
     let anak = 0;
     let remaja = 0;
     let dewasa = 0;
+    let lansia = 0;
 
     const addAge = (age: number) => {
       if (age < 0) return;
       if (age <= 4) balita++;
       else if (age <= 12) anak++;
       else if (age <= 20) remaja++;
-      else dewasa++;
+      else if (age <= 70) dewasa++;
+      else lansia++;
     };
 
     users
@@ -95,18 +98,20 @@ export const WebDashboardRtView = ({
         }
       });
 
-    const totalWithAge = balita + anak + remaja + dewasa;
+    const totalWithAge = balita + anak + remaja + dewasa + lansia;
     return {
       balita,
       anak,
       remaja,
       dewasa,
+      lansia,
       totalWithAge,
       groups: [
         { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balita, fill: '#3b82f6' },
         { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anak, fill: '#10b981' },
         { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remaja, fill: '#8b5cf6' },
-        { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: dewasa, fill: '#f97316' }
+        { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasa, fill: '#f97316' },
+        { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansia, fill: '#f43f5e' }
       ]
     };
   };
@@ -134,6 +139,7 @@ export const WebDashboardRtView = ({
             anak: 0,
             remaja: 0,
             dewasa: 0,
+            lansia: 0,
             totalWithAge: 0,
             groups: []
           }
@@ -174,7 +180,8 @@ export const WebDashboardRtView = ({
       { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: metrics.demographics?.balita || 0, fill: '#3b82f6' },
       { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: metrics.demographics?.anak || 0, fill: '#10b981' },
       { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: metrics.demographics?.remaja || 0, fill: '#8b5cf6' },
-      { key: 'dewasa', name: 'Dewasa', range: '> 20 Thn', count: metrics.demographics?.dewasa || 0, fill: '#f97316' }
+      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: metrics.demographics?.dewasa || 0, fill: '#f97316' },
+      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: metrics.demographics?.lansia || 0, fill: '#f43f5e' }
     ];
   }, [metrics.demographics]);
 
