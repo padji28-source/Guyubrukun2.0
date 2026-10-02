@@ -668,7 +668,7 @@ export const MobileIuran = ({ onBack, currentUser }: { onBack: () => void, curre
               return d.nama?.toLowerCase().includes(query) || d.bulan?.toLowerCase().includes(query);
             }
             return true;
-          }).map((item) => {
+          }).map((item, idx) => {
             
             // Determine Status UI
             let statusConfig = { color: 'bg-slate-100 text-slate-600', icon: <div/>, label: item.status };
@@ -679,7 +679,7 @@ export const MobileIuran = ({ onBack, currentUser }: { onBack: () => void, curre
 
             return (
             <motion.div 
-              key={item.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              key={`iuran_${item.id || 'i'}_${idx}`} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white p-4 rounded-3xl border border-slate-100 shadow-[0_4px_15px_rgba(0,0,0,0.02)] flex flex-col gap-3"
             >
               <div className="flex items-center justify-between">

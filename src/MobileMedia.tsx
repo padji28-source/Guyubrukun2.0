@@ -143,7 +143,7 @@ export const MobileMedia = ({ onBack, currentUser }: { onBack: () => void, curre
             <AnimatePresence>
               {reversedMedia.map((item, index) => (
                 <motion.div 
-                  key={item.id} 
+                  key={`media_${item.id || 'm'}_${index}`} 
                   layout
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}

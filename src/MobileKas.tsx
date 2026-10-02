@@ -1026,9 +1026,9 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
           </div>
         ) : (
           <AnimatePresence>
-            {data.map(item => (
+            {data.map((item, idx) => (
               <motion.div 
-                key={item.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                key={`kas_${item.id || 'k'}_${idx}`} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 className="bg-white p-4 md:p-5 rounded-3xl shadow-[0_4px_15px_rgba(0,0,0,0.02)] border border-slate-100 flex gap-4 items-center group"
               >
                 {/* Ikon Indikator Masuk/Keluar */}

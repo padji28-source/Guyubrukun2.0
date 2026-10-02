@@ -14,16 +14,6 @@ import {
   BarChart3,
   ArrowUpRight
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Cell
-} from 'recharts';
 
 interface DemographicGroup {
   key: string;
@@ -338,56 +328,79 @@ export const WebDashboardRtView = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Bar Chart Column */}
-          <div className="lg:col-span-7 h-64 w-full bg-slate-50/60 border border-slate-100 rounded-2xl p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={demographicGroups}
-                margin={{ top: 12, right: 16, left: -12, bottom: 4 }}
-                barSize={44}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fill: '#334155', fontSize: 12, fontWeight: 700 }}
-                  axisLine={{ stroke: '#cbd5e1' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(13, 148, 136, 0.06)' }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length > 0) {
-                      const item = payload[0].payload as DemographicGroup;
+          <div className="lg:col-span-7 h-64 w-full bg-slate-50/60 border border-slate-100 rounded-2xl p-4 flex flex-col justify-between">
+            {(() => {
+              const maxCount = Math.max(...demographicGroups.map(g => g.count), 4);
+              const yTicks = [maxCount, Math.round(maxCount * 0.5), 0];
+              return (
+                <>
+                  <div className="relative flex-1 flex items-end gap-3 sm:gap-6 pl-8 pr-3 pt-6 pb-1 border-b border-slate-200">
+                    {/* Y-Axis & Gridlines */}
+                    <div className="absolute inset-y-0 left-0 right-3 flex flex-col justify-between pointer-events-none pt-5 pb-1">
+                      {yTicks.map((t, tIdx) => (
+                        <div key={`web_ytick_${tIdx}`} className="flex items-center w-full">
+                          <span className="w-7 text-right pr-2 text-[11px] font-semibold text-slate-400 tabular-nums">
+                            {t}
+                          </span>
+                          <div className="flex-1 border-b border-dashed border-slate-200/80" />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Bars */}
+                    {demographicGroups.map(item => {
+                      const heightPct = maxCount > 0 ? Math.max((item.count / maxCount) * 100, item.count > 0 ? 8 : 3) : 3;
                       const pct =
                         totalDemographicPersons > 0
                           ? Math.round((item.count / totalDemographicPersons) * 100)
                           : 0;
                       return (
-                        <div className="bg-slate-900 text-white px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-700 text-xs">
-                          <p className="font-extrabold text-teal-300">
-                            {item.name} ({item.range})
-                          </p>
-                          <p className="font-bold mt-1">
-                            {item.count} Warga <span className="text-slate-300 font-normal">({pct}%)</span>
-                          </p>
+                        <div
+                          key={item.key}
+                          onClick={onNavigateToWarga}
+                          className={`relative z-10 flex-1 h-full flex flex-col items-center justify-end group ${
+                            onNavigateToWarga ? 'cursor-pointer' : ''
+                          }`}
+                        >
+                          {/* Hover Tooltip */}
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none absolute -top-2 z-20 bg-slate-900 text-white px-3 py-2 rounded-xl shadow-lg border border-slate-700 text-xs whitespace-nowrap">
+                            <p className="font-extrabold text-teal-300">
+                              {item.name} ({item.range})
+                            </p>
+                            <p className="font-bold mt-0.5">
+                              {item.count} Warga <span className="text-slate-300 font-normal">({pct}%)</span>
+                            </p>
+                          </div>
+
+                          <span className="text-xs font-extrabold text-slate-700 mb-1 tabular-nums">
+                            {item.count}
+                          </span>
+                          <div
+                            className="w-full max-w-[46px] rounded-t-xl transition-all duration-300 group-hover:brightness-110"
+                            style={{
+                              height: `${heightPct}%`,
+                              backgroundColor: item.fill,
+                              opacity: item.count === 0 ? 0.25 : 1
+                            }}
+                          />
                         </div>
                       );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="count" radius={[10, 10, 0, 0]}>
-                  {demographicGroups.map(entry => (
-                    <Cell key={entry.key} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                    })}
+                  </div>
+
+                  {/* X-Axis Labels */}
+                  <div className="flex items-center gap-3 sm:gap-6 pl-8 pr-3 pt-2">
+                    {demographicGroups.map(item => (
+                      <div key={`web_lbl_${item.key}`} className="flex-1 text-center">
+                        <span className="text-xs font-bold text-slate-700 block leading-tight truncate">
+                          {item.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Age Group Breakdown Cards Column */}

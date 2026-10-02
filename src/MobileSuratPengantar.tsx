@@ -896,9 +896,9 @@ export const MobileSuratPengantar = ({
 
             {filteredData.length > 0 ? (
               <div className="space-y-4">
-                {filteredData.map((item) => (
+                {filteredData.map((item, idx) => (
                   <div 
-                    key={item.id}
+                    key={`surat_${item.id || 's'}_${idx}`}
                     id={`surat-item-${item.id}`}
                     className={`rounded-2xl border p-5 shadow-xs flex flex-col justify-between hover:shadow-sm transition duration-300 ${
                       hittedSuratId === item.id 

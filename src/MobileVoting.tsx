@@ -390,6 +390,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
           <AnimatePresence>
             {statusMessage && (
               <motion.div
+                key="voting-status-alert"
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
@@ -403,6 +404,7 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
             )}
             {errorMessage && (
               <motion.div
+                key="voting-error-alert"
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}

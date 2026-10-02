@@ -370,9 +370,9 @@ export const MobileLaporan = ({
             filteredAduan.length > 0 ? (
               <div className="space-y-3.5">
                 <AnimatePresence>
-                  {filteredAduan.map(item => (
+                  {filteredAduan.map((item, idx) => (
                     <motion.div
-                      key={item.id}
+                      key={`aduan_${item.id || 'a'}_${idx}`}
                       layout
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -496,9 +496,9 @@ export const MobileLaporan = ({
             filteredTamu.length > 0 ? (
               <div className="space-y-3.5">
                 <AnimatePresence>
-                  {filteredTamu.map(item => (
+                  {filteredTamu.map((item, idx) => (
                     <motion.div
-                      key={item.id}
+                      key={`tamu_${item.id || 't'}_${idx}`}
                       layout
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}

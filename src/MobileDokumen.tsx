@@ -842,6 +842,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
           <AnimatePresence>
             {successMsg && (
               <motion.div
+                key="doc-success-alert"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -858,6 +859,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
             )}
             {errorMsg && (
               <motion.div
+                key="doc-error-alert"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -1395,9 +1397,9 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3">
-                  {arsipList.map((doc) => (
+                  {arsipList.map((doc, idx) => (
                     <div
-                      key={doc.id}
+                      key={`arsip_${doc.id || 'doc'}_${idx}`}
                       className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-4"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">

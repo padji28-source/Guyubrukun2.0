@@ -2,16 +2,6 @@ import { apiFetch } from './apiInterceptor';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Cell
-} from 'recharts';
 
 const MobileDataWarga = React.lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
 const MobileScanQR = React.lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
@@ -1623,8 +1613,8 @@ const WebPengaturanPage = ({ user, onLogout }: { user: any, onLogout: () => void
               <div className="p-12 text-center text-xs font-semibold text-slate-400">Belum ada riwayat aktivitas log terekam.</div>
             ) : (
               <div className="divide-y divide-slate-50 p-6 space-y-3">
-                {filteredLogs.map((log: any) => (
-                  <div key={log.id} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100/30 text-xs text-slate-600 transition hover:bg-slate-50">
+                {filteredLogs.map((log: any, idx: number) => (
+                  <div key={`log_${log.id || 'l'}_${idx}`} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100/30 text-xs text-slate-600 transition hover:bg-slate-50">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded tracking-wider border ${
@@ -1859,9 +1849,13 @@ const MobileQuickActions = ({ onActionClick, visibleMenus = [] }: { onActionClic
   }, [showAll, isEditMode, filteredActions]);
 
   const handleSetList = (newList: any[]) => {
+    const newOrder = newList.map((item: any) => item.name);
+    const currentOrder = displayedActions.map((item: any) => item.name);
+    if (newOrder.join('|') === currentOrder.join('|')) {
+      return;
+    }
     setDisplayedActions(newList);
     if (isEditMode) {
-      const newOrder = newList.map((item: any) => item.name);
       setSavedOrder(newOrder);
       localStorage.setItem('layanan_warga_order', JSON.stringify(newOrder));
     }
@@ -2235,13 +2229,13 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
 
         {/* Daftar Acara Hari Terpilih */}
         <div className="mt-8 pt-6 border-t border-slate-100/60 space-y-3">
-           {selectedDateEvents.map((item) => {
+           {selectedDateEvents.map((item, idx) => {
             const isReminded = reminders.includes(item.id);
             return (
             <motion.div 
               initial={{ opacity: 0, y: 10 }} 
               animate={{ opacity: 1, y: 0 }} 
-              key={item.id} 
+              key={`ev_${item.id || 'e'}_${idx}`} 
               onClick={() => {
                 if (isReminded) {
                   setReminders(prev => prev.filter(id => id !== item.id));
@@ -2605,55 +2599,79 @@ const MobileDemographicsWidget = ({
         </div>
 
         {/* Bar Chart Visualization */}
-        <div className="h-44 w-full bg-slate-50/70 border border-slate-100 rounded-xl p-2.5">
+        <div className="h-44 w-full bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 flex flex-col justify-between">
           {loading ? (
             <div className="w-full h-full flex items-center justify-center">
               <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={groups} margin={{ top: 8, right: 8, left: -20, bottom: 0 }} barSize={32}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fill: '#334155', fontSize: 11, fontWeight: 700 }}
-                  axisLine={{ stroke: '#cbd5e1' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(13, 148, 136, 0.06)' }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length > 0) {
-                      const item = payload[0].payload;
-                      const pct =
-                        totalPersons > 0 ? Math.round((item.count / totalPersons) * 100) : 0;
+            (() => {
+              const maxCount = Math.max(...groups.map(g => g.count), 4);
+              const yTicks = [maxCount, Math.round(maxCount * 0.5), 0];
+              return (
+                <>
+                  <div className="relative flex-1 flex items-end gap-2 sm:gap-3 pl-7 pr-2 pt-5 pb-1 border-b border-slate-200">
+                    {/* Y-Axis & Gridlines */}
+                    <div className="absolute inset-y-0 left-0 right-2 flex flex-col justify-between pointer-events-none pt-4 pb-1">
+                      {yTicks.map((t, tIdx) => (
+                        <div key={`mob_ytick_${tIdx}`} className="flex items-center w-full">
+                          <span className="w-6 text-right pr-1.5 text-[10px] font-semibold text-slate-400 tabular-nums">
+                            {t}
+                          </span>
+                          <div className="flex-1 border-b border-dashed border-slate-200/80" />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Bars */}
+                    {groups.map(item => {
+                      const heightPct = maxCount > 0 ? Math.max((item.count / maxCount) * 100, item.count > 0 ? 8 : 3) : 3;
+                      const pct = totalPersons > 0 ? Math.round((item.count / totalPersons) * 100) : 0;
                       return (
-                        <div className="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-md text-[11px]">
-                          <p className="font-extrabold text-teal-300">
-                            {item.name} ({item.range})
-                          </p>
-                          <p className="font-bold mt-0.5">
-                            {item.count} Warga ({pct}%)
-                          </p>
+                        <div
+                          key={item.key}
+                          onClick={() => onActionClick('Data Warga')}
+                          className="relative z-10 flex-1 h-full flex flex-col items-center justify-end group cursor-pointer"
+                        >
+                          {/* Hover Tooltip */}
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none absolute -top-2 z-20 bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-md text-[10px] whitespace-nowrap">
+                            <p className="font-extrabold text-teal-300">
+                              {item.name} ({item.range})
+                            </p>
+                            <p className="font-bold mt-0.5">
+                              {item.count} Warga ({pct}%)
+                            </p>
+                          </div>
+
+                          <span className="text-[10px] font-extrabold text-slate-700 mb-1 tabular-nums">
+                            {item.count}
+                          </span>
+                          <div
+                            className="w-full max-w-[34px] rounded-t-lg transition-all duration-300 group-hover:brightness-110"
+                            style={{
+                              height: `${heightPct}%`,
+                              backgroundColor: item.fill,
+                              opacity: item.count === 0 ? 0.25 : 1
+                            }}
+                          />
                         </div>
                       );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {groups.map(entry => (
-                    <Cell key={entry.key} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                    })}
+                  </div>
+
+                  {/* X-Axis Labels */}
+                  <div className="flex items-center gap-2 sm:gap-3 pl-7 pr-2 pt-1.5">
+                    {groups.map(item => (
+                      <div key={`mob_lbl_${item.key}`} className="flex-1 text-center">
+                        <span className="text-[10px] font-bold text-slate-700 block leading-tight truncate">
+                          {item.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()
           )}
         </div>
 
@@ -3985,7 +4003,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
             <div className="space-y-3.5 max-h-[320px] overflow-y-auto pr-1">
               {recentDonations.length > 0 ? (
                 recentDonations.map((item, index) => (
-                  <div key={item.id || index} className="flex gap-3 items-start bg-gray-50/50 p-3 rounded-2xl border border-gray-100 hover:border-teal-200 transition-colors">
+                  <div key={`don_${item.id || 'd'}_${index}`} className="flex gap-3 items-start bg-gray-50/50 p-3 rounded-2xl border border-gray-100 hover:border-teal-200 transition-colors">
                     {/* User Profile circle placeholder */}
                     <div className="w-9 h-9 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
                       {item.name ? item.name.substring(0, 2).toUpperCase() : 'HA'}
@@ -4314,7 +4332,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   });
 
   // Inject allowedMenus ke user object agar bisa diakses komponen children untuk Edit/Delete
-  const user = { ...originalUser, allowedMenus };
+  const user = useMemo(() => ({ ...originalUser, allowedMenus }), [originalUser, allowedMenus]);
 
   useEffect(() => {
     if (visibleMenus && visibleMenus.length > 0 && !visibleMenus.includes(activeWebTab)) {
@@ -4603,8 +4621,8 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                               </button>
                             </div>
                             <div className="flex flex-col gap-2">
-                              {rtList.length > 0 ? rtList.map(r => (
-                                <div key={r.rtId} className="flex flex-row items-center justify-between bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                              {rtList.length > 0 ? rtList.map((r, idx) => (
+                                <div key={`rt_item_${r.rtId || 'rt'}_${idx}`} className="flex flex-row items-center justify-between bg-white/5 border border-white/10 p-2.5 rounded-xl">
                                   <div>
                                     <div className="text-xs font-bold text-white uppercase flex items-center gap-1.5">
                                       <span>{r.rtId}</span>
@@ -4735,9 +4753,9 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                   <button onClick={() => setShowNotifications(false)} className="text-gray-400 font-bold p-2 bg-gray-50 rounded-full">X</button>
                </div>
                <div className="overflow-y-auto p-4 space-y-3 pb-8">
-                  {notifications.map(n => (
+                  {notifications.map((n, idx) => (
                     <div 
-                      key={n.id} 
+                      key={`notif_${n.id || 'n'}_${idx}`} 
                       onClick={() => {
                          console.log(`Dibuat/Diupdate oleh: ${n.updaterName || 'Sistem'}\n\nModul: ${n.resource || 'Umum'}\n\n${n.message}`);
                          if (n.resource && typeof setActiveMobileTab === 'function') {
@@ -4879,7 +4897,8 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
   useEffect(() => {
     const timer = setTimeout(onFinish, 0); // Remove artificial delay
     return () => clearTimeout(timer);
-  }, [onFinish]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.div 
