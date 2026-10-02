@@ -4166,7 +4166,7 @@ app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
     const [users, kas, iuran, laporan, acara, media] = await Promise.all([
-      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
+      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('id nama role status alamat noHp photo umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
       KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
       IuranModel.find({ rtId }).select('bulan status nominal').lean(),
       LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
@@ -4190,6 +4190,17 @@ app.get("/api/dashboard", async (req, res) => {
     let remajaCount = 0;
     let dewasaCount = 0;
     let lansiaCount = 0;
+    let lakiLakiCount = 0;
+    let perempuanCount = 0;
+
+    const getAgeCategoryKey = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' | 'unknown' => {
+      if (age < 0) return 'unknown';
+      if (age <= 4) return 'balita';
+      if (age <= 12) return 'anak';
+      if (age <= 20) return 'remaja';
+      if (age <= 70) return 'dewasa';
+      return 'lansia';
+    };
 
     const categorizeAge = (age: number) => {
       if (age < 0) return;
@@ -4200,15 +4211,27 @@ app.get("/api/dashboard", async (req, res) => {
       else lansiaCount++;
     };
 
+    const countGender = (g?: string) => {
+      const norm = String(g || '').trim().toLowerCase();
+      if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
+        perempuanCount++;
+      } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
+        lakiLakiCount++;
+      }
+    };
+
     const jumlahKK = users.length;
     let totalWarga = jumlahKK;
     let docUploaded = 0;
     users.forEach((u: any) => {
       totalWarga += (u.members?.length || 0);
       categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
+      countGender(u.jenisKelamin);
+
       if (Array.isArray(u.members)) {
         u.members.forEach((m: any) => {
           categorizeAge(resolvePersonAge(m.age, m.tglLahir));
+          countGender(m.jenisKelamin);
         });
       }
       const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
@@ -4225,6 +4248,8 @@ app.get("/api/dashboard", async (req, res) => {
       remaja: remajaCount,
       dewasa: dewasaCount,
       lansia: lansiaCount,
+      lakiLaki: lakiLakiCount,
+      perempuan: perempuanCount,
       totalWithAge,
       groups: [
         { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
@@ -4234,6 +4259,39 @@ app.get("/api/dashboard", async (req, res) => {
         { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
       ]
     };
+
+    const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
+    const pengurusRaw = users
+      .filter((u: any) => ['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
+      .sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
+
+    let sekIdx = 0;
+    let benIdx = 0;
+    let pengIdx = 0;
+    const pengurusList = pengurusRaw.map((u: any) => {
+      let jabatan = 'Pengurus RT';
+      if (u.role === 'admin') {
+        jabatan = 'Ketua RT 01 / RW 21';
+      } else if (u.role === 'sekretaris') {
+        sekIdx++;
+        jabatan = pengurusRaw.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : 'Sekretaris RT';
+      } else if (u.role === 'bendahara') {
+        benIdx++;
+        jabatan = pengurusRaw.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : 'Bendahara RT';
+      } else if (u.role === 'pengurus') {
+        pengIdx++;
+        jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
+      }
+      return {
+        id: u.id,
+        nama: u.nama,
+        role: u.role,
+        jabatan,
+        alamat: u.alamat || 'Lingkungan RT 01',
+        noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
+        photo: u.photo || ''
+      };
+    });
 
     const getSaldo = (cat: string) => {
       const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
@@ -4280,6 +4338,7 @@ app.get("/api/dashboard", async (req, res) => {
         docUploaded,
         docNotUploaded,
         demographics,
+        pengurusList,
         saldoKas,
         kasDetail: { kasRT, danaKematian, danaSosial },
         iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },

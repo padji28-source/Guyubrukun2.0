@@ -22,7 +22,8 @@ import {
   MessageSquare, 
   Send,
   Heart,
-  BookOpen
+  BookOpen,
+  UserCheck
 } from 'lucide-react';
 import { LogoCommunityIcon } from '../App';
 
@@ -59,11 +60,79 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
   const [contactLoading, setContactLoading] = useState(false);
   const [guideTab, setGuideTab] = useState<'warga' | 'pengurus'>('warga');
 
+  const [rtData, setRtData] = useState<{
+    jumlahKK: number;
+    jumlahWarga: number;
+    saldoKas: number;
+    lakiLaki: number;
+    perempuan: number;
+    groups: { key: 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia'; name: string; range: string; count: number; fill: string; desc: string }[];
+    pengurusList: { id: string; nama: string; role: string; jabatan: string; alamat: string; noHp: string; photo?: string }[];
+  }>({
+    jumlahKK: 62,
+    jumlahWarga: 157,
+    saldoKas: 13111500,
+    lakiLaki: 82,
+    perempuan: 75,
+    groups: [
+      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 23, fill: '#3b82f6', desc: 'Usia dini & pemantauan tumbuh kembang Posyandu' },
+      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 20, fill: '#10b981', desc: 'Usia sekolah dasar & pendidikan karakter anak' },
+      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 11, fill: '#8b5cf6', desc: 'Generasi muda & kepemudaan Karang Taruna RT 01' },
+      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 103, fill: '#f97316', desc: 'Usia produktif, kepala keluarga & penggerak warga' },
+      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e', desc: 'Warga senior & prioritas layanan kesehatan lansia' }
+    ],
+    pengurusList: [
+      { id: 'admin', nama: 'M Adji Prasetyo', role: 'admin', jabatan: 'Ketua RT 01 / RW 21', alamat: 'Blok F No. 22', noHp: '081214007871' },
+      { id: '1780632155228', nama: 'Sugiarto', role: 'sekretaris', jabatan: 'Sekretaris I', alamat: 'Blok D No. 21', noHp: '087774173981' },
+      { id: '1780632232043', nama: 'Muhamad Rudiyanto', role: 'sekretaris', jabatan: 'Sekretaris II', alamat: 'Blok D No. 11A', noHp: '' },
+      { id: '1780631318323', nama: 'Syarif Hidayatullah', role: 'bendahara', jabatan: 'Bendahara I', alamat: 'Blok F No. 08', noHp: '0811133121245' },
+      { id: '1780632112878', nama: 'Wahyu Hidayat', role: 'bendahara', jabatan: 'Bendahara II', alamat: 'Blok F No. 16', noHp: '083806671251' },
+      { id: '1780632188648', nama: 'Suharja', role: 'pengurus', jabatan: 'Koordinator Keamanan & Ketertiban', alamat: 'Blok D No. 25', noHp: '' },
+      { id: '1783122633258', nama: 'Imam', role: 'pengurus', jabatan: 'Koordinator Humas & Sosial Lingkungan', alamat: 'Blok D No. 17', noHp: '' }
+    ]
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/dashboard', { headers: { 'x-rt-id': 'rt01' } })
+      .then(r => r.json())
+      .then(data => {
+        if (!mounted || !data?.metrics) return;
+        const m = data.metrics;
+        const d = m.demographics || {};
+        const descMap: Record<string, string> = {
+          balita: 'Usia dini & pemantauan tumbuh kembang Posyandu',
+          anak: 'Usia sekolah dasar & pendidikan karakter anak',
+          remaja: 'Generasi muda & kepemudaan Karang Taruna RT 01',
+          dewasa: 'Usia produktif, kepala keluarga & penggerak warga',
+          lansia: 'Warga senior & prioritas layanan kesehatan lansia'
+        };
+        const updatedGroups = [
+          { key: 'balita' as const, name: 'Balita', range: '0 - 4 Thn', count: d.balita ?? 23, fill: '#3b82f6', desc: descMap.balita },
+          { key: 'anak' as const, name: 'Anak', range: '5 - 12 Thn', count: d.anak ?? 20, fill: '#10b981', desc: descMap.anak },
+          { key: 'remaja' as const, name: 'Remaja', range: '13 - 20 Thn', count: d.remaja ?? 11, fill: '#8b5cf6', desc: descMap.remaja },
+          { key: 'dewasa' as const, name: 'Dewasa', range: '21 - 70 Thn', count: d.dewasa ?? 103, fill: '#f97316', desc: descMap.dewasa },
+          { key: 'lansia' as const, name: 'Lansia', range: '> 70 Thn', count: d.lansia ?? 0, fill: '#f43f5e', desc: descMap.lansia }
+        ];
+        setRtData(prev => ({
+          jumlahKK: m.jumlahKK ?? prev.jumlahKK,
+          jumlahWarga: m.jumlahWarga ?? prev.jumlahWarga,
+          saldoKas: m.saldoKas ?? prev.saldoKas,
+          lakiLaki: d.lakiLaki || prev.lakiLaki,
+          perempuan: d.perempuan || prev.perempuan,
+          groups: updatedGroups,
+          pengurusList: Array.isArray(m.pengurusList) && m.pengurusList.length > 0 ? m.pengurusList : prev.pengurusList
+        }));
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
   const stats = [
-    { label: 'Kepala Keluarga', value: '142+', sub: 'Warga Terverifikasi', icon: Users, color: 'text-teal-600 bg-teal-50' },
-    { label: 'UMKM Warga', value: '28+', sub: 'Usaha Lokal Aktif', icon: Store, color: 'text-amber-600 bg-amber-50' },
-    { label: 'Transparansi Kas', value: 'Rp 24,8M+', sub: 'Saldo Tercatat Real-time', icon: TrendingUp, color: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Layanan Digital', value: '100%', sub: 'Administrasi Instan', icon: ShieldCheck, color: 'text-sky-600 bg-sky-50' },
+    { label: 'Total Warga RT 01', value: `${rtData.jumlahWarga} Jiwa`, sub: `${rtData.jumlahKK} Kepala Keluarga (KK)`, icon: Users, color: 'text-teal-600 bg-teal-50' },
+    { label: 'Kepala Keluarga', value: `${rtData.jumlahKK} KK`, sub: 'Warga Terverifikasi Aktif', icon: UserCheck, color: 'text-indigo-600 bg-indigo-50' },
+    { label: 'Transparansi Kas', value: `Rp ${(rtData.saldoKas / 1000000).toFixed(1).replace('.', ',')} Jt`, sub: 'Saldo Kas Tercatat Real-time', icon: TrendingUp, color: 'text-emerald-600 bg-emerald-50' },
+    { label: 'Pengurus & Koordinator', value: '26 Orang', sub: 'Pengurus Inti, Seksi & Blok', icon: ShieldCheck, color: 'text-amber-600 bg-amber-50' },
   ];
 
   const features = [
@@ -202,12 +271,12 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
+          <nav className="hidden md:flex items-center gap-5 text-sm font-semibold text-slate-600">
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-teal-600 transition-colors cursor-pointer">Beranda</button>
+            <button onClick={() => scrollToId('data-warga')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-700 font-bold">Data Warga RT 01</button>
+            <button onClick={() => scrollToId('struktur-organisasi')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-700 font-bold">Struktur Organisasi</button>
             <button onClick={() => scrollToId('fitur')} className="hover:text-teal-600 transition-colors cursor-pointer">Layanan & Fitur</button>
             <button onClick={() => scrollToId('panduan')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-600 font-extrabold bg-teal-50 px-2.5 py-1 rounded-lg">Cara Pakai 💡</button>
-            <button onClick={() => scrollToId('statistik')} className="hover:text-teal-600 transition-colors cursor-pointer">Statistik</button>
-            <button onClick={() => scrollToId('alur')} className="hover:text-teal-600 transition-colors cursor-pointer">Alur Pelayanan</button>
             <button onClick={() => scrollToId('faq')} className="hover:text-teal-600 transition-colors cursor-pointer">FAQ</button>
             <button onClick={() => scrollToId('hubungi')} className="hover:text-teal-600 transition-colors cursor-pointer">Hubungi Kami</button>
           </nav>
@@ -249,9 +318,10 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             >
               <div className="flex flex-col gap-4 px-6 py-6 font-semibold text-slate-600 text-sm">
                 <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Beranda</button>
+                <button onClick={() => { scrollToId('data-warga'); setMobileMenuOpen(false); }} className="text-left py-1 text-teal-700 font-bold hover:text-teal-600 cursor-pointer">Data Warga RT 01 (Kategori Usia)</button>
+                <button onClick={() => { scrollToId('struktur-organisasi'); setMobileMenuOpen(false); }} className="text-left py-1 text-teal-700 font-bold hover:text-teal-600 cursor-pointer">Struktur Organisasi RT 01</button>
                 <button onClick={() => { scrollToId('fitur'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Layanan & Fitur</button>
                 <button onClick={() => { scrollToId('panduan'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer text-teal-600 font-extrabold bg-teal-50 px-2.5 py-1 rounded-lg">Cara Pakai 💡</button>
-                <button onClick={() => { scrollToId('statistik'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Statistik</button>
                 <button onClick={() => { scrollToId('alur'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Alur Pelayanan</button>
                 <button onClick={() => { scrollToId('faq'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">FAQ</button>
                 <button onClick={() => { scrollToId('hubungi'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Hubungi Kami</button>
@@ -330,10 +400,10 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
               <button 
-                onClick={() => scrollToId('fitur')}
-                className="w-full sm:w-auto px-8 py-4 bg-white border-2 border-slate-200 hover:border-teal-400 text-slate-700 font-extrabold text-sm rounded-2xl hover:bg-slate-50 active:scale-98 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                onClick={() => scrollToId('data-warga')}
+                className="w-full sm:w-auto px-7 py-4 bg-white border-2 border-slate-200 hover:border-teal-400 text-slate-700 font-extrabold text-sm rounded-2xl hover:bg-slate-50 active:scale-98 transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Pelajari Fitur</span>
+                <span>Data Warga & Struktur RT 01</span>
               </button>
               {deferredPrompt && (
                 <button 
@@ -650,13 +720,412 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                   <item.icon className="w-6 h-6" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight leading-none">{item.value}</p>
+                  <p className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight leading-none tabular-nums">{item.value}</p>
                   <p className="text-xs font-bold text-slate-800 mt-2">{item.label}</p>
                   <p className="text-[10px] font-medium text-slate-400 mt-0.5 truncate">{item.sub}</p>
                 </div>
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* 3.5 STATISTIK WARGA RT 01 SESUAI KATEGORI USIA */}
+      <section id="data-warga" className="py-20 bg-slate-50 border-b border-slate-100 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          {/* Header */}
+          <div className="max-w-3xl mx-auto text-center flex flex-col items-center">
+            <span className="text-xs font-bold tracking-wider text-teal-700">
+              Demografi Kependudukan · RT 01 / RW 21 Wisma Garden
+            </span>
+            <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mt-2 leading-tight">
+              Statistik Warga RT 01 Berdasarkan Kategori Usia
+            </h2>
+            <p className="text-slate-500 mt-3 text-sm md:text-base font-medium leading-relaxed">
+              Rekapitulasi jumlah warga lingkungan RT 01 secara real-time yang dikelompokkan ke dalam 5 kategori usia mulai dari Balita hingga Lansia (&gt; 70 Tahun) tanpa menampilkan data pribadi warga.
+            </p>
+          </div>
+
+          {/* 5 Age Category Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-12">
+            {rtData.groups.map((grp, idx) => {
+              const total = Math.max(1, rtData.jumlahWarga);
+              const pct = Math.round((grp.count / total) * 100);
+              return (
+                <motion.div
+                  key={grp.key}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: idx * 0.06 }}
+                  className="text-left p-5 rounded-2xl border bg-white text-slate-800 border-slate-200/80 shadow-xs flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: grp.fill }}
+                      />
+                      <span className="text-xs font-semibold tabular-nums text-slate-500">
+                        {grp.range}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex items-baseline justify-between">
+                      <h3 className="text-base font-black tracking-tight text-slate-900">
+                        {grp.name}
+                      </h3>
+                      <span className="text-2xl font-black tabular-nums text-slate-900">
+                        {grp.count} <span className="text-xs font-semibold">Jiwa</span>
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] mt-2 leading-relaxed text-slate-500">
+                      {grp.desc}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <div className="flex justify-between text-[11px] font-bold mb-1.5 tabular-nums">
+                      <span className="text-slate-500">Proporsi Warga</span>
+                      <span className="text-slate-700">{pct}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden bg-slate-100">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(grp.count > 0 ? 6 : 0, pct)}%`, backgroundColor: grp.fill }}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Visual Distribution Summary Bar */}
+          <div className="mt-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">
+                  Ringkasan Komposisi Demografi Warga RT 01 ({rtData.jumlahWarga} Jiwa · {rtData.jumlahKK} KK)
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Laki-laki: <strong className="text-slate-800 tabular-nums">{rtData.lakiLaki} Jiwa</strong> · Perempuan: <strong className="text-slate-800 tabular-nums">{rtData.perempuan} Jiwa</strong>
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-teal-700">
+                Data Statistik Terverifikasi Pengurus RT 01
+              </span>
+            </div>
+
+            {/* Stacked Proportion Bar */}
+            <div className="mt-6">
+              <div className="h-3.5 w-full rounded-full bg-slate-100 overflow-hidden flex">
+                {rtData.groups.map((grp) => {
+                  const pct = rtData.jumlahWarga > 0 ? (grp.count / rtData.jumlahWarga) * 100 : 0;
+                  if (pct <= 0) return null;
+                  return (
+                    <div
+                      key={`bar_${grp.key}`}
+                      style={{ width: `${pct}%`, backgroundColor: grp.fill }}
+                      title={`${grp.name} (${grp.range}): ${grp.count} Jiwa`}
+                      className="h-full transition-all duration-500 first:rounded-l-full last:rounded-r-full"
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-4 mt-3 text-xs text-slate-600">
+                {rtData.groups.map((grp) => (
+                  <div key={`leg_${grp.key}`} className="flex items-center gap-2 tabular-nums">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: grp.fill }} />
+                    <span className="font-semibold text-slate-800">{grp.name}</span>
+                    <span className="text-slate-400">({grp.range})</span>
+                    <span className="font-bold text-slate-900">{grp.count} Jiwa</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3.8 STRUKTUR ORGANISASI PENGURUS RT 01 */}
+      <section id="struktur-organisasi" className="py-20 bg-white border-b border-slate-100 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          {/* Header */}
+          <div className="max-w-3xl mx-auto text-center flex flex-col items-center">
+            <span className="text-xs font-bold tracking-wider text-teal-700">
+              Tata Kelola Lingkungan · Masa Bakti Aktif
+            </span>
+            <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mt-2 leading-tight">
+              Struktur Organisasi Pengurus RT 01 / RW 21
+            </h2>
+            <p className="text-slate-500 mt-3 text-sm md:text-base font-medium leading-relaxed">
+              Susunan kepengurusan Rukun Tetangga 01 / RW 21 Wisma Garden, Kelurahan Kutajaya, Kecamatan Pasarkemis, Kabupaten Tangerang yang bertugas melayani administrasi dan kerukunan warga.
+            </p>
+          </div>
+
+          {/* Hierarchical Organization Chart */}
+          {(() => {
+            const ketua = rtData.pengurusList.find(p => p.role === 'admin') || {
+              id: 'admin',
+              nama: 'M Adji Prasetyo',
+              role: 'admin',
+              jabatan: 'Ketua RT 01 / RW 21',
+              alamat: 'Blok F No. 22',
+              noHp: '081214007871'
+            };
+            const sekretarisList = rtData.pengurusList.filter(p => p.role === 'sekretaris');
+            const bendaharaList = rtData.pengurusList.filter(p => p.role === 'bendahara');
+
+            const seksiBidang = [
+              {
+                bidang: 'Seksi Humas',
+                desc: 'Hubungan masyarakat, komunikasi informasi & publikasi warga',
+                accent: 'bg-sky-600 text-white',
+                badgeBg: 'bg-sky-50 text-sky-700',
+                anggota: ['Imam']
+              },
+              {
+                bidang: 'Seksi Kerohanian',
+                desc: 'Kegiatan keagamaan, pengajian & kerukunan umat beragama',
+                accent: 'bg-emerald-600 text-white',
+                badgeBg: 'bg-emerald-50 text-emerald-700',
+                anggota: ['Hafiz', 'Fauzi', 'Wahyu Widodo']
+              },
+              {
+                bidang: 'Seksi Sosial, Pemuda & Olahraga',
+                desc: 'Kegiatan kepemudaan, olahraga warga & kepedulian sosial',
+                accent: 'bg-indigo-600 text-white',
+                badgeBg: 'bg-indigo-50 text-indigo-700',
+                anggota: ['Ilham', 'Hendra', 'Fajri']
+              },
+              {
+                bidang: 'Seksi Ketertiban & Keamanan',
+                desc: 'Koordinasi siskamling, ronda malam & ketertiban lingkungan',
+                accent: 'bg-rose-600 text-white',
+                badgeBg: 'bg-rose-50 text-rose-700',
+                anggota: ['Fredy', 'Andi', 'Edi Prasetyo']
+              },
+              {
+                bidang: 'Seksi Pembangunan, Lingkungan & Kebersihan',
+                desc: 'Kerja bakti, pemeliharaan fasilitas & penghijauan RT 01',
+                accent: 'bg-teal-600 text-white',
+                badgeBg: 'bg-teal-50 text-teal-700',
+                anggota: ['Dwi', 'Wahid', 'Akhmad']
+              },
+              {
+                bidang: 'Seksi Konsumsi & Perlengkapan',
+                desc: 'Pengelolaan inventaris warga, logistik & konsumsi kegiatan',
+                accent: 'bg-amber-500 text-white',
+                badgeBg: 'bg-amber-50 text-amber-700',
+                anggota: ['Suharja', 'Didik']
+              }
+            ];
+
+            const koordinatorBlok = [
+              { blok: 'Blok A', nama: 'Rizal' },
+              { blok: 'Blok C', nama: 'Ikhsan' },
+              { blok: 'Blok D (Genap)', nama: 'Ari Hartoyo' },
+              { blok: 'Blok D (Ganjil)', nama: 'Priyanto' },
+              { blok: 'Blok E', nama: 'Nurman' },
+              { blok: 'Blok F', nama: 'Azirwan' }
+            ];
+
+            const getInitials = (name: string) =>
+              String(name || 'RT')
+                .split(' ')
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(n => n[0]?.toUpperCase())
+                .join('');
+
+            return (
+              <div className="mt-14 space-y-10">
+                {/* TIER 1: KETUA RT */}
+                <div className="flex flex-col items-center">
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    className="w-full max-w-md bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white p-6 rounded-3xl shadow-lg border border-teal-500/30 relative"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-teal-500 text-slate-950 font-black text-xl flex items-center justify-center shrink-0 shadow-md">
+                        {getInitials(ketua.nama)}
+                      </div>
+                      <div className="min-w-0 text-left">
+                        <span className="text-xs font-bold text-teal-400">
+                          Pimpinan Lingkungan
+                        </span>
+                        <h3 className="text-xl font-black tracking-tight text-white truncate mt-0.5">
+                          {ketua.nama}
+                        </h3>
+                        <p className="text-xs font-semibold text-slate-300 mt-0.5">
+                          {ketua.jabatan}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Connector Line */}
+                  <div className="w-0.5 h-8 bg-teal-500/40" />
+                  <div className="w-full max-w-4xl h-0.5 bg-teal-500/30 hidden md:block" />
+                </div>
+
+                {/* TIER 2: SEKRETARIS & BENDAHARA */}
+                <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                  {/* Sekretaris Group */}
+                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200/80">
+                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/70">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="text-sm font-black text-slate-900">Sekretaris RT 01</h4>
+                          <p className="text-xs text-slate-500">Administrasi Surat, Kependudukan & Arsip</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {sekretarisList.map((sek, idx) => (
+                        <div
+                          key={`sek_${sek.id}_${idx}`}
+                          className="bg-white p-4 rounded-2xl border border-slate-200/70 flex items-center gap-3.5"
+                        >
+                          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 font-black text-sm flex items-center justify-center shrink-0">
+                            {getInitials(sek.nama)}
+                          </div>
+                          <div className="min-w-0 text-left">
+                            <h5 className="text-sm font-bold text-slate-900 truncate">{sek.nama}</h5>
+                            <p className="text-xs font-semibold text-blue-600">{sek.jabatan}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bendahara Group */}
+                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200/80">
+                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/70">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                          <TrendingUp className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="text-sm font-black text-slate-900">Bendahara RT 01</h4>
+                          <p className="text-xs text-slate-500">Pengelolaan Kas RT, Dana Sosial & Iuran Warga</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {bendaharaList.map((ben, idx) => (
+                        <div
+                          key={`ben_${ben.id}_${idx}`}
+                          className="bg-white p-4 rounded-2xl border border-slate-200/70 flex items-center gap-3.5"
+                        >
+                          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 font-black text-sm flex items-center justify-center shrink-0">
+                            {getInitials(ben.nama)}
+                          </div>
+                          <div className="min-w-0 text-left">
+                            <h5 className="text-sm font-bold text-slate-900 truncate">{ben.nama}</h5>
+                            <p className="text-xs font-semibold text-emerald-600">{ben.jabatan}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* TIER 3: SEKSI - SEKSI BIDANG KEPENGURUSAN */}
+                <div className="max-w-6xl mx-auto pt-2">
+                  <div className="text-center mb-6">
+                    <h3 className="text-lg font-black text-slate-900">Seksi – Seksi Bidang Kepengurusan RT 01</h3>
+                    <p className="text-xs text-slate-500 mt-1">Pembagian tugas pelayanan sosial, keamanan, pembangunan, dan kegiatan warga</p>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {seksiBidang.map((seksi, sIdx) => (
+                      <motion.div
+                        key={`seksi_${sIdx}`}
+                        initial={{ opacity: 0, y: 14 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: sIdx * 0.05 }}
+                        className="bg-slate-50 p-5 rounded-3xl border border-slate-200/80 flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start gap-3 pb-3.5 mb-3.5 border-b border-slate-200/70">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-xs ${seksi.accent}`}>
+                              0{sIdx + 1}
+                            </div>
+                            <div className="text-left min-w-0">
+                              <h4 className="text-sm font-black text-slate-900 leading-snug">{seksi.bidang}</h4>
+                              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{seksi.desc}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            {seksi.anggota.map((namaAnggota, aIdx) => (
+                              <div
+                                key={`angg_${sIdx}_${aIdx}`}
+                                className="bg-white px-3.5 py-2.5 rounded-xl border border-slate-200/70 flex items-center gap-3"
+                              >
+                                <div className={`w-8 h-8 rounded-lg font-black text-xs flex items-center justify-center shrink-0 ${seksi.badgeBg}`}>
+                                  {getInitials(namaAnggota)}
+                                </div>
+                                <div className="text-left min-w-0">
+                                  <p className="text-xs font-bold text-slate-900 truncate">{namaAnggota}</p>
+                                  <p className="text-[10px] font-medium text-slate-400">Pengurus {seksi.bidang.replace('Seksi ', '')}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* TIER 4: KOORDINATOR BLOK */}
+                <div className="max-w-6xl mx-auto bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 p-6 md:p-8 rounded-3xl text-white shadow-lg">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/10">
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-teal-400">Perwakilan Wilayah</span>
+                      <h3 className="text-lg md:text-xl font-black text-white mt-0.5">Koordinator Blok Lingkungan RT 01</h3>
+                      <p className="text-xs text-slate-300 mt-1">Penghubung komunikasi cepat dan koordinasi warga di setiap blok hunian</p>
+                    </div>
+                    <span className="text-xs font-semibold text-teal-300 tabular-nums">
+                      6 Wilayah Blok Aktif
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-6">
+                    {koordinatorBlok.map((item, bIdx) => (
+                      <motion.div
+                        key={`blok_${bIdx}`}
+                        initial={{ opacity: 0, y: 10 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: bIdx * 0.05 }}
+                        className="bg-white/10 backdrop-blur-xs border border-white/15 p-4 rounded-2xl text-left flex flex-col justify-between hover:bg-white/15 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-xs font-black text-teal-300">{item.blok}</span>
+                          <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-white leading-snug">{item.nama}</p>
+                          <p className="text-[10px] font-medium text-slate-300 mt-0.5">Koordinator {item.blok}</p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </section>
 
@@ -1232,8 +1701,9 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <h4 className="text-xs font-extrabold uppercase tracking-widest text-teal-400">PINTASAN NAVIGASI</h4>
             <div className="flex flex-col gap-2.5 text-xs text-slate-400 font-bold">
               <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition-colors text-left cursor-pointer">Beranda Utama</button>
+              <button onClick={() => scrollToId('data-warga')} className="hover:text-white transition-colors text-left cursor-pointer">Data Warga RT 01 (Usia)</button>
+              <button onClick={() => scrollToId('struktur-organisasi')} className="hover:text-white transition-colors text-left cursor-pointer">Struktur Organisasi RT 01</button>
               <button onClick={() => scrollToId('fitur')} className="hover:text-white transition-colors text-left cursor-pointer">Fitur Pelayanan</button>
-              <button onClick={() => scrollToId('statistik')} className="hover:text-white transition-colors text-left cursor-pointer">Statistik Portal</button>
               <button onClick={() => scrollToId('alur')} className="hover:text-white transition-colors text-left cursor-pointer">Alur Pendaftaran</button>
             </div>
           </div>

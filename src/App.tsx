@@ -2,17 +2,29 @@ import { apiFetch } from './apiInterceptor';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-
-const MobileDataWarga = React.lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
-const MobileScanQR = React.lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
-const MobileSuratPengantar = React.lazy(() => import('./MobileSuratPengantar').then(m => ({ default: m.MobileSuratPengantar })));
-const MobileLaporRT = React.lazy(() => import('./MobileLaporRT').then(m => ({ default: m.MobileLaporRT })));
-const MobileLaporan = React.lazy(() => import('./MobileLaporan').then(m => ({ default: m.MobileLaporan })));
-const WebSuratOnlinePage = React.lazy(() => import('./components/WebSuratOnlinePage').then(m => ({ default: m.WebSuratOnlinePage })));
-
-const MobileDarurat = React.lazy(() => import('./MobileDarurat').then(m => ({ default: m.MobileDarurat })));
-const MobileDokumen = React.lazy(() => import('./MobileDokumen').then(m => ({ default: m.MobileDokumen })));
-const MobileVoting = React.lazy(() => import('./MobileVoting').then(m => ({ default: m.MobileVoting })));
+import { MobileDataWarga } from './MobileDataWarga';
+import { MobileScanQR } from './MobileScanQR';
+import { MobileSuratPengantar } from './MobileSuratPengantar';
+import { MobileLaporRT } from './MobileLaporRT';
+import { MobileLaporan } from './MobileLaporan';
+import { WebSuratOnlinePage } from './components/WebSuratOnlinePage';
+import { MobileDarurat } from './MobileDarurat';
+import { MobileDokumen } from './MobileDokumen';
+import { MobileVoting } from './MobileVoting';
+import { MobileAcaraPage } from './MobileAcara';
+import { MobileIuran } from './MobileIuran';
+import { MobileKas } from './MobileKas';
+import { MobileUMKM } from './MobileUMKM';
+import { MobileUMKMAds } from './components/MobileUMKMAds';
+import { WebSmartRtAiPage } from './components/WebSmartRtAiPage';
+import { WebDashboardRtView } from './components/WebDashboardRtView';
+import { WebInventarisPage } from './components/WebInventarisPage';
+import { WebNotulenPage } from './components/WebNotulenPage';
+import { WebMenuAccessPage } from './components/WebMenuAccessPage';
+import { LandingPage } from './components/LandingPage';
+import { MobileMedia } from './MobileMedia';
+import { Login, Register, CuteMascot } from './Auth';
+import { InstallPrompt } from './components/InstallPrompt';
 
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
   const [activeVotings, setActiveVotings] = useState<any[]>([]);
@@ -64,17 +76,6 @@ const MobileVotingNotification = ({ onActionClick, notifications }: { onActionCl
     </section>
   );
 };
-const MobileAcaraPage = React.lazy(() => import('./MobileAcara').then(m => ({ default: m.MobileAcaraPage })));
-const MobileIuran = React.lazy(() => import('./MobileIuran').then(m => ({ default: m.MobileIuran })));
-const MobileKas = React.lazy(() => import('./MobileKas').then(m => ({ default: m.MobileKas })));
-const MobileUMKM = React.lazy(() => import('./MobileUMKM').then(m => ({ default: m.MobileUMKM })));
-const MobileUMKMAds = React.lazy(() => import('./components/MobileUMKMAds').then(m => ({ default: m.MobileUMKMAds })));
-const WebSmartRtAiPage = React.lazy(() => import('./components/WebSmartRtAiPage').then(m => ({ default: m.WebSmartRtAiPage })));
-const WebDashboardRtView = React.lazy(() => import('./components/WebDashboardRtView').then(m => ({ default: m.WebDashboardRtView })));
-const WebInventarisPage = React.lazy(() => import('./components/WebInventarisPage').then(m => ({ default: m.WebInventarisPage })));
-const WebNotulenPage = React.lazy(() => import('./components/WebNotulenPage').then(m => ({ default: m.WebNotulenPage })));
-const WebMenuAccessPage = React.lazy(() => import('./components/WebMenuAccessPage').then(m => ({ default: m.WebMenuAccessPage })));
-const LandingPage = React.lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
 
 // --- Modern Icons Set ---
 export const icons = {
@@ -2330,8 +2331,6 @@ const MobileBottomNav = ({ activeTab, onTabChange, user }: { activeTab: string, 
     </motion.nav>
   );
 };
-
-const MobileMedia = React.lazy(() => import('./MobileMedia').then(m => ({ default: m.MobileMedia })));
 
 // --- Simplified Inline Illustrations (as functional components) ---
 
@@ -4814,10 +4813,6 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   );
 }
 
-const Login = React.lazy(() => import('./Auth').then(m => ({ default: m.Login })));
-const Register = React.lazy(() => import('./Auth').then(m => ({ default: m.Register })));
-const CuteMascot = React.lazy(() => import('./Auth').then(m => ({ default: m.CuteMascot })));
-
 const RtSelection = ({ onSelectRt }: { onSelectRt: (rt: string) => void }) => {
   const [rts, setRts] = useState<{ id: string; label: string }[]>([
     { id: 'rt01', label: 'RT 01' },
@@ -4956,8 +4951,6 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
     </motion.div>
   );
 };
-
-const InstallPrompt = React.lazy(() => import('./components/InstallPrompt').then(m => ({ default: m.InstallPrompt })));
 
 export default function App() {
   const [user, setUser] = useState<any>(() => {
