@@ -2745,6 +2745,21 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const parsedNoMatch = (user?.alamat || '').match(/No\.\s+([a-zA-Z0-9]+)/i);
   const [profileBlok, setProfileBlok] = useState(parsedBlokMatch ? parsedBlokMatch[1] : '');
   const [profileNomor, setProfileNomor] = useState(parsedNoMatch ? parsedNoMatch[1] : '');
+  const [cardGlare, setCardGlare] = useState({ rotateX: 0, rotateY: 0, glareX: 50, glareY: 50, active: false });
+
+  const handleCardPointerMove = (clientX: number, clientY: number, rect: DOMRect) => {
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const pctX = Math.max(0, Math.min(100, (x / rect.width) * 100));
+    const pctY = Math.max(0, Math.min(100, (y / rect.height) * 100));
+    const rotateY = ((pctX - 50) / 50) * 7;
+    const rotateX = ((50 - pctY) / 50) * 7;
+    setCardGlare({ rotateX, rotateY, glareX: pctX, glareY: pctY, active: true });
+  };
+
+  const resetCardGlare = () => {
+    setCardGlare({ rotateX: 0, rotateY: 0, glareX: 50, glareY: 50, active: false });
+  };
 
   useEffect(() => {
     if (profileBlok || profileNomor) {
@@ -3278,25 +3293,77 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
       {/* Konten Data Profil (Kartu Melayang) */}
       <div className="relative z-10 px-5 w-full mt-8">
         
-        {/* KARTU WARGA DIGITAL PREMIUM WITH QR CODE & SHARE SHORTCUT */}
-        <div className="mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 p-6 rounded-3xl shadow-xl relative overflow-hidden text-white border border-slate-700/50">
+        {/* KARTU WARGA DIGITAL PREMIUM WITH QR CODE, HOVER TILT & GLARE EFFECT */}
+        <motion.div
+          onMouseMove={(e) => handleCardPointerMove(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect())}
+          onMouseEnter={(e) => handleCardPointerMove(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect())}
+          onMouseLeave={resetCardGlare}
+          onTouchMove={(e) => {
+            if (e.touches[0]) {
+              handleCardPointerMove(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget.getBoundingClientRect());
+            }
+          }}
+          onTouchEnd={resetCardGlare}
+          animate={{
+            rotateX: cardGlare.rotateX,
+            rotateY: cardGlare.rotateY,
+            scale: cardGlare.active ? 1.02 : 1,
+            y: cardGlare.active ? -4 : 0
+          }}
+          transition={{ type: 'spring', stiffness: 260, damping: 20, mass: 0.6 }}
+          style={{ transformPerspective: 1000, transformStyle: 'preserve-3d' }}
+          className={`group mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 p-6 rounded-3xl relative overflow-hidden text-white border transition-shadow duration-300 select-none ${
+            cardGlare.active
+              ? 'shadow-[0_20px_50px_-12px_rgba(20,184,166,0.35)] border-teal-400/50'
+              : 'shadow-xl border-slate-700/50 hover:border-teal-500/40'
+          }`}
+        >
           {/* Subtle design shapes */}
-          <div className="absolute top-0 right-0 w-40 h-40 bg-teal-500/10 rounded-full translate-x-12 -translate-y-12 blur-2xl"></div>
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-x-12 translate-y-12 blur-2xl"></div>
+          <div className="absolute top-0 right-0 w-40 h-40 bg-teal-500/10 rounded-full translate-x-12 -translate-y-12 blur-2xl pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-x-12 translate-y-12 blur-2xl pointer-events-none"></div>
+
+          {/* Interactive Pointer-Tracking Radial Glare (Kilau Kursor/Sentuhan) */}
+          <div
+            className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-300 rounded-3xl"
+            style={{
+              opacity: cardGlare.active ? 1 : 0,
+              background: `radial-gradient(circle 220px at ${cardGlare.glareX}% ${cardGlare.glareY}%, rgba(255, 255, 255, 0.24) 0%, rgba(45, 212, 191, 0.14) 35%, rgba(255, 255, 255, 0) 75%)`,
+              mixBlendMode: 'screen'
+            }}
+          />
+
+          {/* Diagonal Sweep Shimmer Glare on Hover */}
+          <div
+            className={`pointer-events-none absolute -inset-full z-20 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-25deg] transition-transform duration-1000 ease-out ${
+              cardGlare.active ? 'translate-x-full' : '-translate-x-full'
+            }`}
+          />
+
+          {/* Holographic Top Edge Highlight */}
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-px z-20 transition-opacity duration-300"
+            style={{
+              opacity: cardGlare.active ? 0.9 : 0.3,
+              background: `linear-gradient(90deg, transparent, rgba(45, 212, 191, 0.8) ${cardGlare.glareX}%, transparent)`
+            }}
+          />
           
-          <div className="flex justify-between items-start">
+          <div className="relative z-10 flex justify-between items-start">
             <div>
-              <span className="text-[9px] font-extrabold tracking-widest text-teal-400 uppercase">KARTU WARGA DIGITAL</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></span>
+                <span className="text-[9px] font-extrabold tracking-widest text-teal-400 uppercase">KARTU WARGA DIGITAL</span>
+              </div>
               <h3 className="text-lg font-black tracking-tight mt-1 truncate max-w-[180px]">{profile.name}</h3>
               <p className="text-[10px] font-bold text-slate-400 mt-0.5">ID: {(user?.id || 'RT01-WARGA').substring(0, 12).toUpperCase()}</p>
             </div>
             {/* RT Logo */}
-            <div className="bg-white/10 p-2 rounded-xl border border-white/10 shrink-0">
+            <div className="bg-white/10 p-2 rounded-xl border border-white/10 shrink-0 group-hover:border-teal-400/40 group-hover:bg-teal-500/15 transition-colors">
               <LogoCommunityIcon size="16" colorAccent="#2dd4bf" colorPrimary="#ffffff" />
             </div>
           </div>
 
-          <div className="mt-6 flex gap-4 items-center bg-white/5 border border-white/10 p-3.5 rounded-2xl">
+          <div className="relative z-10 mt-6 flex gap-4 items-center bg-white/5 border border-white/10 group-hover:border-white/20 p-3.5 rounded-2xl backdrop-blur-xs transition-colors">
             {/* QR Code Container */}
             <button 
               onClick={() => setShowQrZoom(true)}
@@ -3336,7 +3403,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
                   }
                   setTimeout(() => setSuccessMsg(''), 3000);
                 }}
-                className="mt-2.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 text-[10px] font-black rounded-lg transition-colors flex items-center gap-1 shadow-sm active:scale-95"
+                className="mt-2.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 text-[10px] font-black rounded-lg transition-colors flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
               >
                 <svg className="w-3 h-3 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M8.684 10.742l4.135-2.068m0 0a3 3 0 10-4.135-2.068m4.135 2.068v4.135M15.316 13.258l-4.135-2.068m0 0a3 3 0 114.135-2.068" />
@@ -3345,7 +3412,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Tombol Aksi Cepat */}
         <div className="flex gap-3 mb-6">

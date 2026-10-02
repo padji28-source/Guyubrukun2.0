@@ -802,12 +802,12 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             })}
           </div>
 
-          {/* Visual Distribution Summary Bar */}
+          {/* Visual Distribution Chart & Summary Bar */}
           <div className="mt-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-black text-slate-900">
-                  Ringkasan Komposisi Demografi Warga RT 01 ({rtData.jumlahWarga} Jiwa · {rtData.jumlahKK} KK)
+                  Grafik & Komposisi Demografi Warga RT 01 ({rtData.jumlahWarga} Jiwa · {rtData.jumlahKK} KK)
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Laki-laki: <strong className="text-slate-800 tabular-nums">{rtData.lakiLaki} Jiwa</strong> · Perempuan: <strong className="text-slate-800 tabular-nums">{rtData.perempuan} Jiwa</strong>
@@ -817,6 +817,66 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 Data Statistik Terverifikasi Pengurus RT 01
               </span>
             </div>
+
+            {/* Vertical Bar Chart */}
+            {(() => {
+              const maxCount = Math.max(...rtData.groups.map(g => g.count), 4);
+              const yTicks = [maxCount, Math.round(maxCount * 0.5), 0];
+              return (
+                <div className="h-52 w-full bg-slate-50/70 border border-slate-100 rounded-2xl p-4 mt-6 flex flex-col justify-between">
+                  <div className="relative flex-1 flex items-end gap-3 sm:gap-6 pl-8 pr-3 pt-6 pb-1 border-b border-slate-200">
+                    {/* Y-Axis & Gridlines */}
+                    <div className="absolute inset-y-0 left-0 right-3 flex flex-col justify-between pointer-events-none pt-5 pb-1">
+                      {yTicks.map((t, tIdx) => (
+                        <div key={`ytick_${tIdx}`} className="flex items-center w-full">
+                          <span className="w-7 text-right pr-2 text-[11px] font-semibold text-slate-400 tabular-nums">
+                            {t}
+                          </span>
+                          <div className="flex-1 border-b border-dashed border-slate-200/80" />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Bars */}
+                    {rtData.groups.map(item => {
+                      const heightPct = maxCount > 0 ? Math.max((item.count / maxCount) * 100, item.count > 0 ? 8 : 3) : 3;
+                      return (
+                        <div
+                          key={`chart_bar_${item.key}`}
+                          className="relative z-10 flex-1 h-full flex flex-col items-center justify-end"
+                        >
+                          <span className="text-xs font-black text-slate-800 mb-1.5 tabular-nums">
+                            {item.count}
+                          </span>
+                          <div
+                            className="w-full max-w-[56px] rounded-t-xl transition-all duration-500"
+                            style={{
+                              height: `${heightPct}%`,
+                              backgroundColor: item.fill,
+                              opacity: item.count === 0 ? 0.25 : 1
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* X-Axis Labels */}
+                  <div className="flex items-center gap-3 sm:gap-6 pl-8 pr-3 pt-2">
+                    {rtData.groups.map(item => (
+                      <div key={`chart_lbl_${item.key}`} className="flex-1 text-center">
+                        <span className="text-xs font-bold text-slate-800 block leading-tight truncate">
+                          {item.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold block">
+                          {item.range}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Stacked Proportion Bar */}
             <div className="mt-6">

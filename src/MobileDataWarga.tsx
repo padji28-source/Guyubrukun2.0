@@ -1870,7 +1870,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         <>
           <h2 className="text-xl font-extrabold text-gray-800 mb-4 tracking-tight">Direktori Warga & Pengurus</h2>
 
-          {/* STATS CARDS & BAR CHART (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
+          {/* STATS CARDS (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs mb-6">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -1882,116 +1882,9 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                 </span>
               </div>
               <span className="text-[10px] font-extrabold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full">
-                ✨ Klik grafik / kategori usia untuk lihat daftar warga
+                ✨ Klik kategori usia untuk lihat daftar warga
               </span>
             </div>
-
-            {/* Bar Chart Visualisasi Distribusi Usia Seluruh Warga */}
-            {(() => {
-              const chartItems = [
-                {
-                  key: 'balita' as const,
-                  name: 'Balita',
-                  range: '0 - 4 Thn',
-                  count: allPersonsList.filter(p => p.category === 'balita').length,
-                  fill: '#3b82f6'
-                },
-                {
-                  key: 'anak' as const,
-                  name: 'Anak',
-                  range: '5 - 12 Thn',
-                  count: allPersonsList.filter(p => p.category === 'anak').length,
-                  fill: '#10b981'
-                },
-                {
-                  key: 'remaja' as const,
-                  name: 'Remaja',
-                  range: '13 - 20 Thn',
-                  count: allPersonsList.filter(p => p.category === 'remaja').length,
-                  fill: '#8b5cf6'
-                },
-                {
-                  key: 'dewasa' as const,
-                  name: 'Dewasa',
-                  range: '21 - 70 Thn',
-                  count: allPersonsList.filter(p => p.category === 'dewasa').length,
-                  fill: '#f97316'
-                },
-                {
-                  key: 'lansia' as const,
-                  name: 'Lansia',
-                  range: '> 70 Thn',
-                  count: allPersonsList.filter(p => p.category === 'lansia').length,
-                  fill: '#f43f5e'
-                }
-              ];
-              const maxCount = Math.max(...chartItems.map(c => c.count), 4);
-              const yTicks = [maxCount, Math.round(maxCount * 0.5), 0];
-
-              return (
-                <div className="h-44 w-full bg-slate-50/70 border border-slate-100 rounded-2xl p-3 mb-4 flex flex-col justify-between">
-                  <div className="relative flex-1 flex items-end gap-2 sm:gap-4 pl-7 pr-2 pt-5 pb-1 border-b border-slate-200">
-                    {/* Y-Axis & Gridlines */}
-                    <div className="absolute inset-y-0 left-0 right-2 flex flex-col justify-between pointer-events-none pt-4 pb-1">
-                      {yTicks.map((t, tIdx) => (
-                        <div key={`ytick_${tIdx}`} className="flex items-center w-full">
-                          <span className="w-6 text-right pr-1.5 text-[10px] font-semibold text-slate-400 tabular-nums">
-                            {t}
-                          </span>
-                          <div className="flex-1 border-b border-dashed border-slate-200/80" />
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Bars */}
-                    {chartItems.map(item => {
-                      const heightPct = maxCount > 0 ? Math.max((item.count / maxCount) * 100, item.count > 0 ? 8 : 3) : 3;
-                      const pct = allPersonsList.length > 0 ? Math.round((item.count / allPersonsList.length) * 100) : 0;
-                      const isSelected = selectedAgeCategory === item.key;
-
-                      return (
-                        <div
-                          key={item.key}
-                          onClick={() => setSelectedAgeCategory(prev => (prev === item.key ? null : item.key))}
-                          className="relative z-10 flex-1 h-full flex flex-col items-center justify-end group cursor-pointer"
-                        >
-                          {/* Hover Tooltip */}
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none absolute -top-2 z-20 bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-md text-[10px] whitespace-nowrap">
-                            <p className="font-extrabold text-teal-300">{item.name} ({item.range})</p>
-                            <p className="font-bold">{item.count} Warga ({pct}%)</p>
-                          </div>
-
-                          <span className="text-[10px] font-extrabold text-slate-700 mb-1 tabular-nums">
-                            {item.count}
-                          </span>
-                          <div
-                            className={`w-full max-w-[40px] rounded-t-lg transition-all duration-300 group-hover:brightness-110 ${
-                              isSelected ? 'ring-2 ring-slate-900 ring-offset-1' : ''
-                            }`}
-                            style={{
-                              height: `${heightPct}%`,
-                              backgroundColor: item.fill,
-                              opacity: item.count === 0 ? 0.25 : 1
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* X-Axis Labels */}
-                  <div className="flex items-center gap-2 sm:gap-4 pl-7 pr-2 pt-1.5">
-                    {chartItems.map(item => (
-                      <div key={`lbl_${item.key}`} className="flex-1 text-center">
-                        <span className="text-[11px] font-bold text-slate-700 block leading-tight truncate">
-                          {item.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             {[
