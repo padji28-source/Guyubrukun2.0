@@ -228,7 +228,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
-    }, 500);
+    }, 200);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -288,7 +288,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   useEffect(() => {
     fetchAllWargaFull();
-    if (isPrivilegedKkViewer) {
+  }, []);
+
+  useEffect(() => {
+    if (isPrivilegedKkViewer && activeSubMenu === 'dokumen_kk') {
       fetchAllKkWargaForKetuaRT();
     }
   }, [isPrivilegedKkViewer, activeSubMenu]);

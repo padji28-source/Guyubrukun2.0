@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from './apiInterceptor';
 
 const globalCache = new Map<string, any>();
@@ -8,9 +8,13 @@ export function useFetch<T>(url: string | null) {
   const [data, setData] = useState<T | null>(url ? globalCache.get(url) || null : null);
   const [loading, setLoading] = useState<boolean>(!data);
   const [error, setError] = useState<any>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (!url) return;
+    if (!url) {
+      setLoading(false);
+      return;
+    }
 
     let isMounted = true;
     
@@ -28,7 +32,7 @@ export function useFetch<T>(url: string | null) {
     };
     urlListeners.add(onUpdate);
 
-    // Initial state based on cache
+    // Initial state based on SWR cache
     if (globalCache.has(url)) {
       setLoading(false);
       setData(globalCache.get(url));
@@ -36,25 +40,34 @@ export function useFetch<T>(url: string | null) {
       setLoading(true);
     }
 
-    // Fetch data always to ensure freshness
-    apiFetch(url)
+    // Cancel previous inflight request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Fetch fresh data in background (SWR pattern)
+    apiFetch(url, { signal: controller.signal })
       .then(res => res.json())
       .then(json => {
-        const newData = json.data || json; // adjust based on API response structure
+        if (!isMounted) return;
+        const newData = json?.data !== undefined ? json.data : json;
         globalCache.set(url, newData);
         // notify all components listening to this url
         urlListeners.forEach(fn => fn(newData));
+        setError(null);
       })
       .catch(err => {
-        if (isMounted) {
-          setError(err);
-          setLoading(false);
-        }
+        if (!isMounted || err.name === 'AbortError') return;
+        setError(err);
+        setLoading(false);
       });
 
     return () => {
       isMounted = false;
       urlListeners.delete(onUpdate);
+      controller.abort();
     };
   }, [url]);
 
