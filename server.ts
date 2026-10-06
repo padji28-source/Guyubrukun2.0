@@ -11,7 +11,16 @@ import jwt from "jsonwebtoken";
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "guyubrukunsecretkey_for_jwt2026";
+const isProduction = process.env.NODE_ENV === "production";
+let JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (isProduction) {
+    console.error("FATAL: JWT_SECRET environment variable is missing in production! Fail fast triggered.");
+    process.exit(1);
+  } else {
+    JWT_SECRET = "guyubrukun_secure_jwt_secret_key_2026";
+  }
+}
 
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 let isDbConnected = false;
@@ -20,6 +29,27 @@ function isValidGeminiApiKey(key?: string): boolean {
   if (!key) return false;
   const k = key.trim();
   return k.length >= 20 && !k.startsWith('MY_') && !k.startsWith('YOUR_') && !k.includes('placeholder');
+}
+
+// Automatic migration for legacy plaintext passwords to bcrypt hashes
+async function migratePlaintextPasswords() {
+  try {
+    const unhashedUsers = await UserModel.find({
+      password: { $not: /^\$2[aby]\$/ }
+    });
+    if (unhashedUsers && unhashedUsers.length > 0) {
+      console.log(`[Security Migration] Upgrading ${unhashedUsers.length} plaintext passwords to bcrypt hashes...`);
+      for (const u of unhashedUsers) {
+        if (u.password) {
+          u.password = hashPassword(u.password);
+          await u.save();
+        }
+      }
+      console.log("[Security Migration] Complete: All passwords are now cryptographically hashed.");
+    }
+  } catch (err) {
+    console.error("[Security Migration] Notice:", err);
+  }
 }
 
 async function connectDB() {
@@ -37,6 +67,8 @@ async function connectDB() {
     });
     isDbConnected = true;
     console.log("Connected securely to MongoDB database system.");
+    // Run password hash migration safely in background
+    migratePlaintextPasswords().catch(() => {});
   } catch (err) {
     console.error("MongoDB connection exception:", err);
     throw err;
@@ -45,7 +77,8 @@ async function connectDB() {
 
 // Secure Authentication Helpers
 function verifyPassword(input: string, stored: string): boolean {
-  if (stored && stored.startsWith('$2') && stored.length >= 50) {
+  if (!input || !stored) return false;
+  if (stored.startsWith('$2') && stored.length >= 50) {
     return bcrypt.compareSync(input, stored);
   }
   return input === stored;
@@ -58,14 +91,31 @@ function hashPassword(password: string): string {
 import rateLimit from "express-rate-limit";
 
 // ==========================================
-// SECURITY RAMP UP
+// SECURITY & RATE LIMITING
 // ==========================================
-const apiLimiter = rateLimit({
+const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100000, // High limit to prevent blocking during dev/testing
-  message: { error: "Terlalu banyak request dari IP ini, silakan coba lagi nanti.", data: [], users: [], notifications: [] },
+  max: 10, // 10 attempts per IP per 15 minutes
+  message: { error: { code: "TOO_MANY_REQUESTS", message: "Terlalu banyak percobaan login dari IP ini. Silakan coba lagi setelah 15 menit." } },
   validate: { trustProxy: false, xForwardedForHeader: false }
 });
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  message: { error: { code: "TOO_MANY_REQUESTS", message: "Terlalu banyak pendaftaran dari IP ini. Silakan coba lagi nanti." } },
+  validate: { trustProxy: false, xForwardedForHeader: false }
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
+  message: { error: { code: "TOO_MANY_REQUESTS", message: "Terlalu banyak request. Mohon perlambat aktivitas Anda." }, data: [], users: [] },
+  validate: { trustProxy: false, xForwardedForHeader: false }
+});
+
+// In-memory brute force protection by IP + username
+const failedLoginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
 export const app = express();
 app.set("trust proxy", 1);
@@ -98,11 +148,24 @@ app.use(async (req, res, next) => {
 // Apply rate limiting to all requests
 app.use("/api/", apiLimiter);
 
-// Auth Verification Middleware
+// Multi-tenant helper: Extracts verified rtId from authenticated user
+function getTenantRtId(req: express.Request): string {
+  const user = (req as any).user;
+  if (user) {
+    if (user.role === 'developer') {
+      return (req.headers['x-rt-id'] as string) || (req.query.rtId as string) || user.rtId || 'rt01';
+    }
+    return user.rtId || 'rt01';
+  }
+  return (req.headers['x-rt-id'] as string) || 'rt01';
+}
+
+// Auth Verification Middleware - Security First
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   const publicRoutes = [
     "/api/login",
     "/api/register",
+    "/api/auth/refresh",
     "/api/health",
   ];
   
@@ -117,36 +180,40 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   const authHeader = req.headers['authorization'];
   let token = "";
   if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.substring(7);
-  } else {
-    token = (req.query.token as string) || (req.headers['x-auth-token'] as string) || "";
+    token = authHeader.substring(7).trim();
   }
   
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      req.headers['x-user-id'] = decoded.id;
-      req.headers['x-user-role'] = decoded.role;
-      req.headers['x-user-username'] = decoded.username;
-      req.headers['x-user-nama'] = decoded.nama;
-      if (decoded.rtId && !req.headers['x-rt-id']) {
-        req.headers['x-rt-id'] = decoded.rtId;
+  if (!token) {
+    return res.status(401).json({
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Akses ditolak: Token otentikasi tidak ditemukan. Silakan masuk terlebih dahulu."
       }
-      (req as any).user = decoded;
-      return next();
-    } catch {
-      // Token expired or rotated; fall through to header-based session recovery below
-    }
+    });
   }
 
-  // Fallback to x-user-id / x-user-role headers so existing browser sessions never fail with 401
-  if (!req.headers['x-rt-id']) {
-    req.headers['x-rt-id'] = 'rt01';
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET!) as any;
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({
+        error: { code: "UNAUTHORIZED", message: "Token otentikasi tidak valid." }
+      });
+    }
+    (req as any).user = decoded;
+    req.headers['x-user-id'] = decoded.id;
+    req.headers['x-user-role'] = decoded.role;
+    req.headers['x-user-username'] = decoded.username;
+    req.headers['x-user-nama'] = decoded.nama;
+    req.headers['x-rt-id'] = decoded.rtId || 'rt01';
+    return next();
+  } catch {
+    return res.status(401).json({
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Sesi telah kedaluwarsa atau token tidak valid. Silakan masuk kembali."
+      }
+    });
   }
-  if (!req.headers['x-user-role']) {
-    req.headers['x-user-role'] = 'admin';
-  }
-  next();
 }
 
 app.use(authMiddleware);
@@ -202,6 +269,41 @@ const RtConfigSchema = new mongoose.Schema({
   isVip: { type: Boolean, default: false }
 }, { timestamps: true });
 const RtConfigModel: mongoose.Model<any> = mongoose.models.RtConfig || mongoose.model("RtConfig", RtConfigSchema);
+
+// Refresh Token Schema & Model
+const RefreshTokenSchema = new mongoose.Schema({
+  token: { type: String, required: true, unique: true },
+  userId: { type: String, required: true },
+  rtId: { type: String, required: true },
+  revoked: { type: Boolean, default: false },
+  expiresAt: { type: Date, required: true }
+}, { timestamps: true });
+RefreshTokenSchema.index({ token: 1 });
+RefreshTokenSchema.index({ userId: 1 });
+RefreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+const RefreshTokenModel: mongoose.Model<any> = mongoose.models.RefreshToken || mongoose.model("RefreshToken", RefreshTokenSchema);
+
+async function generateTokenPair(user: { id: string; username: string; role: string; nama: string; rtId: string }) {
+  const accessToken = jwt.sign(
+    { id: user.id, username: user.username, role: user.role, nama: user.nama, rtId: user.rtId },
+    JWT_SECRET!,
+    { expiresIn: "30m" }
+  );
+
+  const cryptoMod = await import("crypto");
+  const refreshToken = cryptoMod.randomBytes(40).toString("hex");
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+
+  await RefreshTokenModel.create({
+    token: refreshToken,
+    userId: user.id,
+    rtId: user.rtId,
+    revoked: false,
+    expiresAt
+  });
+
+  return { accessToken, refreshToken };
+}
 
 // 2. Iuran Schema
 const IuranSchema = new mongoose.Schema({
@@ -468,43 +570,49 @@ const MenuAccessModel: mongoose.Model<any> = mongoose.models.MenuAccess || mongo
 
 
 // ==========================================
-// DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE)
+// DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE COMPOUND INDEXES)
 // ==========================================
 UserSchema.index({ username: 1 });
+UserSchema.index({ rtId: 1, username: 1 });
 UserSchema.index({ rtId: 1, role: 1 });
 UserSchema.index({ rtId: 1, nama: 1 });
 UserSchema.index({ rtId: 1, isApproved: 1 });
 
+IuranSchema.index({ rtId: 1, bulan: 1 });
+IuranSchema.index({ rtId: 1, userId: 1 });
+IuranSchema.index({ rtId: 1, status: 1 });
 IuranSchema.index({ rtId: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, name: 1, createdAt: -1 });
-IuranSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 
 KasSchema.index({ rtId: 1, createdAt: -1 });
+KasSchema.index({ rtId: 1, category: 1, type: 1 });
+KasSchema.index({ rtId: 1, status: 1 });
 KasSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, type: 1, createdAt: -1 });
 
+VotingSchema.index({ rtId: 1, status: 1 });
 VotingSchema.index({ rtId: 1, createdAt: -1 });
 
 AcaraSchema.index({ rtId: 1, date: -1 });
+AcaraSchema.index({ rtId: 1, createdAt: -1 });
 
+LaporanSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 LaporanSchema.index({ rtId: 1, createdAt: -1 });
 
+SuratSchema.index({ rtId: 1, status: 1, createdAt: -1 });
+SuratSchema.index({ rtId: 1, userId: 1 });
 SuratSchema.index({ rtId: 1, createdAt: -1 });
 
+UmkmSchema.index({ rtId: 1, status: 1 });
 UmkmSchema.index({ rtId: 1, createdAt: -1 });
 
 TamuSchema.index({ rtId: 1, createdAt: -1 });
-
 MediaSchema.index({ rtId: 1, createdAt: -1 });
-
 AuditLogSchema.index({ rtId: 1, timestamp: -1 });
-
+NotificationSchema.index({ rtId: 1, read: 1, time: -1 });
 NotificationSchema.index({ rtId: 1, time: -1 });
-
 DokumenSchema.index({ rtId: 1, createdAt: -1 });
-
-InventarisSchema.index({ rtId: 1, createdAt: -1 });
-
+InventarisSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 NotulenSchema.index({ rtId: 1, date: -1 });
 
 
@@ -1262,17 +1370,30 @@ function validateRequest(schema: z.ZodObject<any>) {
 }
 
 // ==========================================
-// POINT 4: ROLE BASED PERMISSION ENFORCER
+// POINT 4: ROLE BASED ACCESS CONTROL (RBAC)
 // ==========================================
-function enforceRoles(allowed: string[]) {
+function requireRole(allowed: string[]) {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = (req.headers['x-user-role'] as string) || 'warga';
-    if (role === 'developer' || allowed.includes(role)) {
-      next();
-    } else {
-      res.status(403).json({ error: `Akses ditolak: role '${role}' tidak memiliki authorize di resource ini.` });
+    const user = (req as any).user;
+    if (!user) {
+      return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Silakan masuk terlebih dahulu." } });
     }
+    const role = user.role || 'warga';
+    if (role === 'developer' || allowed.includes(role)) {
+      return next();
+    }
+    return res.status(403).json({
+      error: { code: "FORBIDDEN", message: `Akses ditolak: role '${role}' tidak memiliki izin untuk resource ini.` }
+    });
   };
+}
+const enforceRoles = requireRole;
+
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!(req as any).user) {
+    return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Silakan masuk terlebih dahulu." } });
+  }
+  next();
 }
 
 
@@ -1454,7 +1575,7 @@ function parseBlokAndNo(inputStr: string): { blok: string; no: string; display: 
 // ==========================================
 
 // --- AUTH & SIGNUP ---
-app.post("/api/register", validateRequest(RegisterValidator), async (req, res) => {
+app.post("/api/register", registerLimiter, validateRequest(RegisterValidator), async (req, res) => {
   const { username, nama, password, alamat, noHp, status, umur, tglLahir, jenisKelamin, role, isApproved, noKk, dokumenKk, dokumenKtp } = req.body;
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
 
@@ -1519,11 +1640,17 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
     members: []
   });
 
-  await logAudit(rtId, nama, "REGISTER_WARGA", `Warga/Pengurus baru ${nama} didaftarkan dengan role ${assignedRole}`, null, newUser);
+  await logAudit(rtId, nama, "REGISTER_WARGA", `Warga/Pengurus baru ${nama} didaftarkan dengan role ${assignedRole}`, null, null);
   await addNotification(rtId, "Warga Baru Terdaftar", `${nama} telah didaftarkan sebagai ${assignedRole}.`, nama, "warga", newUser.id);
   broadcastEvent('update', { type: 'users', rtId });
 
-  res.json({ message: "Registrasi sukses", user: newUser });
+  // Sanitize user object: NEVER leak password or raw documents in API response
+  const userJson = newUser.toObject();
+  delete userJson.password;
+  delete userJson.dokumenKk;
+  delete userJson.dokumenKtp;
+
+  res.json({ message: "Registrasi sukses", user: userJson });
 });
 
 const activeSessions = new Map<string, number>();
@@ -1542,13 +1669,24 @@ setInterval(() => {
   }
 }, 15000);
 
-app.post("/api/login", validateRequest(LoginValidator), async (req, res, next) => {
+app.post("/api/login", loginLimiter, validateRequest(LoginValidator), async (req, res, next) => {
   try {
     const { username, password } = req.body;
     const rtId = req.headers['x-rt-id'] as string || 'rt01';
 
     await connectDB();
     const cleanUsername = (username || '').trim();
+
+    // Brute force protection check by IP + username
+    const ipUserKey = `${req.ip}_${cleanUsername.toLowerCase()}`;
+    const attemptRecord = failedLoginAttempts.get(ipUserKey);
+    if (attemptRecord && attemptRecord.count >= 5 && Date.now() < attemptRecord.lockedUntil) {
+      const waitMin = Math.ceil((attemptRecord.lockedUntil - Date.now()) / 60000);
+      return res.status(429).json({
+        error: `Terlalu banyak percobaan login gagal untuk akun '${cleanUsername}'. Akun sementara dikunci demi keamanan. Silakan coba lagi dalam ${waitMin} menit.`
+      });
+    }
+
     const normalizedBlockUser = cleanUsername
       .replace(/^blok\s*/i, '')
       .replace(/no\.?\s*/i, '')
@@ -1589,6 +1727,10 @@ app.post("/api/login", validateRequest(LoginValidator), async (req, res, next) =
     );
 
     if (user && matchPwd) {
+      // Clear brute-force attempts on successful login
+      failedLoginAttempts.delete(ipUserKey);
+
+      // Auto-migrate legacy plaintext password if any
       if (!user.password.startsWith('$2') && user.password === password) {
         user.password = hashPassword(password);
         await user.save();
@@ -1599,24 +1741,78 @@ app.post("/api/login", validateRequest(LoginValidator), async (req, res, next) =
       }
       activeSessions.set(user.id, Date.now());
 
-      const token = jwt.sign(
-        { id: user.id, username: user.username, role: user.role, nama: user.nama, rtId: user.rtId },
-        JWT_SECRET,
-        { expiresIn: "365d" }
-      );
+      // Short-lived access token + secure refresh token
+      const tokens = await generateTokenPair(user);
 
+      // Sanitize user object: NEVER leak password or raw documents in API response
       const userJson = user.toObject();
-      userJson.token = token;
-      
+      delete userJson.password;
+      delete userJson.dokumenKk;
+      delete userJson.dokumenKtp;
+      userJson.token = tokens.accessToken;
+      userJson.refreshToken = tokens.refreshToken;
+
       const rtConfig = await RtConfigModel.findOne({ rtId: user.rtId });
       userJson.isVip = rtConfig?.isVip || false;
 
-      res.json({ message: "Login Berhasil", user: userJson });
+      res.json({
+        message: "Login Berhasil",
+        user: userJson,
+        token: tokens.accessToken,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
+      });
     } else {
+      // Increment failed attempts
+      const current = failedLoginAttempts.get(ipUserKey) || { count: 0, lockedUntil: 0 };
+      current.count += 1;
+      if (current.count >= 5) {
+        current.lockedUntil = Date.now() + 15 * 60 * 1000; // 15 minute lock
+      }
+      failedLoginAttempts.set(ipUserKey, current);
       res.status(401).json({ error: "Username atau password salah" });
     }
   } catch(error) {
     next(error);
+  }
+});
+
+// Refresh Token Endpoint
+app.post("/api/auth/refresh", async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken || typeof refreshToken !== 'string') {
+    return res.status(400).json({ error: { code: "BAD_REQUEST", message: "Refresh token diperlukan." } });
+  }
+
+  try {
+    await connectDB();
+    const stored = await RefreshTokenModel.findOne({
+      token: refreshToken,
+      revoked: false,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!stored) {
+      return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Refresh token tidak valid atau telah kedaluwarsa." } });
+    }
+
+    const user = await UserModel.findOne({ id: stored.userId, rtId: stored.rtId }).select('-password');
+    if (!user) {
+      return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "User tidak ditemukan." } });
+    }
+
+    // Token rotation: revoke previous token
+    stored.revoked = true;
+    await stored.save();
+
+    const tokens = await generateTokenPair(user);
+    res.json({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      token: tokens.accessToken
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Gagal memperbarui token otentikasi." } });
   }
 });
 
@@ -1630,17 +1826,20 @@ app.post("/api/ping", async (req, res) => {
       broadcastEvent('update', { type: 'online_status' });
     }
     
-    const rtId = req.headers['x-rt-id'] as string || 'rt01';
+    const rtId = getTenantRtId(req);
     const rtConfig = await RtConfigModel.findOne({ rtId });
     isVip = rtConfig?.isVip || false;
   }
   res.json({ success: true, isVip });
 });
 
-app.post("/api/logout", (req, res) => {
+app.post("/api/logout", async (req, res) => {
+  const user = (req as any).user;
   const { id } = req.body;
-  if (id) {
-    activeSessions.delete(id);
+  const targetId = user?.id || id;
+  if (targetId) {
+    activeSessions.delete(targetId);
+    await RefreshTokenModel.updateMany({ userId: targetId }, { $set: { revoked: true } });
     broadcastEvent('update', { type: 'online_status' });
   }
   res.json({ success: true });
@@ -2295,13 +2494,18 @@ Kembalikan hasil dalam bentuk JSON Array.`;
         } else {
           try {
             const sharpMod = (await import("sharp")).default;
-            const Tesseract: any = (await import(/* @vite-ignore */ 'tesseract.js' as any)).default || (await import(/* @vite-ignore */ 'tesseract.js' as any));
-            const worker = await Tesseract.createWorker("ind+eng");
+            let Tesseract: any = null;
             try {
-              await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
-              const meta = await sharpMod(docBuffer).metadata();
-              const w = meta.width || 0;
-              const h = meta.height || 0;
+              Tesseract = (await import(/* @vite-ignore */ 'tesseract.js' as any)).default || (await import(/* @vite-ignore */ 'tesseract.js' as any));
+            } catch {}
+
+            if (Tesseract && typeof Tesseract.createWorker === 'function') {
+              const worker = await Tesseract.createWorker("ind+eng");
+              try {
+                await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
+                const meta = await sharpMod(docBuffer).metadata();
+                const w = meta.width || 0;
+                const h = meta.height || 0;
 
               // Precision Table 1 Column Extraction (Nama Lengkap + NIK + Jenis Kelamin)
               if (w >= 400 && h >= 300) {
@@ -2388,16 +2592,17 @@ Kembalikan hasil dalam bentuk JSON Array.`;
             } finally {
               await worker.terminate();
             }
-          } catch {
-            // Local image OCR not available, fallback to buffer text parsing
-            const rawText = docBuffer.toString('utf-8');
-            extractedList = parseIndonesianKkOcrText(rawText);
           }
+        } catch {
+          // Local image OCR not available, fallback to buffer text parsing
+          const rawText = docBuffer.toString('utf-8');
+          extractedList = parseIndonesianKkOcrText(rawText);
         }
-      } catch (ocrErr: any) {
-        console.warn("Local OCR warning:", ocrErr?.message || ocrErr);
       }
+    } catch (ocrErr: any) {
+      console.warn("Local OCR warning:", ocrErr?.message || ocrErr);
     }
+  }
 
     // =========================================================================
     // LAYER 4: DETERMINISTIC FALLBACK IF IMAGE TEXT IS UNREADABLE
@@ -2611,10 +2816,36 @@ app.get("/api/warga/:id", async (req, res) => {
   }
 });
 
+app.get("/api/warga/:id/documents", async (req, res) => {
+  const rtId = getTenantRtId(req);
+  const targetId = req.params.id;
+  const requester = (req as any).user;
+  const isSelf = requester && String(requester.id) === String(targetId);
+  const isPrivileged = requester && ['admin', 'developer', 'sekretaris'].includes(requester.role);
+
+  if (!isSelf && !isPrivileged) {
+    return res.status(403).json({ error: { code: "FORBIDDEN", message: "Akses ditolak: Dokumen kependudukan bersifat privat." } });
+  }
+
+  await connectDB();
+  const user = await UserModel.findOne({ id: targetId, rtId }).select('id noKk dokumenKk dokumenKtp username nama');
+  if (!user) {
+    return res.status(404).json({ error: "Warga tidak ditemukan" });
+  }
+
+  res.json({
+    id: user.id,
+    noKk: user.noKk || '',
+    dokumenKk: user.dokumenKk || '',
+    dokumenKtp: user.dokumenKtp || []
+  });
+});
+
 app.get("/api/warga", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 0;
+  const rtId = getTenantRtId(req);
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const requestedLimit = parseInt(req.query.limit as string);
+  const limit = isNaN(requestedLimit) ? 0 : Math.min(200, Math.max(0, requestedLimit));
   const search = req.query.search as string;
 
   const query: any = { rtId };
@@ -2628,9 +2859,17 @@ app.get("/api/warga", async (req, res) => {
     ];
   }
 
-  const includeDocs = req.query.includeDocs === '1';
+  const requester = (req as any).user;
+  const isPrivileged = requester && ['admin', 'developer', 'sekretaris'].includes(requester.role);
+  const includeDocs = req.query.includeDocs === '1' && isPrivileged;
 
   let dbQuery = UserModel.find(query);
+  if (!includeDocs) {
+    dbQuery = dbQuery.select('-password -dokumenKk -dokumenKtp');
+  } else {
+    dbQuery = dbQuery.select('-password');
+  }
+
   let sortedUsers: any[] = [];
   let total = 0;
 
@@ -2639,12 +2878,8 @@ app.get("/api/warga", async (req, res) => {
     const skip = (page - 1) * limit;
     const users = await dbQuery.skip(skip).limit(limit).lean();
     sortedUsers = users.map((u: any) => {
-      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const hasKk = Boolean(u.hasKk || (u.dokumenKk && String(u.dokumenKk).trim() !== ''));
       const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
-      const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
-      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
-        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
-      }
       return {
         id: u.id,
         username: u.username,
@@ -2653,8 +2888,8 @@ app.get("/api/warga", async (req, res) => {
         noHp: u.noHp,
         status: u.status,
         role: u.role,
-        photo: (u.photo && u.photo.length > 50000) ? '' : u.photo,
-        noKk: resolvedNoKk || u.noKk || '',
+        photo: (u.photo && u.photo.length > 25000) ? '' : (u.photo || ''),
+        noKk: u.noKk || '',
         umur: u.umur,
         tglLahir: u.tglLahir,
         jenisKelamin: u.jenisKelamin,
@@ -2671,29 +2906,29 @@ app.get("/api/warga", async (req, res) => {
     });
     res.json({
       users: sortedUsers,
+      data: sortedUsers,
       pagination: {
         total,
         page,
         limit,
         pages: Math.ceil(total / limit)
+      },
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
       }
     });
   } else {
     const isSummary = req.query.summary === '1';
-    const requesterId = (req.headers['x-user-id'] as string) || '';
-    const requesterRole = (req.headers['x-user-role'] as string) || '';
-    const isRequesterAdmin = ['admin', 'developer', 'sekretaris'].includes(requesterRole);
-
+    const requesterId = requester?.id || '';
     const users = await dbQuery.lean();
     sortedUsers = users.map((u: any) => {
       const isOnline = activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000;
       const isOwn = Boolean(requesterId && String(u.id) === String(requesterId));
-      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const hasKk = Boolean(u.hasKk || (u.dokumenKk && String(u.dokumenKk).trim() !== ''));
       const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
-      const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
-      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
-        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
-      }
       return {
         id: u.id,
         username: u.username,
@@ -2702,8 +2937,8 @@ app.get("/api/warga", async (req, res) => {
         noHp: u.noHp,
         status: u.status,
         role: u.role,
-        photo: (isSummary && u.photo && u.photo.length > 30000) ? '' : u.photo,
-        noKk: resolvedNoKk || u.noKk || '',
+        photo: (isSummary && u.photo && u.photo.length > 20000) ? '' : (u.photo && u.photo.length > 35000 ? '' : (u.photo || '')),
+        noKk: u.noKk || '',
         umur: u.umur,
         tglLahir: u.tglLahir,
         jenisKelamin: u.jenisKelamin,
@@ -2714,22 +2949,22 @@ app.get("/api/warga", async (req, res) => {
         isVip: u.isVip,
         rtId: u.rtId,
         isOnline,
-        dokumenKk: (includeDocs || isOwn) ? u.dokumenKk : (hasKk ? 'uploaded' : ''),
-        dokumenKtp: (includeDocs || isOwn) ? u.dokumenKtp : []
+        dokumenKk: (includeDocs || isOwn) ? (u.dokumenKk || (hasKk ? 'uploaded' : '')) : (hasKk ? 'uploaded' : ''),
+        dokumenKtp: (includeDocs || isOwn) ? (u.dokumenKtp || []) : []
       };
     });
-    res.json({ users: sortedUsers });
+    res.json({ users: sortedUsers, data: sortedUsers });
   }
 });
 
 app.delete("/api/warga/:id", enforceRoles(['admin']), async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const user = await UserModel.findOne({ id: req.params.id, rtId });
   if (user) {
     const beforeData = user.toObject();
     await UserModel.deleteOne({ id: req.params.id, rtId });
     
-    await logAudit(rtId, req.headers['x-user-id'] as string || 'Admin', "DELETE_WARGA", `Menghapus data warga ${user.nama}`, beforeData, null);
+    await logAudit(rtId, (req as any).user?.nama || 'Admin', "DELETE_WARGA", `Menghapus data warga ${user.nama}`, beforeData, null);
     await addNotification(rtId, "Warga Dihapus", `Data warga ${user.nama} telah dihapus.`, 'Admin', "warga", req.params.id);
     res.json({ message: "User deleted" });
   } else {
@@ -2740,7 +2975,7 @@ app.delete("/api/warga/:id", enforceRoles(['admin']), async (req, res) => {
 // Add Family members to Kartu Keluarga
 app.post("/api/warga/:id/members", async (req, res) => {
   const { name, role, age, tglLahir, jenisKelamin } = req.body;
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const targetId = req.params.id;
 
   try {
@@ -2932,7 +3167,7 @@ app.delete("/api/warga/:id/members/:memberId", async (req, res) => {
 
 app.put("/api/warga/:id/role", enforceRoles(['admin']), async (req, res) => {
   const { role } = req.body;
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
 
   const user = await UserModel.findOne({ id: req.params.id, rtId });
   if (user && user.id !== "admin") {
@@ -2940,7 +3175,7 @@ app.put("/api/warga/:id/role", enforceRoles(['admin']), async (req, res) => {
     user.role = role;
     await user.save();
 
-    await logAudit(rtId, "Admin", "PROMOTED_ROLE", `Mengubah peran warga ${user.nama} dari ${beforeRole} ke ${role}`, { role: beforeRole }, { role });
+    await logAudit(rtId, (req as any).user?.nama || "Admin", "PROMOTED_ROLE", `Mengubah peran warga ${user.nama} dari ${beforeRole} ke ${role}`, { role: beforeRole }, { role });
     await addNotification(rtId, "Peran Warga Diperbarui", `Peran warga ${user.nama} diubah menjadi ${role}.`, 'Admin', "warga", user.id);
     res.json({ message: "Role updated successfully", user });
   } else {
@@ -2950,7 +3185,7 @@ app.put("/api/warga/:id/role", enforceRoles(['admin']), async (req, res) => {
 
 app.put("/api/warga/:id/approval", enforceRoles(['admin']), async (req, res) => {
   const { isApproved } = req.body;
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
 
   const user = await UserModel.findOne({ id: req.params.id, rtId });
   if (user && user.id !== "admin") {
@@ -2958,7 +3193,7 @@ app.put("/api/warga/:id/approval", enforceRoles(['admin']), async (req, res) => 
     user.isApproved = isApproved;
     await user.save();
 
-    await logAudit(rtId, "Admin", "WARGA_APPROVAL", `Verifikasi pendaftaran warga ${user.nama}: ${isApproved ? 'SETUJU' : 'BATAL'}`, { isApproved: beforeState }, { isApproved });
+    await logAudit(rtId, (req as any).user?.nama || "Admin", "WARGA_APPROVAL", `Verifikasi pendaftaran warga ${user.nama}: ${isApproved ? 'SETUJU' : 'BATAL'}`, { isApproved: beforeState }, { isApproved });
     
     const statusText = isApproved ? 'disetujui' : 'dibatalkan';
     await addNotification(rtId, "Status Warga Diperbarui", `Status warga ${user.nama} ${statusText}.`, 'Admin', "warga", user.id);
@@ -2970,7 +3205,7 @@ app.put("/api/warga/:id/approval", enforceRoles(['admin']), async (req, res) => 
 
 app.put("/api/warga/:id/vip", enforceRoles(['developer', 'admin']), async (req, res) => {
   const { isVip } = req.body;
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
 
   const user = await UserModel.findOne({ id: req.params.id, rtId });
   if (user) {
@@ -2988,7 +3223,7 @@ app.put("/api/warga/:id/vip", enforceRoles(['developer', 'admin']), async (req, 
 // --- AUDIO/TRANSACTION PING ---
 app.post("/api/transactions", async (req, res) => {
   const { type, amount, name, message } = req.body;
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const formatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' });
   const formattedAmount = formatter.format(amount || 0);
 
@@ -3002,17 +3237,17 @@ app.post("/api/transactions", async (req, res) => {
 // --- BROADCAST MESSAGES ---
 app.post("/api/broadcast", enforceRoles(['admin', 'pengurus', 'sekretaris', 'bendahara']), async (req, res) => {
   const { title, message, updaterName } = req.body;
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   if (!message) return res.status(400).json({ error: "Pesan tidak boleh kosong" });
 
-  await logAudit(rtId, updaterName || 'Admin', "BROADCAST", `Mengirimkan pengumuman broadcast: ${title || 'No Title'}`, null, { title, message });
+  await logAudit(rtId, updaterName || (req as any).user?.nama || 'Admin', "BROADCAST", `Mengirimkan pengumuman broadcast: ${title || 'No Title'}`, null, { title, message });
   await addNotification(rtId, title || "📢 Pengumuman RT", message, updaterName || 'Admin', "broadcast");
   res.json({ success: true, message: "Pesan broadcast berhasil dikirim ke semua warga" });
 });
 
 // --- IURAN AUTOMATIC REMINDERS ---
 app.post("/api/iuran/remind", enforceRoles(['admin', 'pengurus', 'sekretaris', 'bendahara', 'developer']), async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const { bulan, tahun, jenis, messageTemplate } = req.body;
   
   if (!bulan || !tahun) {
@@ -3072,7 +3307,7 @@ app.post("/api/iuran/remind", enforceRoles(['admin', 'pengurus', 'sekretaris', '
 
 // --- COMPATIBLE APP_DATA / MULTI-MODULE ENDPOINTS ---
 app.get("/api/data/:resource", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const resource = req.params.resource;
   
   const map: { [key: string]: mongoose.Model<any> } = {
@@ -3094,8 +3329,13 @@ app.get("/api/data/:resource", async (req, res) => {
   const model = map[resource];
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 0;
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const requestedLimit = parseInt(req.query.limit as string);
+  // Default to 20 for media, 50 for others when not specified or 0, cap at 100 max
+  let limit = isNaN(requestedLimit)
+    ? (resource === 'media' ? 20 : 0)
+    : Math.min(100, Math.max(0, requestedLimit));
+
   const search = req.query.search as string;
 
   let sortField = "createdAt";
@@ -3187,17 +3427,25 @@ app.get("/api/data/:resource", async (req, res) => {
         limit,
         pages: Math.ceil(total / limit)
       },
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      },
       balances
     });
   } else {
-    const results = await dbQuery.sort({ [sortField]: -1 }).lean();
+    // If resource is media and limit is 0, cap at 30 to prevent multi-megabyte payloads
+    const execQuery = resource === 'media' ? dbQuery.sort({ [sortField]: -1 }).limit(30) : dbQuery.sort({ [sortField]: -1 });
+    const results = await execQuery.lean();
     res.json({ data: results, balances });
   }
 });
 
 // POINT 6: VALIDATE CREATION VIA ZOD AND AUDIT TRAIL LOGGING
 app.post("/api/data/:resource", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const resource = req.params.resource;
   
   const map: { [key: string]: mongoose.Model<any> } = {
@@ -3218,7 +3466,7 @@ app.post("/api/data/:resource", async (req, res) => {
   const model = map[resource];
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
-  const role = (req.headers['x-user-role'] as string) || 'warga';
+  const role = (req as any).user?.role || (req.headers['x-user-role'] as string) || 'warga';
 
   // Strict backend role checks for creating resources
   if (resource === 'kas') {
@@ -3379,7 +3627,6 @@ app.post("/api/data/:resource", async (req, res) => {
 });
 
 app.put("/api/data/:resource/:id", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const resource = req.params.resource;
 
   const map: { [key: string]: mongoose.Model<any> } = {
@@ -3400,8 +3647,9 @@ app.put("/api/data/:resource/:id", async (req, res) => {
   const model = map[resource];
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
-  const role = (req.headers['x-user-role'] as string) || 'warga';
-  const userId = req.headers['x-user-id'] as string;
+  const rtId = getTenantRtId(req);
+  const role = (req as any).user?.role || (req.headers['x-user-role'] as string) || 'warga';
+  const userId = (req as any).user?.id || (req.headers['x-user-id'] as string);
 
   // Strict backend role checks for updating resources
   if (resource === 'kas' || resource === 'iuran') {
@@ -3529,7 +3777,7 @@ app.put("/api/data/:resource/:id", async (req, res) => {
 });
 
 app.delete("/api/data/:resource/:id", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getTenantRtId(req);
   const resource = req.params.resource;
 
   const map: { [key: string]: mongoose.Model<any> } = {
@@ -3551,8 +3799,8 @@ app.delete("/api/data/:resource/:id", async (req, res) => {
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
   // Strict role verification for deletion
-  const role = (req.headers['x-user-role'] as string) || 'warga';
-  const userId = req.headers['x-user-id'] as string;
+  const role = (req as any).user?.role || (req.headers['x-user-role'] as string) || 'warga';
+  const userId = (req as any).user?.id || (req.headers['x-user-id'] as string);
   if (['surat', 'laporan', 'tamu', 'kas', 'iuran', 'acara', 'inventaris', 'notulen', 'darurat'].includes(resource)) {
     if (role !== 'admin' && role !== 'developer' && role !== 'sekretaris' && role !== 'bendahara' && role !== 'pengurus') {
       return res.status(403).json({ error: `Akses ditolak: Operasi hapus data ${resource} hanya dapat dilakukan oleh Ketua RT atau Pengurus.` });

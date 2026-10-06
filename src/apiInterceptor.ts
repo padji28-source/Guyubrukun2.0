@@ -15,7 +15,7 @@ const persistCache = () => {
     const obj: Record<string, any> = {};
     let count = 0;
     for (const [k, v] of cache.entries()) {
-      if (count++ > 30) break;
+      if (count++ > 50) break;
       if (v.data && v.data.length < 50000) {
         obj[k] = v;
       }
@@ -25,7 +25,6 @@ const persistCache = () => {
 };
 
 const inflight = new Map<string, Promise<Response>>();
-const CACHE_TTL = 15 * 60 * 1000;
 
 const DEFAULT_FALLBACK_JSON = {
   data: [],
@@ -59,7 +58,6 @@ function attachSafeJsonParser(res: Response, url: string): Response {
       if (parsed !== null) {
         return parsed;
       }
-      // Fallback to stale cache if available when rate limited or non-JSON returned
       const stale = cache.get(url);
       if (stale?.data) {
         const staleParsed = tryParseJson(stale.data);
@@ -82,40 +80,99 @@ function attachSafeJsonParser(res: Response, url: string): Response {
   return res;
 }
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, isGet: boolean, retries = 2): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(input, init);
-    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
-      if (attempt < retries) {
-        await delay(600 * Math.pow(2, attempt));
-        continue;
-      }
-      return res;
-    }
-
-    if (isGet) {
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        const peek = await res.clone().text().catch(() => '');
-        if (peek.includes('Rate exceeded') && attempt < retries) {
-          await delay(600 * Math.pow(2, attempt));
-          continue;
-        }
-      }
-    }
-
-    return res;
+// Granular cache invalidation: Only purge related caches, NEVER clear all caches
+export function invalidateCacheForResource(url: string) {
+  const targets: string[] = [];
+  if (url.includes('/kas')) {
+    targets.push('/kas', '/dashboard');
+  } else if (url.includes('/warga') || url.includes('/users')) {
+    targets.push('/warga', '/dashboard');
+  } else if (url.includes('/acara')) {
+    targets.push('/acara', '/dashboard');
+  } else if (url.includes('/laporan')) {
+    targets.push('/laporan', '/dashboard');
+  } else if (url.includes('/iuran')) {
+    targets.push('/iuran', '/kas', '/dashboard');
+  } else if (url.includes('/voting')) {
+    targets.push('/voting', '/dashboard');
+  } else if (url.includes('/umkm')) {
+    targets.push('/umkm');
+  } else if (url.includes('/surat')) {
+    targets.push('/surat', '/dashboard');
+  } else if (url.includes('/inventaris')) {
+    targets.push('/inventaris');
+  } else if (url.includes('/notulen')) {
+    targets.push('/notulen');
+  } else if (url.includes('/dokumen')) {
+    targets.push('/dokumen');
+  } else if (url.includes('/media')) {
+    targets.push('/media', '/dashboard');
+  } else {
+    targets.push(url);
   }
-  return fetch(input, init);
+
+  const keysToDelete: string[] = [];
+  for (const key of cache.keys()) {
+    if (targets.some(target => key.includes(target))) {
+      keysToDelete.push(key);
+    }
+  }
+  for (const k of keysToDelete) {
+    cache.delete(k);
+  }
+  persistCache();
+}
+
+let isRefreshingToken = false;
+let refreshSubscribers: ((newToken: string) => void)[] = [];
+
+function onTokenRefreshed(newToken: string) {
+  refreshSubscribers.forEach(cb => cb(newToken));
+  refreshSubscribers = [];
+}
+
+async function attemptTokenRefresh(): Promise<string | null> {
+  const authUser = localStorage.getItem('auth_user');
+  if (!authUser) return null;
+
+  try {
+    const userObj = JSON.parse(authUser);
+    if (!userObj.refreshToken) return null;
+
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: userObj.refreshToken })
+    });
+
+    if (!res.ok) {
+      // Refresh token expired or revoked
+      localStorage.removeItem('auth_user');
+      window.dispatchEvent(new CustomEvent('auth_expired'));
+      return null;
+    }
+
+    const data = await res.json();
+    const newAccessToken = data.accessToken || data.token;
+    if (newAccessToken) {
+      userObj.token = newAccessToken;
+      if (data.refreshToken) {
+        userObj.refreshToken = data.refreshToken;
+      }
+      localStorage.setItem('auth_user', JSON.stringify(userObj));
+      return newAccessToken;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
   const url = typeof input === 'string' ? input : input.toString();
 
-  // Clear cache on mutations (POST, PUT, DELETE) unless it's a non-mutating action
+  // Selective Cache Invalidation on mutations (POST, PUT, DELETE)
   if (!isGet) {
     const isNonMutating =
       url.includes('/api/ping') ||
@@ -123,21 +180,20 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       url.includes('/api/logout') ||
       url.includes('/api/login') ||
       url.includes('/api/register') ||
+      url.includes('/api/auth/refresh') ||
       url.includes('/api/gemini') ||
       url.includes('/api/ai') ||
-      url.includes('/api/chat') ||
-      url.includes('/api/password');
+      url.includes('/api/chat');
 
     if (!isNonMutating) {
-      cache.clear();
-      try { sessionStorage.removeItem('app_api_cache'); } catch {}
+      invalidateCacheForResource(url);
       try { window.dispatchEvent(new CustomEvent('app_data_update')); } catch {}
     }
   } else {
     // 1. Instant Cache hit (0ms display)
     const cached = cache.get(url);
     if (cached) {
-      // Background revalidation if older than 3500ms
+      // Background revalidation without blocking UI if older than 3500ms
       if (Date.now() - cached.timestamp > 3500 && !inflight.has(url)) {
         setTimeout(() => {
           apiFetch(input, { ...init, headers: { ...init?.headers, 'x-swr-revalidate': '1' } }).catch(() => {});
@@ -160,6 +216,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
   const modifiedInit: RequestInit = { ...init };
   modifiedInit.headers = new Headers(init?.headers);
+
   const selectedRt = localStorage.getItem('selected_rt');
   if (selectedRt) {
     modifiedInit.headers.set('x-rt-id', selectedRt);
@@ -169,52 +226,75 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
   if (authUser) {
     try {
       const userObj = JSON.parse(authUser);
+      if (userObj.token) {
+        modifiedInit.headers.set('Authorization', `Bearer ${userObj.token}`);
+      }
       if (userObj.id) {
         modifiedInit.headers.set('x-user-id', userObj.id);
       }
       if (userObj.role) {
         modifiedInit.headers.set('x-user-role', userObj.role);
       }
-      if (userObj.token) {
-        modifiedInit.headers.set('Authorization', `Bearer ${userObj.token}`);
-      }
     } catch {}
   }
 
-  // Append updaterName to POST/PUT payloads automatically
+  // Append updaterName to POST/PUT payloads automatically if not present
   if (!isGet && modifiedInit.body && typeof modifiedInit.body === 'string') {
     try {
       const parsed = JSON.parse(modifiedInit.body);
-      if (typeof parsed === 'object' && parsed !== null && !parsed.updaterName) {
-        if (authUser) {
-          const userObj = JSON.parse(authUser);
-          parsed.updaterName = userObj.nama || userObj.username || 'Admin';
-          modifiedInit.body = JSON.stringify(parsed);
-        }
+      if (typeof parsed === 'object' && parsed !== null && !parsed.updaterName && authUser) {
+        const userObj = JSON.parse(authUser);
+        parsed.updaterName = userObj.nama || userObj.username || 'Admin';
+        modifiedInit.body = JSON.stringify(parsed);
       }
     } catch {}
   }
 
-  const fetchPromise = fetchWithRetry(input, modifiedInit, isGet)
-    .then(async (res) => {
-      if (isGet && res.ok) {
-        const clonedForCache = res.clone();
-        try {
-          const text = await clonedForCache.text();
-          if (tryParseJson(text) !== null) {
-            cache.set(url, { data: text, timestamp: Date.now() });
-            persistCache();
-          }
-        } catch {}
-      }
+  const fetchPromise = (async () => {
+    let res = await fetch(input, modifiedInit);
 
-      return attachSafeJsonParser(res, url);
-    })
-    .finally(() => {
-      if (isGet) {
-        inflight.delete(url);
+    // Handle token expiration (401) with silent refresh and retry
+    if (res.status === 401 && !url.includes('/api/login') && !url.includes('/api/auth/refresh') && authUser) {
+      if (!isRefreshingToken) {
+        isRefreshingToken = true;
+        const newToken = await attemptTokenRefresh();
+        isRefreshingToken = false;
+        if (newToken) {
+          onTokenRefreshed(newToken);
+          const retryHeaders = new Headers(modifiedInit.headers);
+          retryHeaders.set('Authorization', `Bearer ${newToken}`);
+          res = await fetch(input, { ...modifiedInit, headers: retryHeaders });
+        }
+      } else {
+        // Wait for active token refresh to finish
+        const waitPromise = new Promise<string>((resolve) => {
+          refreshSubscribers.push(resolve);
+        });
+        const newToken = await waitPromise;
+        if (newToken) {
+          const retryHeaders = new Headers(modifiedInit.headers);
+          retryHeaders.set('Authorization', `Bearer ${newToken}`);
+          res = await fetch(input, { ...modifiedInit, headers: retryHeaders });
+        }
       }
-    });
+    }
+
+    if (isGet && res.ok) {
+      const clonedForCache = res.clone();
+      clonedForCache.text().then(text => {
+        if (tryParseJson(text) !== null) {
+          cache.set(url, { data: text, timestamp: Date.now() });
+          persistCache();
+        }
+      }).catch(() => {});
+    }
+
+    return attachSafeJsonParser(res, url);
+  })().finally(() => {
+    if (isGet) {
+      inflight.delete(url);
+    }
+  });
 
   if (isGet) {
     inflight.set(url, fetchPromise);
