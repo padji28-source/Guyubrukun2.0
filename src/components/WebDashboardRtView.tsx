@@ -12,15 +12,7 @@ import {
   Store,
   MessageCircle,
   BarChart3,
-  ArrowUpRight,
-  MapPin,
-  Navigation,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
-  Search,
-  ShieldCheck,
-  Layers
+  ArrowUpRight
 } from 'lucide-react';
 
 interface DemographicGroup {
@@ -31,24 +23,6 @@ interface DemographicGroup {
   fill: string;
 }
 
-// Module-level persistent cache for 0ms instantaneous display
-let cachedDashboardMetrics: any = (() => {
-  try {
-    const raw = sessionStorage.getItem('cached_dashboard_metrics');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-})();
-let cachedDashboardUmkmList: any[] = (() => {
-  try {
-    const raw = sessionStorage.getItem('cached_dashboard_umkm');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-})();
-
 export const WebDashboardRtView = ({
   user,
   onNavigateToWarga
@@ -56,9 +30,9 @@ export const WebDashboardRtView = ({
   user?: any;
   onNavigateToWarga?: () => void;
 }) => {
-  const [loading, setLoading] = useState(!cachedDashboardMetrics);
-  const [umkmList, setUmkmList] = useState<any[]>(cachedDashboardUmkmList || []);
-  const [metrics, setMetrics] = useState(cachedDashboardMetrics || {
+  const [loading, setLoading] = useState(true);
+  const [umkmList, setUmkmList] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState({
     jumlahKK: 0,
     jumlahWarga: 0,
     saldoKas: 0,
@@ -134,32 +108,22 @@ export const WebDashboardRtView = ({
 
   const fetchData = async () => {
     try {
-      // Only show full skeleton on initial cold boot if no cache exists
-      if (!cachedDashboardMetrics) {
-        setLoading(true);
-      }
-      const [res, wargaRes] = await Promise.all([
-        apiFetch('/api/dashboard'),
-        apiFetch('/api/warga?limit=0&summary=1')
-      ]);
+      setLoading(true);
+      const res = await apiFetch('/api/dashboard');
       const data = await res.json();
-      let fetchedWargaList: any[] = [];
-      if (wargaRes.ok) {
-        const wargaJson = await wargaRes.json();
-        fetchedWargaList = (wargaJson.users || []).filter((u: any) => u.role !== 'developer');
-      }
 
       let nextDemographics = data?.metrics?.demographics;
       if (!nextDemographics || !Array.isArray(nextDemographics.groups) || nextDemographics.totalWithAge === 0) {
-        if (fetchedWargaList.length > 0) {
-          nextDemographics = computeDemographicsFromUsers(fetchedWargaList);
+        const wargaRes = await apiFetch('/api/warga?limit=0&summary=1');
+        if (wargaRes.ok) {
+          const wargaJson = await wargaRes.json();
+          nextDemographics = computeDemographicsFromUsers(wargaJson.users || []);
         }
       }
 
       if (data.metrics) {
-        const updatedMetrics = {
+        setMetrics({
           ...data.metrics,
-          wargaList: fetchedWargaList,
           demographics: nextDemographics || {
             balita: 0,
             anak: 0,
@@ -169,21 +133,12 @@ export const WebDashboardRtView = ({
             totalWithAge: 0,
             groups: []
           }
-        };
-        cachedDashboardMetrics = updatedMetrics;
-        try {
-          sessionStorage.setItem('cached_dashboard_metrics', JSON.stringify(updatedMetrics));
-        } catch {}
-        setMetrics(updatedMetrics);
+        });
       }
 
       const umkmRes = await apiFetch('/api/data/umkm');
       const umkmData = await umkmRes.json();
       if (umkmData.data) {
-        cachedDashboardUmkmList = umkmData.data;
-        try {
-          sessionStorage.setItem('cached_dashboard_umkm', JSON.stringify(umkmData.data));
-        } catch {}
         setUmkmList(umkmData.data);
       }
     } catch (e) {
@@ -227,105 +182,6 @@ export const WebDashboardRtView = ({
   const isAdministrativeRole = ['admin', 'developer', 'bendahara', 'sekretaris', 'pengurus'].includes(
     user?.role || 'admin'
   );
-
-  // Interactive Peta Lingkungan state
-  const [selectedBlokFilter, setSelectedBlokFilter] = useState<string>('ALL');
-  const [mapSearchQuery, setMapSearchQuery] = useState<string>('');
-  const [mapZoom, setMapZoom] = useState<number>(1);
-  const [mapViewMode, setMapViewMode] = useState<'kavling' | 'osm'>('kavling');
-  const [selectedHouse, setSelectedHouse] = useState<any | null>(null);
-
-  const blokDefinitions = useMemo(() => [
-    { key: 'A', label: 'Blok A', coordinator: 'Rizal', color: '#0d9488', bgLight: '#f0fdfa', border: '#99f6e4', zoneX: 8, zoneY: 12, zoneW: 26, zoneH: 34 },
-    { key: 'C', label: 'Blok C', coordinator: 'Ikhsan', color: '#2563eb', bgLight: '#eff6ff', border: '#bfdbfe', zoneX: 37, zoneY: 12, zoneW: 26, zoneH: 34 },
-    { key: 'D_GENAP', label: 'Blok D (Genap)', coordinator: 'Ari Hartoyo', color: '#7c3aed', bgLight: '#f5f3ff', border: '#ddd6fe', zoneX: 66, zoneY: 12, zoneW: 26, zoneH: 34 },
-    { key: 'D_GANJIL', label: 'Blok D (Ganjil)', coordinator: 'Priyanto', color: '#ea580c', bgLight: '#fff7ed', border: '#fed7aa', zoneX: 8, zoneY: 54, zoneW: 26, zoneH: 34 },
-    { key: 'E', label: 'Blok E', coordinator: 'Nurman', color: '#059669', bgLight: '#ecfdf5', border: '#a7f3d0', zoneX: 37, zoneY: 54, zoneW: 26, zoneH: 34 },
-    { key: 'F', label: 'Blok F', coordinator: 'Azirwan', color: '#e11d48', bgLight: '#fff1f2', border: '#fecdd3', zoneX: 66, zoneY: 54, zoneW: 26, zoneH: 34 }
-  ], []);
-
-  const mappedHouses = useMemo(() => {
-    const parseBlokAndNo = (alamatRaw: string) => {
-      const addr = String(alamatRaw || '').toUpperCase();
-      const blokMatch = addr.match(/BLOK\s*([A-Z])/i) || addr.match(/\b([A-F])\s*[-./]?\s*(\d+)/i);
-      const numMatch = addr.match(/NO\.?\s*(\d+[A-Z]?)/i) || addr.match(/\b[A-F]\s*[-./]?\s*(\d+[A-Z]?)/i) || addr.match(/(\d+[A-Z]?)\s*$/);
-      const rawBlok = blokMatch ? blokMatch[1].toUpperCase() : 'D';
-      const houseNoStr = numMatch ? numMatch[1] : '1';
-      const houseNum = parseInt(houseNoStr.replace(/\D/g, '') || '1', 10);
-
-      let blokKey = rawBlok;
-      if (rawBlok === 'D') {
-        blokKey = houseNum % 2 === 0 ? 'D_GENAP' : 'D_GANJIL';
-      } else if (!['A', 'C', 'E', 'F'].includes(rawBlok)) {
-        blokKey = 'A';
-      }
-      return { blokKey, rawBlok, houseNoStr, houseNum };
-    };
-
-    const grouped: Record<string, any[]> = {
-      A: [],
-      C: [],
-      D_GENAP: [],
-      D_GANJIL: [],
-      E: [],
-      F: []
-    };
-
-    (metrics.wargaList || []).forEach((w: any) => {
-      const { blokKey, rawBlok, houseNoStr, houseNum } = parseBlokAndNo(w.alamat || '');
-      const targetKey = grouped[blokKey] ? blokKey : 'A';
-      grouped[targetKey].push({
-        id: w.id || w._id,
-        nama: w.nama || w.username || 'Warga RT 01',
-        alamat: w.alamat || `Blok ${rawBlok} No. ${houseNoStr}`,
-        status: w.status || 'Tetap',
-        role: w.role || 'warga',
-        noHp: w.noHp || '-',
-        jumlahAnggota: 1 + (Array.isArray(w.members) ? w.members.length : 0),
-        blokKey: targetKey,
-        rawBlok,
-        houseNoStr,
-        houseNum
-      });
-    });
-
-    const allHouses: any[] = [];
-    blokDefinitions.forEach(def => {
-      const list = (grouped[def.key] || []).sort((a, b) => a.houseNum - b.houseNum);
-      const cols = 4;
-      list.forEach((h, idx) => {
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-        const maxRows = Math.max(Math.ceil(list.length / cols), 3);
-        const pinX = def.zoneX + 3.5 + (col * ((def.zoneW - 7) / Math.max(cols - 1, 1)));
-        const pinY = def.zoneY + 7 + (row * ((def.zoneH - 11) / Math.max(maxRows - 1, 1)));
-        allHouses.push({
-          ...h,
-          blokLabel: def.label,
-          coordinator: def.coordinator,
-          color: def.color,
-          pinX: Math.min(def.zoneX + def.zoneW - 2.5, Math.max(def.zoneX + 2.5, pinX)),
-          pinY: Math.min(def.zoneY + def.zoneH - 3, Math.max(def.zoneY + 6, pinY))
-        });
-      });
-    });
-
-    return allHouses;
-  }, [metrics.wargaList, blokDefinitions]);
-
-  const filteredMapHouses = useMemo(() => {
-    return mappedHouses.filter(h => {
-      const matchBlok = selectedBlokFilter === 'ALL' || h.blokKey === selectedBlokFilter;
-      const q = mapSearchQuery.trim().toLowerCase();
-      const matchSearch =
-        !q ||
-        h.nama.toLowerCase().includes(q) ||
-        h.alamat.toLowerCase().includes(q) ||
-        h.houseNoStr.toLowerCase().includes(q) ||
-        h.blokLabel.toLowerCase().includes(q);
-      return matchBlok && matchSearch;
-    });
-  }, [mappedHouses, selectedBlokFilter, mapSearchQuery]);
 
   if (loading) {
     return (
@@ -587,422 +443,6 @@ export const WebDashboardRtView = ({
                 </div>
               );
             })}
-          </div>
-        </div>
-      </div>
-
-      {/* Peta Lingkungan Interaktif (Lokasi Rumah Warga Per Blok) */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-4">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-teal-50 text-teal-600 shrink-0">
-              <MapPin className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-extrabold text-gray-900 text-base tracking-tight">
-                  Peta Lingkungan Interaktif RT 01 / RW 21
-                </h3>
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                  {mappedHouses.length} Titik Rumah Terpetakan
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Sebaran lokasi hunian Kepala Keluarga per blok (Blok A, C, D Genap, D Ganjil, E, dan F) beserta Koordinator Blok.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Search input */}
-            <div className="relative flex-1 sm:w-56">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={mapSearchQuery}
-                onChange={e => setMapSearchQuery(e.target.value)}
-                placeholder="Cari warga / nomor rumah..."
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-700"
-              />
-            </div>
-
-            {/* Map Mode Switcher */}
-            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setMapViewMode('kavling')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
-                  mapViewMode === 'kavling'
-                    ? 'bg-white text-teal-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Layers className="w-3 h-3" />
-                Denah Blok
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapViewMode('osm')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
-                  mapViewMode === 'osm'
-                    ? 'bg-white text-teal-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Navigation className="w-3 h-3" />
-                Peta Wilayah
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Filter Blok Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedBlokFilter('ALL');
-                setSelectedHouse(null);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer border ${
-                selectedBlokFilter === 'ALL'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Semua Blok ({mappedHouses.length})
-            </button>
-            {blokDefinitions.map(b => {
-              const count = mappedHouses.filter(h => h.blokKey === b.key).length;
-              const isSelected = selectedBlokFilter === b.key;
-              return (
-                <button
-                  key={b.key}
-                  type="button"
-                  onClick={() => {
-                    setSelectedBlokFilter(isSelected ? 'ALL' : b.key);
-                    setSelectedHouse(null);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 ${
-                    isSelected
-                      ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
-                  }`}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: isSelected ? '#ffffff' : b.color }}
-                  />
-                  <span>{b.label}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-md font-extrabold ${
-                      isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Zoom Controls */}
-          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
-            <button
-              type="button"
-              onClick={() => setMapZoom(z => Math.max(0.85, Number((z - 0.15).toFixed(2))))}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer"
-              title="Perkecil Peta"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[11px] font-extrabold text-slate-700 px-2 tabular-nums">
-              {Math.round(mapZoom * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => setMapZoom(z => Math.min(1.6, Number((z + 0.15).toFixed(2))))}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer"
-              title="Perbesar Peta"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMapZoom(1);
-                setSelectedBlokFilter('ALL');
-                setSelectedHouse(null);
-                setMapSearchQuery('');
-              }}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer"
-              title="Reset Tampilan Peta"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Interactive Map Canvas + Detail Sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* Map Viewport */}
-          <div className="lg:col-span-8 relative rounded-2xl border border-slate-200 bg-slate-900 overflow-hidden min-h-[380px] sm:min-h-[430px] flex items-center justify-center">
-            {mapViewMode === 'osm' && (
-              <iframe
-                title="Peta Wilayah Lingkungan RT 01"
-                src="https://www.openstreetmap.org/export/embed.html?bbox=106.8180%2C-6.2350%2C106.8320%2C-6.2240&amp;layer=mapnik"
-                className="absolute inset-0 w-full h-full opacity-35 pointer-events-none"
-              />
-            )}
-
-            <div
-              className="relative w-full h-[380px] sm:h-[430px] transition-transform duration-300 ease-out select-none"
-              style={{
-                transform: `scale(${mapZoom})`,
-                transformOrigin: 'center center',
-                backgroundImage:
-                  mapViewMode === 'kavling'
-                    ? 'radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px)'
-                    : undefined,
-                backgroundSize: '20px 20px'
-              }}
-            >
-              {/* Main Roads & Community Landmarks SVG */}
-              <svg
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                className="absolute inset-0 w-full h-full pointer-events-none"
-              >
-                {/* Horizontal & Vertical Neighborhood Roads */}
-                <rect x="4" y="48" width="92" height="4" rx="1" fill="rgba(30, 41, 59, 0.85)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth="0.3" />
-                <line x1="6" y1="50" x2="94" y2="50" stroke="rgba(226, 232, 240, 0.45)" strokeWidth="0.35" strokeDasharray="1.5 1.5" />
-                <rect x="34.5" y="8" width="2" height="84" rx="0.5" fill="rgba(30, 41, 59, 0.75)" />
-                <rect x="63.5" y="8" width="2" height="84" rx="0.5" fill="rgba(30, 41, 59, 0.75)" />
-
-                {/* Block Zones */}
-                {blokDefinitions.map(def => {
-                  const isDimmed = selectedBlokFilter !== 'ALL' && selectedBlokFilter !== def.key;
-                  return (
-                    <g key={def.key} opacity={isDimmed ? 0.25 : 0.92}>
-                      <rect
-                        x={def.zoneX}
-                        y={def.zoneY}
-                        width={def.zoneW}
-                        height={def.zoneH}
-                        rx="2.2"
-                        fill="rgba(15, 23, 42, 0.78)"
-                        stroke={def.color}
-                        strokeWidth={selectedBlokFilter === def.key ? '0.9' : '0.45'}
-                      />
-                    </g>
-                  );
-                })}
-              </svg>
-
-              {/* Block Zone Headers */}
-              {blokDefinitions.map(def => {
-                const isDimmed = selectedBlokFilter !== 'ALL' && selectedBlokFilter !== def.key;
-                return (
-                  <button
-                    key={`header_${def.key}`}
-                    type="button"
-                    onClick={() => setSelectedBlokFilter(selectedBlokFilter === def.key ? 'ALL' : def.key)}
-                    style={{
-                      left: `${def.zoneX + 1}%`,
-                      top: `${def.zoneY + 1}%`,
-                      borderColor: def.color
-                    }}
-                    className={`absolute z-10 px-2 py-0.5 rounded-md bg-slate-900/90 border text-left transition cursor-pointer ${
-                      isDimmed ? 'opacity-30' : 'opacity-100 hover:bg-slate-800'
-                    }`}
-                  >
-                    <p className="text-[10px] font-extrabold text-white leading-tight">{def.label}</p>
-                    <p className="text-[8px] font-semibold text-teal-300 leading-tight">
-                      Koord: {def.coordinator}
-                    </p>
-                  </button>
-                );
-              })}
-
-              {/* Center Road Label & Pos Kamling Badge */}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none bg-slate-950/90 border border-teal-500/40 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold text-teal-300 tracking-wider uppercase shadow-sm">
-                Jl. Utama Lingkungan RT 01 / RW 21
-              </div>
-
-              {/* House Markers */}
-              {filteredMapHouses.map(house => {
-                const isActive = selectedHouse?.id === house.id;
-                return (
-                  <button
-                    key={house.id}
-                    type="button"
-                    onClick={() => setSelectedHouse(house)}
-                    style={{
-                      left: `${house.pinX}%`,
-                      top: `${house.pinY}%`,
-                      backgroundColor: isActive ? '#ffffff' : house.color,
-                      color: isActive ? house.color : '#ffffff',
-                      borderColor: isActive ? house.color : 'rgba(255,255,255,0.85)'
-                    }}
-                    className={`group absolute -translate-x-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-lg border-2 shadow-md flex items-center justify-center text-[9px] font-black transition-all cursor-pointer ${
-                      isActive ? 'scale-125 z-30 ring-4 ring-teal-400/40' : 'hover:scale-125 hover:z-30'
-                    }`}
-                    title={`${house.nama} (${house.alamat})`}
-                  >
-                    {house.houseNoStr}
-                    {/* Quick Hover Tooltip */}
-                    <span className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg whitespace-nowrap shadow-xl border border-slate-700 z-40">
-                      {house.nama} · {house.alamat}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Bottom Map Legend */}
-            <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 bg-slate-950/85 backdrop-blur-xs border border-slate-800 px-3.5 py-2 rounded-xl text-[10px] text-slate-300">
-              <div className="flex flex-wrap items-center gap-3">
-                {blokDefinitions.map(b => (
-                  <span key={`leg_${b.key}`} className="inline-flex items-center gap-1 font-bold">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: b.color }} />
-                    {b.label}
-                  </span>
-                ))}
-              </div>
-              <span className="text-teal-300 font-semibold">Klik nomor rumah untuk detail KK</span>
-            </div>
-          </div>
-
-          {/* Right Panel: Selected House / Block Summary */}
-          <div className="lg:col-span-4 bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-4">
-            {selectedHouse ? (
-              <div className="space-y-4">
-                <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-3">
-                  <div>
-                    <span
-                      className="inline-block text-[10px] font-extrabold px-2 py-0.5 rounded-md text-white mb-1"
-                      style={{ backgroundColor: selectedHouse.color }}
-                    >
-                      {selectedHouse.blokLabel} · No. {selectedHouse.houseNoStr}
-                    </span>
-                    <h4 className="text-base font-black text-slate-900">{selectedHouse.nama}</h4>
-                    <p className="text-xs font-semibold text-slate-500">{selectedHouse.alamat}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedHouse(null)}
-                    className="text-xs font-bold text-slate-400 hover:text-slate-700 px-2 py-1 rounded-lg bg-white border border-slate-200 cursor-pointer"
-                  >
-                    Tutup
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="bg-white p-3 rounded-xl border border-slate-200/80">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Status Warga</p>
-                    <p className="text-xs font-extrabold text-slate-800 mt-0.5 capitalize">{selectedHouse.status}</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-200/80">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Anggota KK</p>
-                    <p className="text-xs font-extrabold text-teal-700 mt-0.5">{selectedHouse.jumlahAnggota} Jiwa</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-200/80 col-span-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Koordinator {selectedHouse.blokLabel}</p>
-                    <p className="text-xs font-extrabold text-slate-800 mt-0.5 flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                      Bpk. {selectedHouse.coordinator}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Other Houses in Same Block */}
-                <div className="space-y-2">
-                  <p className="text-[11px] font-extrabold text-slate-700">
-                    Tetangga Satu Blok ({selectedHouse.blokLabel})
-                  </p>
-                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
-                    {mappedHouses
-                      .filter(h => h.blokKey === selectedHouse.blokKey)
-                      .map(h => (
-                        <button
-                          key={`side_${h.id}`}
-                          type="button"
-                          onClick={() => setSelectedHouse(h)}
-                          className={`w-full text-left px-3 py-2 rounded-xl border text-xs flex items-center justify-between transition cursor-pointer ${
-                            h.id === selectedHouse.id
-                              ? 'bg-teal-50 border-teal-300 font-extrabold text-teal-900'
-                              : 'bg-white border-slate-200/70 hover:border-teal-200 text-slate-700 font-semibold'
-                          }`}
-                        >
-                          <span className="truncate">{h.nama}</span>
-                          <span className="text-[10px] font-bold text-slate-500 shrink-0 ml-2">
-                            No. {h.houseNoStr}
-                          </span>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="border-b border-slate-200 pb-2.5">
-                  <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
-                    Ringkasan Koordinator & Populasi Blok
-                  </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Pilih salah satu blok atau klik titik rumah pada peta untuk melihat detail Kepala Keluarga.
-                  </p>
-                </div>
-
-                <div className="space-y-2 max-h-[310px] overflow-y-auto pr-1">
-                  {blokDefinitions.map(b => {
-                    const housesInBlok = mappedHouses.filter(h => h.blokKey === b.key);
-                    const totalJiwaBlok = housesInBlok.reduce((acc, cur) => acc + (cur.jumlahAnggota || 1), 0);
-                    return (
-                      <button
-                        key={`summary_${b.key}`}
-                        type="button"
-                        onClick={() => setSelectedBlokFilter(selectedBlokFilter === b.key ? 'ALL' : b.key)}
-                        className={`w-full text-left p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
-                          selectedBlokFilter === b.key
-                            ? 'bg-teal-50/90 border-teal-400 shadow-xs'
-                            : 'bg-white border-slate-200/80 hover:border-teal-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span
-                            className="w-3 h-8 rounded-full shrink-0"
-                            style={{ backgroundColor: b.color }}
-                          />
-                          <div className="min-w-0">
-                            <p className="text-xs font-extrabold text-slate-900 truncate">{b.label}</p>
-                            <p className="text-[10px] font-semibold text-slate-500 truncate">
-                              Koordinator: <span className="text-slate-700 font-bold">{b.coordinator}</span>
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0 ml-2">
-                          <p className="text-xs font-black text-slate-900">{housesInBlok.length} KK</p>
-                          <p className="text-[10px] font-bold text-teal-700">{totalJiwaBlok} Warga</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {onNavigateToWarga && (
-              <button
-                type="button"
-                onClick={onNavigateToWarga}
-                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-              >
-                <span>Kelola Data Lengkap Warga</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
         </div>
       </div>
