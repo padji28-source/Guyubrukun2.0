@@ -1,35 +1,30 @@
 import { apiFetch } from './apiInterceptor';
-import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { CuteMascot } from './Auth';
-import { InstallPrompt } from './components/InstallPrompt';
+import { MobileDataWarga } from './MobileDataWarga';
+import { MobileScanQR } from './MobileScanQR';
+import { MobileSuratPengantar } from './MobileSuratPengantar';
+import { MobileLaporRT } from './MobileLaporRT';
+import { MobileLaporan } from './MobileLaporan';
+import { WebSuratOnlinePage } from './components/WebSuratOnlinePage';
+import { MobileDarurat } from './MobileDarurat';
+import { MobileDokumen } from './MobileDokumen';
+import { MobileVoting } from './MobileVoting';
+import { MobileAcaraPage } from './MobileAcara';
+import { MobileIuran } from './MobileIuran';
+import { MobileKas } from './MobileKas';
+import { MobileUMKM } from './MobileUMKM';
 import { MobileUMKMAds } from './components/MobileUMKMAds';
-import { PageSkeleton, CardSkeleton } from './components/common/SkeletonLoader';
-
-// React Code Splitting (React.lazy): Load heavy pages and dependencies on demand
-const MobileDataWarga = lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
-const MobileScanQR = lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
-const MobileSuratPengantar = lazy(() => import('./MobileSuratPengantar').then(m => ({ default: m.MobileSuratPengantar })));
-const MobileLaporRT = lazy(() => import('./MobileLaporRT').then(m => ({ default: m.MobileLaporRT })));
-const MobileLaporan = lazy(() => import('./MobileLaporan').then(m => ({ default: m.MobileLaporan })));
-const WebSuratOnlinePage = lazy(() => import('./components/WebSuratOnlinePage').then(m => ({ default: m.WebSuratOnlinePage })));
-const MobileDarurat = lazy(() => import('./MobileDarurat').then(m => ({ default: m.MobileDarurat })));
-const MobileDokumen = lazy(() => import('./MobileDokumen').then(m => ({ default: m.MobileDokumen })));
-const MobileVoting = lazy(() => import('./MobileVoting').then(m => ({ default: m.MobileVoting })));
-const MobileAcaraPage = lazy(() => import('./MobileAcara').then(m => ({ default: m.MobileAcaraPage })));
-const MobileIuran = lazy(() => import('./MobileIuran').then(m => ({ default: m.MobileIuran })));
-const MobileKas = lazy(() => import('./MobileKas').then(m => ({ default: m.MobileKas })));
-const MobileUMKM = lazy(() => import('./MobileUMKM').then(m => ({ default: m.MobileUMKM })));
-const WebSmartRtAiPage = lazy(() => import('./components/WebSmartRtAiPage').then(m => ({ default: m.WebSmartRtAiPage })));
-const WebDashboardRtView = lazy(() => import('./components/WebDashboardRtView').then(m => ({ default: m.WebDashboardRtView })));
-const WebInventarisPage = lazy(() => import('./components/WebInventarisPage').then(m => ({ default: m.WebInventarisPage })));
-const WebNotulenPage = lazy(() => import('./components/WebNotulenPage').then(m => ({ default: m.WebNotulenPage })));
-const WebMenuAccessPage = lazy(() => import('./components/WebMenuAccessPage').then(m => ({ default: m.WebMenuAccessPage })));
-const LandingPage = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
-const MobileMedia = lazy(() => import('./MobileMedia').then(m => ({ default: m.MobileMedia })));
-const Login = lazy(() => import('./Auth').then(m => ({ default: m.Login })));
-const Register = lazy(() => import('./Auth').then(m => ({ default: m.Register })));
+import { WebSmartRtAiPage } from './components/WebSmartRtAiPage';
+import { WebDashboardRtView } from './components/WebDashboardRtView';
+import { WebInventarisPage } from './components/WebInventarisPage';
+import { WebNotulenPage } from './components/WebNotulenPage';
+import { WebMenuAccessPage } from './components/WebMenuAccessPage';
+import { LandingPage } from './components/LandingPage';
+import { MobileMedia } from './MobileMedia';
+import { Login, Register, CuteMascot } from './Auth';
+import { InstallPrompt } from './components/InstallPrompt';
 
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
   const [activeVotings, setActiveVotings] = useState<any[]>([]);
@@ -4545,7 +4540,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                     <button onClick={() => window.open(`https://wa.me/`, '_blank')} className="px-8 py-3 bg-teal-600 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-teal-700 transition">Hubungi Pengurus / RT</button>
                   </div>
                 ) : (
-                  <Suspense fallback={<PageSkeleton title={activeWebTab} />}>
+                  <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-8 text-teal-600"><div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
                     {activeWebTab === 'Dashboard' ? (
                       <WebDashboardRtView
                         user={user}
@@ -4608,11 +4603,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                   <button onClick={() => window.open(`https://wa.me/`, '_blank')} className="w-full max-w-[200px] py-3 bg-teal-600 text-white rounded-xl text-xs font-bold shadow-sm hover:bg-teal-700 transition">Hubungi Pengurus / RT</button>
                 </div>
               ) : (
-                <Suspense fallback={
-                  <div className="p-4 space-y-4">
-                    <CardSkeleton count={2} />
-                  </div>
-                }>
+                <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-8 text-teal-600"><div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
                   {activeMobileTab === 'Beranda' && (
                     <>
                       <section className="px-4 mb-4 mt-2 relative z-10 transition-all hidden">
@@ -5219,14 +5210,12 @@ export default function App() {
           transition={{ duration: 0.4 }}
           className="w-full min-h-screen"
         >
-          <Suspense fallback={<PageSkeleton title="Guyub Rukun" />}>
-            <LandingPage 
-              onEnterPortal={(mode) => {
-                setAuthView(mode);
-                setShowAuthFlow(true);
-              }}
-            />
-          </Suspense>
+          <LandingPage 
+            onEnterPortal={(mode) => {
+              setAuthView(mode);
+              setShowAuthFlow(true);
+            }}
+          />
         </motion.div>
       ) : (
         !selectedRt ? (
@@ -5274,9 +5263,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <Suspense fallback={<div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-sm border border-gray-100"><CardSkeleton count={1} /></div>}>
-                <Login onLogin={handleLogin} onNavRegister={() => setAuthView('register')} />
-              </Suspense>
+              <Login onLogin={handleLogin} onNavRegister={() => setAuthView('register')} />
             </motion.div>
           ) : (
              <motion.div
@@ -5303,9 +5290,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <Suspense fallback={<div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-sm border border-gray-100"><CardSkeleton count={1} /></div>}>
-                <Register onRegister={handleLogin} onNavLogin={() => setAuthView('login')} />
-              </Suspense>
+              <Register onRegister={handleLogin} onNavLogin={() => setAuthView('login')} />
             </motion.div>
           )
         ) : (
