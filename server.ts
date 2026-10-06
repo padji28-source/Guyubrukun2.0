@@ -11,19 +11,12 @@ import jwt from "jsonwebtoken";
 
 dotenv.config();
 
-const isProduction = process.env.NODE_ENV === "production";
-let JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  if (isProduction) {
-    console.error("FATAL: JWT_SECRET environment variable is missing in production! Fail fast triggered.");
-    process.exit(1);
-  } else {
-    JWT_SECRET = "guyubrukun_secure_jwt_secret_key_2026";
-  }
-}
+const JWT_SECRET = process.env.JWT_SECRET || process.env.JWT_KEY || "guyubrukun_prod_secure_jwt_secret_key_2026";
 
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 let isDbConnected = false;
+let cachedConn: typeof mongoose | null = null;
+let cachedPromise: Promise<typeof mongoose> | null = null;
 
 function isValidGeminiApiKey(key?: string): boolean {
   if (!key) return false;
@@ -52,27 +45,54 @@ async function migratePlaintextPasswords() {
   }
 }
 
+let isDbInitialized = false;
+let initPromise: Promise<void> | null = null;
+
+async function ensureDbInitialized() {
+  if (isDbInitialized) return;
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        await migratePlaintextPasswords();
+        await initDb('rt01');
+        await initDb('rt02');
+        await initDb('rt03');
+        isDbInitialized = true;
+      } catch (err) {
+        console.error("[Database Init] Warning:", err);
+      }
+    })();
+  }
+  await initPromise;
+}
+
 async function connectDB() {
-  if (mongoose.connection && mongoose.connection.readyState === 1) {
+  if (cachedConn && mongoose.connection && mongoose.connection.readyState === 1) {
     isDbConnected = true;
-    return;
+    return cachedConn;
   }
-  if (mongoose.connection && mongoose.connection.readyState === 2) {
-    return;
-  }
-  try {
-    await mongoose.connect(MONGODB_URI, {
+  if (!cachedPromise) {
+    const opts = {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
+    };
+    cachedPromise = mongoose.connect(MONGODB_URI, opts).then(async (m) => {
+      isDbConnected = true;
+      console.log("Connected securely to MongoDB database system.");
+      // Background migration and seed without blocking connection
+      ensureDbInitialized().catch(() => {});
+      return m;
     });
-    isDbConnected = true;
-    console.log("Connected securely to MongoDB database system.");
-    // Run password hash migration safely in background
-    migratePlaintextPasswords().catch(() => {});
+  }
+  try {
+    cachedConn = await cachedPromise;
   } catch (err) {
+    cachedPromise = null;
+    cachedConn = null;
     console.error("MongoDB connection exception:", err);
     throw err;
   }
+  return cachedConn;
 }
 
 // Secure Authentication Helpers
@@ -123,6 +143,17 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// CORS handler for serverless & multi-origin hosting
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, x-rt-id, x-user-id, x-user-role, x-swr-revalidate");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 export const dashboardCache = new Map<string, { data: any; timestamp: number }>();
 app.use((req, res, next) => {
@@ -870,7 +901,6 @@ async function saveAppData(rtId: string = '', data: any) {
 }
 
 async function initDb(rtId: string = '') {
-  await connectDB();
   try {
     // Run automated legacy migrations to preserve old database states
     await migrateLegacyDataIfAny(rtId);
@@ -1669,10 +1699,10 @@ setInterval(() => {
   }
 }, 15000);
 
-app.post("/api/login", loginLimiter, validateRequest(LoginValidator), async (req, res, next) => {
+app.post(["/api/login", "/login"], loginLimiter, validateRequest(LoginValidator), async (req, res, next) => {
   try {
     const { username, password } = req.body;
-    const rtId = req.headers['x-rt-id'] as string || 'rt01';
+    const reqRtId = (req.headers['x-rt-id'] as string) || '';
 
     await connectDB();
     const cleanUsername = (username || '').trim();
@@ -1699,32 +1729,43 @@ app.post("/api/login", loginLimiter, validateRequest(LoginValidator), async (req
           : [])
       ]
     };
-    if (cleanUsername.toLowerCase() !== 'developer') {
-      query.rtId = rtId;
+
+    const userCandidates = await UserModel.find(query);
+    let user: any = null;
+    let matchPwd = false;
+
+    // Check candidate with matching password (prefer candidate matching request rtId if multiple exist)
+    for (const cand of userCandidates) {
+      const cleanPwd = (password || '').trim();
+      const strippedPwd = cleanPwd
+        .replace(/^blok\s*/i, '')
+        .replace(/no\.?\s*/i, '')
+        .replace(/[\s-]+/g, '');
+      const blockPrefix = (cand?.username || '').match(/^[A-Za-z]+/)?.[0] || '';
+      const withBlockLetter =
+        blockPrefix && /^\d+[A-Za-z]*$/.test(strippedPwd) ? `${blockPrefix}${strippedPwd}` : strippedPwd;
+
+      const isMatch = cand && (
+        verifyPassword(cleanPwd, cand.password) ||
+        verifyPassword(cleanPwd.toLowerCase(), cand.password) ||
+        verifyPassword(cleanPwd.toUpperCase(), cand.password) ||
+        verifyPassword(`Blok ${cleanPwd}`, cand.password) ||
+        verifyPassword(cleanPwd.replace(/^blok\s*/i, ''), cand.password) ||
+        verifyPassword(strippedPwd, cand.password) ||
+        verifyPassword(strippedPwd.toUpperCase(), cand.password) ||
+        verifyPassword(strippedPwd.toLowerCase(), cand.password) ||
+        verifyPassword(withBlockLetter.toUpperCase(), cand.password) ||
+        verifyPassword(withBlockLetter.toLowerCase(), cand.password)
+      );
+
+      if (isMatch) {
+        user = cand;
+        matchPwd = true;
+        if (cand.rtId === reqRtId) {
+          break;
+        }
+      }
     }
-    const user = await UserModel.findOne(query);
-
-    const cleanPwd = (password || '').trim();
-    const strippedPwd = cleanPwd
-      .replace(/^blok\s*/i, '')
-      .replace(/no\.?\s*/i, '')
-      .replace(/[\s-]+/g, '');
-    const blockPrefix = (user?.username || '').match(/^[A-Za-z]+/)?.[0] || '';
-    const withBlockLetter =
-      blockPrefix && /^\d+[A-Za-z]*$/.test(strippedPwd) ? `${blockPrefix}${strippedPwd}` : strippedPwd;
-
-    const matchPwd = user && (
-      verifyPassword(cleanPwd, user.password) ||
-      verifyPassword(cleanPwd.toLowerCase(), user.password) ||
-      verifyPassword(cleanPwd.toUpperCase(), user.password) ||
-      verifyPassword(`Blok ${cleanPwd}`, user.password) ||
-      verifyPassword(cleanPwd.replace(/^blok\s*/i, ''), user.password) ||
-      verifyPassword(strippedPwd, user.password) ||
-      verifyPassword(strippedPwd.toUpperCase(), user.password) ||
-      verifyPassword(strippedPwd.toLowerCase(), user.password) ||
-      verifyPassword(withBlockLetter.toUpperCase(), user.password) ||
-      verifyPassword(withBlockLetter.toLowerCase(), user.password)
-    );
 
     if (user && matchPwd) {
       // Clear brute-force attempts on successful login
@@ -1736,9 +1777,7 @@ app.post("/api/login", loginLimiter, validateRequest(LoginValidator), async (req
         await user.save();
       }
 
-      if (activeSessions.has(user.id) && Date.now() - activeSessions.get(user.id)! < 10000) {
-        return res.status(409).json({ error: "User sedang aktif digunakan pada perangkat lain" });
-      }
+      // Update user active session timestamp
       activeSessions.set(user.id, Date.now());
 
       // Short-lived access token + secure refresh token
