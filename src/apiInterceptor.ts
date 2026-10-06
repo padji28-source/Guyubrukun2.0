@@ -1,6 +1,31 @@
+// In-memory cache + sessionStorage initialization for 0ms instant display
 const cache = new Map<string, { data: string; timestamp: number }>();
+try {
+  const savedCache = sessionStorage.getItem('app_api_cache');
+  if (savedCache) {
+    const parsed = JSON.parse(savedCache);
+    for (const [k, v] of Object.entries(parsed)) {
+      cache.set(k, v as any);
+    }
+  }
+} catch {}
+
+const persistCache = () => {
+  try {
+    const obj: Record<string, any> = {};
+    let count = 0;
+    for (const [k, v] of cache.entries()) {
+      if (count++ > 30) break;
+      if (v.data && v.data.length < 50000) {
+        obj[k] = v;
+      }
+    }
+    sessionStorage.setItem('app_api_cache', JSON.stringify(obj));
+  } catch {}
+};
+
 const inflight = new Map<string, Promise<Response>>();
-const CACHE_TTL = 10 * 60 * 1000;
+const CACHE_TTL = 15 * 60 * 1000;
 
 const DEFAULT_FALLBACK_JSON = {
   data: [],
@@ -105,11 +130,19 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
     if (!isNonMutating) {
       cache.clear();
+      try { sessionStorage.removeItem('app_api_cache'); } catch {}
+      try { window.dispatchEvent(new CustomEvent('app_data_update')); } catch {}
     }
   } else {
-    // 1. Check cache
+    // 1. Instant Cache hit (0ms display)
     const cached = cache.get(url);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    if (cached) {
+      // Background revalidation if older than 3500ms
+      if (Date.now() - cached.timestamp > 3500 && !inflight.has(url)) {
+        setTimeout(() => {
+          apiFetch(input, { ...init, headers: { ...init?.headers, 'x-swr-revalidate': '1' } }).catch(() => {});
+        }, 10);
+      }
       const mockRes = new Response(cached.data, {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -117,7 +150,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       return attachSafeJsonParser(mockRes, url);
     }
 
-    // 2. Check inflight requests
+    // 2. Check inflight requests to deduplicate parallel calls
     if (inflight.has(url)) {
       const res = await inflight.get(url)!;
       const finalRes = res.clone();
@@ -170,6 +203,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
           const text = await clonedForCache.text();
           if (tryParseJson(text) !== null) {
             cache.set(url, { data: text, timestamp: Date.now() });
+            persistCache();
           }
         } catch {}
       }

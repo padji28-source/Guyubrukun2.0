@@ -74,6 +74,14 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+export const dashboardCache = new Map<string, { data: any; timestamp: number }>();
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.path.startsWith('/api/')) {
+    dashboardCache.clear();
+  }
+  next();
+});
+
 // Global DB connection middleware for APIs to ensure stable connection on serverless/cold-start
 app.use(async (req, res, next) => {
   if (req.path.startsWith("/api/")) {
@@ -1409,40 +1417,6 @@ async function extractNoKkViaOcrAsync(kkDoc: string, username?: string, nama?: s
   if (nama && VERIFIED_KK_BY_USER[String(nama).trim().toLowerCase()]) {
     return VERIFIED_KK_BY_USER[String(nama).trim().toLowerCase()];
   }
-  if (kkDoc.startsWith('data:image/jpeg') || kkDoc.startsWith('data:image/png') || kkDoc.startsWith('data:image/webp')) {
-    try {
-      const b64 = kkDoc.replace(/^data:[^;]+;base64,/, '');
-      const buf = Buffer.from(b64, 'base64');
-      const sharpMod = (await import("sharp")).default;
-      const Tesseract = await import("tesseract.js");
-      const meta = await sharpMod(buf).metadata();
-      const w = meta.width || 0;
-      const h = meta.height || 0;
-      if (w >= 300 && h >= 200) {
-        const headerBuf = await sharpMod(buf)
-          .extract({ left: Math.round(w * 0.18), top: 0, width: Math.round(w * 0.64), height: Math.round(h * 0.28) })
-          .resize({ width: 1400 })
-          .greyscale()
-          .normalize()
-          .sharpen()
-          .toBuffer();
-        const worker = await Tesseract.createWorker("ind+eng");
-        try {
-          const ret = await worker.recognize(headerBuf);
-          const text = ret?.data?.text || '';
-          const noMatch = text.match(/No[\s.:_-]*([0-9kKbBlLIoOsS.\s-]{14,24})/i);
-          if (noMatch && noMatch[1]) {
-            const cleaned = cleanOcrKkDigits(noMatch[1]);
-            if (cleaned) return cleaned;
-          }
-        } finally {
-          await worker.terminate();
-        }
-      }
-    } catch (e) {
-      // Fallback to deterministic/sync extractor
-    }
-  }
   return extractNoKkFromDocument(kkDoc, username, nama);
 }
 
@@ -2319,99 +2293,105 @@ Kembalikan hasil dalam bentuk JSON Array.`;
           const pdfText = docBuffer.toString('latin1');
           extractedList = parseIndonesianKkOcrText(pdfText);
         } else {
-          const sharpMod = (await import("sharp")).default;
-          const Tesseract = await import("tesseract.js");
-          const worker = await Tesseract.createWorker("ind+eng");
           try {
-            await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
-            const meta = await sharpMod(docBuffer).metadata();
-            const w = meta.width || 0;
-            const h = meta.height || 0;
+            const sharpMod = (await import("sharp")).default;
+            const Tesseract: any = (await import(/* @vite-ignore */ 'tesseract.js' as any)).default || (await import(/* @vite-ignore */ 'tesseract.js' as any));
+            const worker = await Tesseract.createWorker("ind+eng");
+            try {
+              await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
+              const meta = await sharpMod(docBuffer).metadata();
+              const w = meta.width || 0;
+              const h = meta.height || 0;
 
-            // Precision Table 1 Column Extraction (Nama Lengkap + NIK + Jenis Kelamin)
-            if (w >= 400 && h >= 300) {
-              const nameOnlyBuf = await sharpMod(docBuffer)
-                .extract({
-                  left: Math.round(w * 0.033),
-                  top: Math.round(h * 0.24),
-                  width: Math.round(w * 0.21),
-                  height: Math.round(h * 0.18)
-                })
-                .resize({ width: Math.round(w * 0.21 * 3) })
-                .greyscale()
-                .normalize()
-                .sharpen()
-                .toBuffer();
+              // Precision Table 1 Column Extraction (Nama Lengkap + NIK + Jenis Kelamin)
+              if (w >= 400 && h >= 300) {
+                const nameOnlyBuf = await sharpMod(docBuffer)
+                  .extract({
+                    left: Math.round(w * 0.033),
+                    top: Math.round(h * 0.24),
+                    width: Math.round(w * 0.21),
+                    height: Math.round(h * 0.18)
+                  })
+                  .resize({ width: Math.round(w * 0.21 * 3) })
+                  .greyscale()
+                  .normalize()
+                  .sharpen()
+                  .toBuffer();
 
-              const nikBuf = await sharpMod(docBuffer)
-                .extract({
-                  left: Math.round(w * 0.241),
-                  top: Math.round(h * 0.24),
-                  width: Math.round(w * 0.14),
-                  height: Math.round(h * 0.18)
-                })
-                .resize({ width: Math.round(w * 0.14 * 3.5) })
-                .greyscale()
-                .normalize()
-                .sharpen()
-                .toBuffer();
+                const nikBuf = await sharpMod(docBuffer)
+                  .extract({
+                    left: Math.round(w * 0.241),
+                    top: Math.round(h * 0.24),
+                    width: Math.round(w * 0.14),
+                    height: Math.round(h * 0.18)
+                  })
+                  .resize({ width: Math.round(w * 0.14 * 3.5) })
+                  .greyscale()
+                  .normalize()
+                  .sharpen()
+                  .toBuffer();
 
-              const [rName, rNik] = await Promise.all([
-                worker.recognize(nameOnlyBuf),
-                worker.recognize(nikBuf)
-              ]);
+                const [rName, rNik] = await Promise.all([
+                  worker.recognize(nameOnlyBuf),
+                  worker.recognize(nikBuf)
+                ]);
 
-              const noiseRegex = /^(LT|NF|STATUS|TANGGAL|PERKAWINAN|HUBUNGAN|DALAM|KELUARGA|NAMA|LENGKAP|AGAMA|ISLAM|KRISTEN|KATOLIK|HINDU|BUDDHA)$/i;
-              const names = (rName?.data?.text || '')
-                .split(/\r?\n/)
-                .map((l: string) => l.replace(/[^a-zA-Z\s.]/g, ' ').replace(/\s+/g, ' ').trim())
-                .filter((l: string) => l.length >= 5 && /[a-zA-Z]{3,}/.test(l) && !noiseRegex.test(l.split(' ')[0]))
-                .map(toTitleCaseName);
+                const noiseRegex = /^(LT|NF|STATUS|TANGGAL|PERKAWINAN|HUBUNGAN|DALAM|KELUARGA|NAMA|LENGKAP|AGAMA|ISLAM|KRISTEN|KATOLIK|HINDU|BUDDHA)$/i;
+                const names = (rName?.data?.text || '')
+                  .split(/\r?\n/)
+                  .map((l: string) => l.replace(/[^a-zA-Z\s.]/g, ' ').replace(/\s+/g, ' ').trim())
+                  .filter((l: string) => l.length >= 5 && /[a-zA-Z]{3,}/.test(l) && !noiseRegex.test(l.split(' ')[0]))
+                  .map(toTitleCaseName);
 
-              const nikInfos = (rNik?.data?.text || '')
-                .split(/\r?\n/)
-                .map((l: string) => {
-                  const m = l.match(/(\d[\d\s]{10,18}\d)/);
-                  if (!m) return null;
-                  const decoded = decodeIndonesianNik(m[1]);
-                  const genderText: 'L' | 'P' | null = /PEREMPU/i.test(l) ? 'P' : /LAKI/i.test(l) ? 'L' : null;
-                  return {
-                    tglLahir: decoded?.tglLahir || '',
-                    age: decoded?.age || 0,
-                    gender: genderText || decoded?.gender || null
-                  };
-                })
-                .filter(Boolean) as Array<{ tglLahir: string; age: number; gender: 'L' | 'P' | null }>;
+                const nikInfos = (rNik?.data?.text || '')
+                  .split(/\r?\n/)
+                  .map((l: string) => {
+                    const m = l.match(/(\d[\d\s]{10,18}\d)/);
+                    if (!m) return null;
+                    const decoded = decodeIndonesianNik(m[1]);
+                    const genderText: 'L' | 'P' | null = /PEREMPU/i.test(l) ? 'P' : /LAKI/i.test(l) ? 'L' : null;
+                    return {
+                      tglLahir: decoded?.tglLahir || '',
+                      age: decoded?.age || 0,
+                      gender: genderText || decoded?.gender || null
+                    };
+                  })
+                  .filter(Boolean) as Array<{ tglLahir: string; age: number; gender: 'L' | 'P' | null }>;
 
-              if (names.length > 0) {
-                extractedList = names.map((name: string, idx: number) => {
-                  const info = nikInfos[idx] || { tglLahir: '', age: 0, gender: null };
-                  let role = 'Anak';
-                  if (idx === 0) role = 'Kepala Keluarga';
-                  else if (idx === 1 && (info.gender === 'P' || info.age >= 17)) role = 'Istri';
-                  else if (info.age > 0 && info.age <= 24) role = 'Anak';
-                  else if (info.age >= 58) role = 'Orang Tua';
-                  else if (info.gender === 'P') role = 'Istri';
-                  return {
-                    name,
-                    role,
-                    age: String(info.age || (role === 'Kepala Keluarga' ? 30 : role === 'Istri' ? 28 : 5)),
-                    tglLahir: info.tglLahir || ''
-                  };
-                });
+                if (names.length > 0) {
+                  extractedList = names.map((name: string, idx: number) => {
+                    const info = nikInfos[idx] || { tglLahir: '', age: 0, gender: null };
+                    let role = 'Anak';
+                    if (idx === 0) role = 'Kepala Keluarga';
+                    else if (idx === 1 && (info.gender === 'P' || info.age >= 17)) role = 'Istri';
+                    else if (info.age > 0 && info.age <= 24) role = 'Anak';
+                    else if (info.age >= 58) role = 'Orang Tua';
+                    else if (info.gender === 'P') role = 'Istri';
+                    return {
+                      name,
+                      role,
+                      age: String(info.age || (role === 'Kepala Keluarga' ? 30 : role === 'Istri' ? 28 : 5)),
+                      tglLahir: info.tglLahir || ''
+                    };
+                  });
+                }
               }
-            }
 
-            // Fallback to full-image OCR if column crop did not match
-            if (extractedList.length === 0) {
-              const ret = await worker.recognize(docBuffer);
-              const ocrText = ret?.data?.text || '';
-              if (ocrText) {
-                extractedList = parseIndonesianKkOcrText(ocrText);
+              // Fallback to full-image OCR if column crop did not match
+              if (extractedList.length === 0) {
+                const ret = await worker.recognize(docBuffer);
+                const ocrText = ret?.data?.text || '';
+                if (ocrText) {
+                  extractedList = parseIndonesianKkOcrText(ocrText);
+                }
               }
+            } finally {
+              await worker.terminate();
             }
-          } finally {
-            await worker.terminate();
+          } catch {
+            // Local image OCR not available, fallback to buffer text parsing
+            const rawText = docBuffer.toString('utf-8');
+            extractedList = parseIndonesianKkOcrText(rawText);
           }
         }
       } catch (ocrErr: any) {
@@ -2648,6 +2628,8 @@ app.get("/api/warga", async (req, res) => {
     ];
   }
 
+  const includeDocs = req.query.includeDocs === '1';
+
   let dbQuery = UserModel.find(query);
   let sortedUsers: any[] = [];
   let total = 0;
@@ -2658,15 +2640,33 @@ app.get("/api/warga", async (req, res) => {
     const users = await dbQuery.skip(skip).limit(limit).lean();
     sortedUsers = users.map((u: any) => {
       const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
       const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
       if (hasKk && !u.noKk && resolvedNoKk && u._id) {
         UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
       }
       return {
-        ...u,
+        id: u.id,
+        username: u.username,
+        nama: u.nama,
+        alamat: u.alamat,
+        noHp: u.noHp,
+        status: u.status,
+        role: u.role,
+        photo: (u.photo && u.photo.length > 50000) ? '' : u.photo,
         noKk: resolvedNoKk || u.noKk || '',
+        umur: u.umur,
+        tglLahir: u.tglLahir,
+        jenisKelamin: u.jenisKelamin,
+        members: u.members || [],
         hasKk,
-        isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000
+        hasKtp,
+        isApproved: u.isApproved,
+        isVip: u.isVip,
+        rtId: u.rtId,
+        isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000,
+        dokumenKk: includeDocs ? u.dokumenKk : (hasKk ? 'uploaded' : ''),
+        dokumenKtp: includeDocs ? u.dokumenKtp : []
       };
     });
     res.json({
@@ -2689,37 +2689,33 @@ app.get("/api/warga", async (req, res) => {
       const isOnline = activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000;
       const isOwn = Boolean(requesterId && String(u.id) === String(requesterId));
       const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
       const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
       if (hasKk && !u.noKk && resolvedNoKk && u._id) {
         UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
       }
-      if (isSummary && !isRequesterAdmin && !isOwn) {
-        return {
-          id: u.id,
-          username: u.username,
-          nama: u.nama,
-          alamat: u.alamat,
-          noHp: u.noHp,
-          status: u.status,
-          role: u.role,
-          photo: u.photo,
-          noKk: resolvedNoKk || u.noKk || '',
-          umur: u.umur,
-          tglLahir: u.tglLahir,
-          jenisKelamin: u.jenisKelamin,
-          members: u.members || [],
-          hasKk,
-          hasKtp: Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp),
-          isApproved: u.isApproved,
-          rtId: u.rtId,
-          isOnline
-        };
-      }
       return {
-        ...u,
+        id: u.id,
+        username: u.username,
+        nama: u.nama,
+        alamat: u.alamat,
+        noHp: u.noHp,
+        status: u.status,
+        role: u.role,
+        photo: (isSummary && u.photo && u.photo.length > 30000) ? '' : u.photo,
         noKk: resolvedNoKk || u.noKk || '',
+        umur: u.umur,
+        tglLahir: u.tglLahir,
+        jenisKelamin: u.jenisKelamin,
+        members: u.members || [],
         hasKk,
-        isOnline
+        hasKtp,
+        isApproved: u.isApproved,
+        isVip: u.isVip,
+        rtId: u.rtId,
+        isOnline,
+        dokumenKk: (includeDocs || isOwn) ? u.dokumenKk : (hasKk ? 'uploaded' : ''),
+        dokumenKtp: (includeDocs || isOwn) ? u.dokumenKtp : []
       };
     });
     res.json({ users: sortedUsers });
@@ -4165,13 +4161,18 @@ app.post("/api/gemini/action", async (req, res) => {
 app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
+    const cached = dashboardCache.get(rtId);
+    if (cached && Date.now() - cached.timestamp < 3500) {
+      return res.json(cached.data);
+    }
+
     const [users, kas, iuran, laporan, acara, media] = await Promise.all([
       UserModel.find({ rtId, role: { $ne: 'developer' } }).select('id nama role status alamat noHp photo umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
       KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
       IuranModel.find({ rtId }).select('bulan status nominal').lean(),
       LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
       AcaraModel.find({ rtId }).select('id title date time location rtId createdAt').lean(),
-      MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').lean()
+      MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').limit(6).lean()
     ]);
 
     const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
@@ -4289,7 +4290,7 @@ app.get("/api/dashboard", async (req, res) => {
         jabatan,
         alamat: u.alamat || 'Lingkungan RT 01',
         noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
-        photo: u.photo || ''
+        photo: (u.photo && u.photo.length < 50000) ? u.photo : ''
       };
     });
 
@@ -4328,10 +4329,20 @@ app.get("/api/dashboard", async (req, res) => {
         return acDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime()).slice(0, 5);
 
+    // Clean media items to prevent megabytes transfer on dashboard
+    const sanitizedMedia = (media || []).slice(0, 4).map((m: any) => ({
+      id: m.id,
+      title: m.title,
+      uploaderName: m.uploaderName,
+      rtId: m.rtId,
+      createdAt: m.createdAt,
+      imageUrl: (m.imageUrl && m.imageUrl.length < 80000) ? m.imageUrl : ''
+    }));
+
     // Limit returned unused data
     const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
 
-    res.json({
+    const responsePayload = {
       metrics: {
         jumlahKK,
         jumlahWarga: totalWarga,
@@ -4349,8 +4360,12 @@ app.get("/api/dashboard", async (req, res) => {
       kas: kas,
       laporan: laporan,
       acara: acara,
-      media: media
-    });
+      media: sanitizedMedia
+    };
+
+    dashboardCache.set(rtId, { data: responsePayload, timestamp: Date.now() });
+
+    res.json(responsePayload);
   } catch (error) {
     console.error("Dashboard fetch error:", error);
     res.status(500).json({ error: "Failed to fetch dashboard data" });
