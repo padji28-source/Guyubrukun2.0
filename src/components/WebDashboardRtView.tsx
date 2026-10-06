@@ -31,24 +31,6 @@ interface DemographicGroup {
   fill: string;
 }
 
-// Module-level persistent cache for 0ms instantaneous display
-let cachedDashboardMetrics: any = (() => {
-  try {
-    const raw = sessionStorage.getItem('cached_dashboard_metrics');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-})();
-let cachedDashboardUmkmList: any[] = (() => {
-  try {
-    const raw = sessionStorage.getItem('cached_dashboard_umkm');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-})();
-
 export const WebDashboardRtView = ({
   user,
   onNavigateToWarga
@@ -56,9 +38,9 @@ export const WebDashboardRtView = ({
   user?: any;
   onNavigateToWarga?: () => void;
 }) => {
-  const [loading, setLoading] = useState(!cachedDashboardMetrics);
-  const [umkmList, setUmkmList] = useState<any[]>(cachedDashboardUmkmList || []);
-  const [metrics, setMetrics] = useState(cachedDashboardMetrics || {
+  const [loading, setLoading] = useState(true);
+  const [umkmList, setUmkmList] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState({
     jumlahKK: 0,
     jumlahWarga: 0,
     saldoKas: 0,
@@ -134,10 +116,7 @@ export const WebDashboardRtView = ({
 
   const fetchData = async () => {
     try {
-      // Only show full skeleton on initial cold boot if no cache exists
-      if (!cachedDashboardMetrics) {
-        setLoading(true);
-      }
+      setLoading(true);
       const [res, wargaRes] = await Promise.all([
         apiFetch('/api/dashboard'),
         apiFetch('/api/warga?limit=0&summary=1')
@@ -157,7 +136,7 @@ export const WebDashboardRtView = ({
       }
 
       if (data.metrics) {
-        const updatedMetrics = {
+        setMetrics({
           ...data.metrics,
           wargaList: fetchedWargaList,
           demographics: nextDemographics || {
@@ -169,21 +148,12 @@ export const WebDashboardRtView = ({
             totalWithAge: 0,
             groups: []
           }
-        };
-        cachedDashboardMetrics = updatedMetrics;
-        try {
-          sessionStorage.setItem('cached_dashboard_metrics', JSON.stringify(updatedMetrics));
-        } catch {}
-        setMetrics(updatedMetrics);
+        });
       }
 
       const umkmRes = await apiFetch('/api/data/umkm');
       const umkmData = await umkmRes.json();
       if (umkmData.data) {
-        cachedDashboardUmkmList = umkmData.data;
-        try {
-          sessionStorage.setItem('cached_dashboard_umkm', JSON.stringify(umkmData.data));
-        } catch {}
         setUmkmList(umkmData.data);
       }
     } catch (e) {

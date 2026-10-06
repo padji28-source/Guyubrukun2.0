@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { apiFetch, invalidateCacheForResource } from './apiInterceptor';
+import { useState, useEffect } from 'react';
+import { apiFetch } from './apiInterceptor';
 
 const globalCache = new Map<string, any>();
 const listeners = new Map<string, Set<(data: any) => void>>();
@@ -8,21 +8,18 @@ export function useFetch<T>(url: string | null) {
   const [data, setData] = useState<T | null>(url ? globalCache.get(url) || null : null);
   const [loading, setLoading] = useState<boolean>(!data);
   const [error, setError] = useState<any>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (!url) {
-      setLoading(false);
-      return;
-    }
+    if (!url) return;
 
     let isMounted = true;
-
+    
     if (!listeners.has(url)) {
       listeners.set(url, new Set());
     }
     const urlListeners = listeners.get(url)!;
-
+    
+    // Add local updater
     const onUpdate = (newData: any) => {
       if (isMounted) {
         setData(newData);
@@ -31,52 +28,44 @@ export function useFetch<T>(url: string | null) {
     };
     urlListeners.add(onUpdate);
 
-    // Initial state based on instant cache
+    // Initial state based on cache
     if (globalCache.has(url)) {
-      setData(globalCache.get(url));
       setLoading(false);
+      setData(globalCache.get(url));
     } else {
       setLoading(true);
     }
 
-    // Cancel previous inflight request if url changes
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    // Fetch data in background (Stale While Revalidate)
-    apiFetch(url, { signal: controller.signal })
+    // Fetch data always to ensure freshness
+    apiFetch(url)
       .then(res => res.json())
       .then(json => {
-        if (!isMounted) return;
-        const newData = json.data !== undefined ? json.data : json;
+        const newData = json.data || json; // adjust based on API response structure
         globalCache.set(url, newData);
+        // notify all components listening to this url
         urlListeners.forEach(fn => fn(newData));
       })
       .catch(err => {
-        if (!isMounted || err.name === 'AbortError') return;
-        setError(err);
-        setLoading(false);
+        if (isMounted) {
+          setError(err);
+          setLoading(false);
+        }
       });
 
     return () => {
       isMounted = false;
       urlListeners.delete(onUpdate);
-      controller.abort();
     };
   }, [url]);
 
-  const mutate = useCallback((newData: T) => {
+  const mutate = (newData: T) => {
     if (!url) return;
     globalCache.set(url, newData);
     const urlListeners = listeners.get(url);
     if (urlListeners) {
       urlListeners.forEach(fn => fn(newData));
     }
-    invalidateCacheForResource(url);
-  }, [url]);
+  };
 
   return { data, loading, error, mutate };
 }
