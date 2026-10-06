@@ -1,30 +1,33 @@
 import { apiFetch } from './apiInterceptor';
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { MobileDataWarga } from './MobileDataWarga';
-import { MobileScanQR } from './MobileScanQR';
-import { MobileSuratPengantar } from './MobileSuratPengantar';
-import { MobileLaporRT } from './MobileLaporRT';
-import { MobileLaporan } from './MobileLaporan';
-import { WebSuratOnlinePage } from './components/WebSuratOnlinePage';
-import { MobileDarurat } from './MobileDarurat';
-import { MobileDokumen } from './MobileDokumen';
-import { MobileVoting } from './MobileVoting';
-import { MobileAcaraPage } from './MobileAcara';
-import { MobileIuran } from './MobileIuran';
-import { MobileKas } from './MobileKas';
-import { MobileUMKM } from './MobileUMKM';
-import { MobileUMKMAds } from './components/MobileUMKMAds';
-import { WebSmartRtAiPage } from './components/WebSmartRtAiPage';
-import { WebDashboardRtView } from './components/WebDashboardRtView';
-import { WebInventarisPage } from './components/WebInventarisPage';
-import { WebNotulenPage } from './components/WebNotulenPage';
-import { WebMenuAccessPage } from './components/WebMenuAccessPage';
-import { LandingPage } from './components/LandingPage';
-import { MobileMedia } from './MobileMedia';
 import { Login, Register, CuteMascot } from './Auth';
 import { InstallPrompt } from './components/InstallPrompt';
+import { SkeletonLoader } from './components/common/SkeletonLoader';
+
+// Lazy loading feature modules for bundle splitting and faster First Contentful Paint (FCP)
+const MobileDataWarga = lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
+const MobileScanQR = lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
+const MobileSuratPengantar = lazy(() => import('./MobileSuratPengantar').then(m => ({ default: m.MobileSuratPengantar })));
+const MobileLaporRT = lazy(() => import('./MobileLaporRT').then(m => ({ default: m.MobileLaporRT })));
+const MobileLaporan = lazy(() => import('./MobileLaporan').then(m => ({ default: m.MobileLaporan })));
+const WebSuratOnlinePage = lazy(() => import('./components/WebSuratOnlinePage').then(m => ({ default: m.WebSuratOnlinePage })));
+const MobileDarurat = lazy(() => import('./MobileDarurat').then(m => ({ default: m.MobileDarurat })));
+const MobileDokumen = lazy(() => import('./MobileDokumen').then(m => ({ default: m.MobileDokumen })));
+const MobileVoting = lazy(() => import('./MobileVoting').then(m => ({ default: m.MobileVoting })));
+const MobileAcaraPage = lazy(() => import('./MobileAcara').then(m => ({ default: m.MobileAcaraPage })));
+const MobileIuran = lazy(() => import('./MobileIuran').then(m => ({ default: m.MobileIuran })));
+const MobileKas = lazy(() => import('./MobileKas').then(m => ({ default: m.MobileKas })));
+const MobileUMKM = lazy(() => import('./MobileUMKM').then(m => ({ default: m.MobileUMKM })));
+const MobileUMKMAds = lazy(() => import('./components/MobileUMKMAds').then(m => ({ default: m.MobileUMKMAds })));
+const WebSmartRtAiPage = lazy(() => import('./components/WebSmartRtAiPage').then(m => ({ default: m.WebSmartRtAiPage })));
+const WebDashboardRtView = lazy(() => import('./components/WebDashboardRtView').then(m => ({ default: m.WebDashboardRtView })));
+const WebInventarisPage = lazy(() => import('./components/WebInventarisPage').then(m => ({ default: m.WebInventarisPage })));
+const WebNotulenPage = lazy(() => import('./components/WebNotulenPage').then(m => ({ default: m.WebNotulenPage })));
+const WebMenuAccessPage = lazy(() => import('./components/WebMenuAccessPage').then(m => ({ default: m.WebMenuAccessPage })));
+const LandingPage = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
+const MobileMedia = lazy(() => import('./MobileMedia').then(m => ({ default: m.MobileMedia })));
 
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
   const [activeVotings, setActiveVotings] = useState<any[]>([]);
@@ -5210,12 +5213,14 @@ export default function App() {
           transition={{ duration: 0.4 }}
           className="w-full min-h-screen"
         >
-          <LandingPage 
-            onEnterPortal={(mode) => {
-              setAuthView(mode);
-              setShowAuthFlow(true);
-            }}
-          />
+          <Suspense fallback={<SkeletonLoader lines={6} />}>
+            <LandingPage 
+              onEnterPortal={(mode) => {
+                setAuthView(mode);
+                setShowAuthFlow(true);
+              }}
+            />
+          </Suspense>
         </motion.div>
       ) : (
         !selectedRt ? (

@@ -1,6 +1,12 @@
-const cache = new Map<string, { data: string; timestamp: number }>();
+import { getTtlForUrl } from './constants/cacheTtl';
+
+export interface CacheEntry {
+  data: string;
+  timestamp: number;
+}
+
+const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<Response>>();
-const CACHE_TTL = 10 * 60 * 1000;
 
 const DEFAULT_FALLBACK_JSON = {
   data: [],
@@ -11,6 +17,75 @@ const DEFAULT_FALLBACK_JSON = {
   kas: [],
   media: []
 };
+
+export function getCachedData<T = any>(url: string): T | null {
+  const entry = cache.get(url);
+  if (!entry) return null;
+  const ttl = getTtlForUrl(url);
+  if (Date.now() - entry.timestamp > ttl * 2) {
+    // Expired stale cache beyond 2x TTL
+    return null;
+  }
+  return tryParseJson(entry.data);
+}
+
+export function setCachedData(url: string, data: any): void {
+  try {
+    const text = typeof data === 'string' ? data : JSON.stringify(data);
+    cache.set(url, { data: text, timestamp: Date.now() });
+  } catch {}
+}
+
+export function invalidateCache(pattern?: string | RegExp): void {
+  if (!pattern) {
+    cache.clear();
+    return;
+  }
+  const reg = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
+  for (const key of cache.keys()) {
+    if (reg.test(key)) {
+      cache.delete(key);
+    }
+  }
+}
+
+// Selectively invalidate cache on mutations
+export function handleSelectiveMutationInvalidation(url: string, method?: string) {
+  const m = (method || 'GET').toUpperCase();
+  if (m === 'GET') return;
+
+  if (url.includes('/api/data/kas') || url.includes('/api/kas') || url.includes('/api/sedekah')) {
+    invalidateCache(/\/api\/data\/kas|\/api\/kas|\/api\/dashboard/i);
+  } else if (url.includes('/api/data/iuran') || url.includes('/api/iuran')) {
+    invalidateCache(/\/api\/data\/iuran|\/api\/iuran|\/api\/data\/kas|\/api\/kas|\/api\/dashboard/i);
+  } else if (url.includes('/api/warga') || url.includes('/api/profile')) {
+    invalidateCache(/\/api\/warga|\/api\/profile|\/api\/dashboard|\/api\/developer\/stats/i);
+  } else if (url.includes('/api/voting')) {
+    invalidateCache(/\/api\/voting|\/api\/data\/voting/i);
+  } else if (url.includes('/api/data/laporan') || url.includes('/api/laporan')) {
+    invalidateCache(/\/api\/data\/laporan|\/api\/dashboard/i);
+  } else if (url.includes('/api/data/acara') || url.includes('/api/acara')) {
+    invalidateCache(/\/api\/data\/acara|\/api\/dashboard/i);
+  } else if (url.includes('/api/data/surat') || url.includes('/api/surat')) {
+    invalidateCache(/\/api\/data\/surat/i);
+  } else if (url.includes('/api/data/umkm') || url.includes('/api/umkm')) {
+    invalidateCache(/\/api\/data\/umkm/i);
+  } else if (url.includes('/api/data/dokumen') || url.includes('/api/dokumen') || url.includes('/api/warga-dokumen-kk')) {
+    invalidateCache(/\/api\/data\/dokumen|\/api\/warga-dokumen-kk/i);
+  } else if (url.includes('/api/data/inventaris') || url.includes('/api/inventaris')) {
+    invalidateCache(/\/api\/data\/inventaris/i);
+  } else if (url.includes('/api/data/notulen') || url.includes('/api/notulen')) {
+    invalidateCache(/\/api\/data\/notulen/i);
+  } else if (url.includes('/api/data/media') || url.includes('/api/media')) {
+    invalidateCache(/\/api\/data\/media|\/api\/dashboard/i);
+  } else if (url.includes('/api/notifications')) {
+    invalidateCache(/\/api\/notifications/i);
+  } else if (url.includes('/api/menu-permissions')) {
+    invalidateCache(/\/api\/menu-permissions/i);
+  } else if (url.includes('/api/developer/rt')) {
+    invalidateCache(/\/api\/public\/rt-list|\/api\/developer\/rt/i);
+  }
+}
 
 function tryParseJson(text: string): any | null {
   if (!text) return null;
@@ -34,7 +109,6 @@ function attachSafeJsonParser(res: Response, url: string): Response {
       if (parsed !== null) {
         return parsed;
       }
-      // Fallback to stale cache if available when rate limited or non-JSON returned
       const stale = cache.get(url);
       if (stale?.data) {
         const staleParsed = tryParseJson(stale.data);
@@ -61,27 +135,38 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, isGet: boolean, retries = 2): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(input, init);
-    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
-      if (attempt < retries) {
-        await delay(600 * Math.pow(2, attempt));
-        continue;
-      }
-      return res;
-    }
-
-    if (isGet) {
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        const peek = await res.clone().text().catch(() => '');
-        if (peek.includes('Rate exceeded') && attempt < retries) {
-          await delay(600 * Math.pow(2, attempt));
+    try {
+      const res = await fetch(input, init);
+      if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
+        if (attempt < retries) {
+          await delay(500 * Math.pow(2, attempt));
           continue;
         }
+        return res;
       }
-    }
 
-    return res;
+      if (isGet) {
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const peek = await res.clone().text().catch(() => '');
+          if (peek.includes('Rate exceeded') && attempt < retries) {
+            await delay(500 * Math.pow(2, attempt));
+            continue;
+          }
+        }
+      }
+
+      return res;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw err;
+      }
+      if (attempt < retries) {
+        await delay(500 * Math.pow(2, attempt));
+        continue;
+      }
+      throw err;
+    }
   }
   return fetch(input, init);
 }
@@ -90,26 +175,14 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
   const url = typeof input === 'string' ? input : input.toString();
 
-  // Clear cache on mutations (POST, PUT, DELETE) unless it's a non-mutating action
+  // Selective Cache Invalidation on Mutations
   if (!isGet) {
-    const isNonMutating =
-      url.includes('/api/ping') ||
-      url.includes('/api/notifications/read') ||
-      url.includes('/api/logout') ||
-      url.includes('/api/login') ||
-      url.includes('/api/register') ||
-      url.includes('/api/gemini') ||
-      url.includes('/api/ai') ||
-      url.includes('/api/chat') ||
-      url.includes('/api/password');
-
-    if (!isNonMutating) {
-      cache.clear();
-    }
+    handleSelectiveMutationInvalidation(url, init?.method);
   } else {
-    // 1. Check cache
+    // 1. Check TTL cache
     const cached = cache.get(url);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    const ttl = getTtlForUrl(url);
+    if (cached && Date.now() - cached.timestamp < ttl) {
       const mockRes = new Response(cached.data, {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -117,8 +190,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       return attachSafeJsonParser(mockRes, url);
     }
 
-    // 2. Check inflight requests
-    if (inflight.has(url)) {
+    // 2. Check inflight deduplication (only if no signal attached or same signal)
+    if (!init?.signal && inflight.has(url)) {
       const res = await inflight.get(url)!;
       const finalRes = res.clone();
       return attachSafeJsonParser(finalRes, url);
@@ -148,7 +221,6 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     } catch {}
   }
 
-  // Append updaterName to POST/PUT payloads automatically
   if (!isGet && modifiedInit.body && typeof modifiedInit.body === 'string') {
     try {
       const parsed = JSON.parse(modifiedInit.body);
@@ -182,7 +254,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       }
     });
 
-  if (isGet) {
+  if (isGet && !init?.signal) {
     inflight.set(url, fetchPromise);
   }
 

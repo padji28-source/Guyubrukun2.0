@@ -72,10 +72,22 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
-      target: "esnext",
+      target: "es2020",
       minify: "esbuild",
       cssMinify: true,
       sourcemap: false,
+      chunkSizeWarningLimit: 1600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            "vendor-react": ["react", "react-dom"],
+            "vendor-ui": ["lucide-react", "motion", "clsx", "tailwind-merge"],
+            "vendor-charts": ["recharts"],
+            "vendor-pdf": ["jspdf", "jspdf-autotable"],
+            "vendor-qr": ["html5-qrcode"],
+          },
+        },
+      },
     },
     resolve: {
       alias: {
