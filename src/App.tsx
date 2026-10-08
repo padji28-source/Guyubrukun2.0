@@ -5021,7 +5021,42 @@ export default function App() {
   }, [user?.id]);
 
   const [globalEvents, setGlobalEvents] = useState<any[]>([]);
-  const [activeToast, setActiveToast] = useState<{ id: string; title: string; time: string } | null>(null);
+  const [activeToast, setActiveToast] = useState<{ id: string; title: string; time: string; customText?: string; category?: string } | null>(null);
+
+  // Instant SSE Real-Time Updates (Zero Delay)
+  useEffect(() => {
+    if (!user?.id) return;
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || '';
+    const eventSource = new EventSource(`/api/stream?token=${encodeURIComponent(token)}`);
+
+    eventSource.addEventListener('update', (e: MessageEvent) => {
+      try {
+        const payload = JSON.parse(e.data || '{}');
+        window.dispatchEvent(new CustomEvent('app_data_update', { detail: payload }));
+
+        if (payload.type) {
+          const typeName = String(payload.type).toUpperCase();
+          const actionText = payload.action === 'delete' ? 'dihapus' : payload.action === 'update' ? 'diperbarui' : 'ditambahkan';
+          const title = payload.title || `🔔 Data ${typeName} ${actionText.toUpperCase()}`;
+          const customText = payload.message || `Terdapat pembaruan data pada modul ${typeName}. Tampilan otomatis disinkronkan.`;
+
+          setActiveToast({
+            id: Date.now().toString(),
+            title,
+            time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            customText,
+            category: 'Pembaruan Real-Time'
+          });
+        }
+      } catch (err) {
+        window.dispatchEvent(new Event('app_data_update'));
+      }
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -5120,9 +5155,13 @@ export default function App() {
               </svg>
             </div>
             <div className="flex-grow min-w-0">
-              <h4 className="text-xs font-black uppercase tracking-wider text-teal-400">Pengingat Acara RT</h4>
+              <h4 className="text-xs font-black uppercase tracking-wider text-teal-400">
+                {activeToast.category || 'Pengingat Acara RT'}
+              </h4>
               <p className="text-sm font-bold mt-1 text-slate-100 leading-snug">{activeToast.title}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Mulai jam {activeToast.time} WIB. Mari bersiap!</p>
+              <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                {activeToast.customText || `Mulai jam ${activeToast.time} WIB. Mari bersiap!`}
+              </p>
               <button
                 onClick={() => setActiveToast(null)}
                 className="mt-3 bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-[10px] px-3.5 py-1.5 rounded-lg shadow-sm transition-all active:scale-95 uppercase tracking-wider"

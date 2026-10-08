@@ -189,6 +189,21 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const [memberForm, setMemberForm] = useState({ name: '', role: '', age: '', tglLahir: '', jenisKelamin: 'Laki-laki' });
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Edit Warga / Kepala Keluarga Modal State
+  const [showWargaEditModal, setShowWargaEditModal] = useState(false);
+  const [editingWarga, setEditingWarga] = useState<any>(null);
+  const [wargaEditForm, setWargaEditForm] = useState({
+    id: '',
+    nama: '',
+    noHp: '',
+    status: '',
+    umur: '',
+    tglLahir: '',
+    jenisKelamin: 'Laki-laki',
+    noKk: '',
+    alamat: ''
+  });
+
   // State untuk klik kategori usia (Balita, Anak, Remaja, Dewasa, Lansia) bagi semua peran
   const [selectedAgeCategory, setSelectedAgeCategory] = useState<'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' | null>(null);
   const [ageCategorySearch, setAgeCategorySearch] = useState('');
@@ -597,6 +612,41 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     } catch (e: any) {
       console.error("Gagal menghapus anggota keluarga:", e);
       showStatusBanner(e?.message || 'Terjadi kesalahan saat menghapus anggota keluarga.', true);
+    }
+  };
+
+  const handleSaveWarga = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!wargaEditForm.id) return;
+    setIsSavingMember(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await apiFetch(`/api/warga/${encodeURIComponent(wargaEditForm.id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(wargaEditForm)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showStatusBanner(`Data warga ${wargaEditForm.nama} (Jenis Kelamin: ${wargaEditForm.jenisKelamin}) berhasil diperbarui!`);
+        setShowWargaEditModal(false);
+        setEditingWarga(null);
+        // Instant local state update
+        setWargaData((prev: any[]) => prev.map((w: any) => w.id === wargaEditForm.id ? { ...w, ...wargaEditForm, umur: Number(wargaEditForm.umur) || w.umur } : w));
+        fetchWarga();
+        fetchAllWargaFull();
+        if (isKetuaRT) fetchAllKkWargaForKetuaRT();
+      } else {
+        showStatusBanner(data.error || 'Gagal memperbarui data warga.', true);
+      }
+    } catch (err: any) {
+      console.error("Gagal update data warga:", err);
+      showStatusBanner(err?.message || 'Terjadi kesalahan saat memperbarui data warga.', true);
+    } finally {
+      setIsSavingMember(false);
     }
   };
 
@@ -1754,12 +1804,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
             <div className="flex gap-3">
               <select value={newWargaBlok} onChange={e => setNewWargaBlok(e.target.value)} required className="w-1/2 text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none appearance-none">
                 <option value="">Pilih Blok</option>
-                {(() => {
-                  const currentRt = localStorage.getItem('selected_rt') || currentUser?.rtId || 'rt01';
-                  const isRt01 = currentRt.toLowerCase() === 'rt01';
-                  const blocks = isRt01 ? ['A', 'C', 'D', 'E', 'F'] : ['G', 'H', 'I', 'J'];
-                  return blocks.map(b => <option key={b} value={b}>Blok {b}</option>);
-                })()}
+                {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(b => <option key={b} value={b}>Blok {b}</option>)}
               </select>
               <input type="text" placeholder="No Rumah (Cth: 12)" value={newWargaNomor} onChange={e => setNewWargaNomor(e.target.value)} required className="w-1/2 text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none" />
             </div>
@@ -2581,6 +2626,32 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                         </div>
 
                         <div className="flex items-center gap-1.5">
+                          {(isKetuaRT || isCurrentUser || isAdmin || currentUser?.role === 'developer') && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setWargaEditForm({
+                                  id: warga.id,
+                                  nama: warga.nama || '',
+                                  noHp: warga.noHp || '',
+                                  status: warga.status || 'Warga Tetap',
+                                  umur: warga.umur ? String(warga.umur) : '',
+                                  tglLahir: warga.tglLahir || '',
+                                  jenisKelamin: inferJenisKelamin(warga.nama || '', 'Kepala Keluarga', warga.jenisKelamin),
+                                  noKk: warga.noKk || '',
+                                  alamat: warga.alamat || ''
+                                });
+                                setEditingWarga(warga);
+                                setShowWargaEditModal(true);
+                              }}
+                              className="px-2.5 py-1 text-[11px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                              title="Edit data warga & jenis kelamin"
+                            >
+                              <icons.edit className="w-3.5 h-3.5" />
+                              <span>Edit Warga</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={(e) => {
@@ -3226,6 +3297,167 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                       </>
                     ) : (
                       <span>Simpan Anggota</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL EDIT DATA WARGA & JENIS KELAMIN */}
+      <AnimatePresence>
+        {showWargaEditModal && editingWarga && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div>
+                  <h4 className="font-extrabold text-slate-800 text-lg">
+                    Edit Data Warga / Kepala Keluarga
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Ubah rincian profil & jenis kelamin
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWargaEditModal(false);
+                    setEditingWarga(null);
+                  }}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveWarga} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Nama Lengkap</label>
+                  <input
+                    type="text"
+                    value={wargaEditForm.nama}
+                    onChange={e => setWargaEditForm({ ...wargaEditForm, nama: e.target.value })}
+                    required
+                    className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-teal-800 block mb-1">
+                      Jenis Kelamin <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={wargaEditForm.jenisKelamin}
+                      onChange={e => setWargaEditForm({ ...wargaEditForm, jenisKelamin: e.target.value })}
+                      required
+                      className="w-full text-sm p-3 bg-teal-50/80 border-2 border-teal-400 font-extrabold text-teal-900 rounded-xl focus:bg-white focus:border-teal-600 focus:ring-2 focus:ring-teal-200 transition-all outline-none cursor-pointer"
+                    >
+                      <option value="Laki-laki">👨 Laki-laki</option>
+                      <option value="Perempuan">👩 Perempuan</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Status Warga</label>
+                    <select
+                      value={wargaEditForm.status}
+                      onChange={e => setWargaEditForm({ ...wargaEditForm, status: e.target.value })}
+                      className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                    >
+                      <option value="Warga Tetap">Warga Tetap</option>
+                      <option value="Warga Sementara (Kontrak)">Warga Sementara (Kontrak)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Tanggal Lahir</label>
+                    <input
+                      type="date"
+                      value={wargaEditForm.tglLahir}
+                      onChange={e => {
+                        const tgl = e.target.value;
+                        setWargaEditForm({ ...wargaEditForm, tglLahir: tgl, umur: calculateAge(tgl) || wargaEditForm.umur });
+                      }}
+                      className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Usia (Tahun)</label>
+                    <input
+                      type="number"
+                      value={wargaEditForm.umur}
+                      onChange={e => setWargaEditForm({ ...wargaEditForm, umur: e.target.value })}
+                      className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Nomor HP / WhatsApp</label>
+                  <input
+                    type="tel"
+                    value={wargaEditForm.noHp}
+                    onChange={e => setWargaEditForm({ ...wargaEditForm, noHp: e.target.value })}
+                    className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">No. Kartu Keluarga (KK)</label>
+                  <input
+                    type="text"
+                    value={wargaEditForm.noKk}
+                    onChange={e => setWargaEditForm({ ...wargaEditForm, noKk: e.target.value })}
+                    placeholder="Contoh: 3201xxxxxxxxxxxx"
+                    className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Alamat / Unit</label>
+                  <input
+                    type="text"
+                    value={wargaEditForm.alamat}
+                    onChange={e => setWargaEditForm({ ...wargaEditForm, alamat: e.target.value })}
+                    placeholder="Contoh: Blok A No. 01"
+                    className="w-full text-sm p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowWargaEditModal(false);
+                      setEditingWarga(null);
+                    }}
+                    className="flex-1 py-3 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingMember}
+                    className="flex-1 py-3 text-sm font-bold text-white bg-gradient-to-r from-teal-500 to-emerald-600 rounded-xl shadow-md hover:shadow-lg disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {isSavingMember ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        <span>Menyimpan...</span>
+                      </>
+                    ) : (
+                      <span>Simpan Perubahan</span>
                     )}
                   </button>
                 </div>

@@ -2863,11 +2863,64 @@ app.delete("/api/warga/:id", enforceRoles(['admin']), async (req, res) => {
     await UserModel.deleteOne({ id: req.params.id, rtId });
     
     const userAuth = getAuthUser(req);
-    await logAudit(rtId, userAuth?.nama || 'Admin', "DELETE_WARGA", `Menghapus data warga ${user.nama}`, beforeData, null);
-    await addNotification(rtId, "Warga Dihapus", `Data warga ${user.nama} telah dihapus.`, 'Admin', "warga", req.params.id);
+    const actorName = userAuth?.nama || 'Admin';
+    await logAudit(rtId, actorName, "DELETE_WARGA", `Menghapus data warga ${user.nama}`, beforeData, null);
+    await addNotification(rtId, "Warga Dihapus", `Data warga ${user.nama} telah dihapus oleh ${actorName}.`, actorName, "warga", req.params.id);
+    broadcastEvent('update', { type: 'users', rtId, action: 'delete' });
     res.json({ message: "User deleted" });
   } else {
     res.status(404).json({ error: "Warga tidak ditemukan" });
+  }
+});
+
+// Update Warga / Kepala Keluarga Profile (including jenisKelamin)
+app.put("/api/warga/:id", async (req, res) => {
+  const rtId = getAuthorizedRtId(req);
+  const targetId = req.params.id;
+  const userAuth = getAuthUser(req);
+  const actorRole = userAuth?.role || (req.headers['x-user-role'] as string) || 'warga';
+  const actorId = userAuth?.id || (req.headers['x-user-id'] as string);
+
+  try {
+    await connectDB();
+    const user = await UserModel.findOne({
+      rtId,
+      $or: [{ id: targetId }, { username: targetId }]
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "Data warga tidak ditemukan di RT ini." });
+    }
+
+    const canEdit = actorId === user.id || ['admin', 'developer', 'pengurus', 'sekretaris', 'bendahara'].includes(actorRole);
+    if (!canEdit) {
+      return res.status(403).json({ error: "Akses ditolak: Hanya Ketua RT / Pengurus atau pemilik akun yang dapat memperbarui data warga ini." });
+    }
+
+    const beforeData = user.toObject();
+    const { nama, noHp, status, umur, tglLahir, jenisKelamin, noKk, alamat } = req.body;
+
+    if (nama !== undefined) user.nama = nama.trim();
+    if (noHp !== undefined) user.noHp = noHp.trim();
+    if (status !== undefined) user.status = status;
+    if (umur !== undefined && umur !== '') user.umur = Number(umur) || undefined;
+    if (tglLahir !== undefined) user.tglLahir = tglLahir;
+    if (jenisKelamin !== undefined) user.jenisKelamin = jenisKelamin;
+    if (noKk !== undefined) user.noKk = noKk.trim();
+    if (alamat !== undefined) user.alamat = alamat.trim();
+
+    await user.save();
+    const afterData = user.toObject();
+
+    const actorName = userAuth?.nama || 'Sistem';
+    await logAudit(rtId, actorName, "UPDATE_WARGA", `Memperbarui data warga ${user.nama}`, beforeData, afterData);
+    await addNotification(rtId, "Data Warga Diperbarui", `Data warga ${user.nama} berhasil diperbarui oleh ${actorName}.`, actorName, "warga", user.id);
+    broadcastEvent('update', { type: 'users', rtId });
+
+    res.json({ message: "Data warga berhasil diperbarui", user: afterData });
+  } catch (error: any) {
+    console.error("Gagal update warga:", error);
+    res.status(500).json({ error: error?.message || "Internal Server Error" });
   }
 });
 
@@ -3663,11 +3716,12 @@ app.put("/api/data/:resource/:id", async (req, res) => {
     await addNotification(rtId, `Data Diupdate: ${resource}`, `Terdapat perubahan data pada modul ${resource} oleh ${updater}.`, updater, resource, updatedItem.id);
   }
 
+  broadcastEvent('update', { type: resource, rtId, action: 'update' });
   res.json({ message: "Updated successfully", item: updatedItem });
 });
 
 app.delete("/api/data/:resource/:id", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  const rtId = getAuthorizedRtId(req);
   const resource = req.params.resource;
 
   const map: { [key: string]: mongoose.Model<any> } = {
@@ -3689,8 +3743,9 @@ app.delete("/api/data/:resource/:id", async (req, res) => {
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
   // Strict role verification for deletion
-  const role = (req.headers['x-user-role'] as string) || 'warga';
-  const userId = req.headers['x-user-id'] as string;
+  const userAuth = getAuthUser(req);
+  const role = userAuth?.role || (req.headers['x-user-role'] as string) || 'warga';
+  const userId = userAuth?.id || (req.headers['x-user-id'] as string);
   if (['surat', 'laporan', 'tamu', 'kas', 'iuran', 'acara', 'inventaris', 'notulen', 'darurat'].includes(resource)) {
     if (role !== 'admin' && role !== 'developer' && role !== 'sekretaris' && role !== 'bendahara' && role !== 'pengurus') {
       return res.status(403).json({ error: `Akses ditolak: Operasi hapus data ${resource} hanya dapat dilakukan oleh Ketua RT atau Pengurus.` });
@@ -3710,7 +3765,7 @@ app.delete("/api/data/:resource/:id", async (req, res) => {
   const beforeDataObj = oldItem.toObject();
   await model.deleteOne({ id: req.params.id, rtId });
 
-  const updater = req.body?.updaterName || 'Sistem';
+  const updater = req.body?.updaterName || userAuth?.nama || 'Sistem';
   await logAudit(rtId, updater, `DELETE_${resource.toUpperCase()}`, `Menghapus record dari modul ${resource}`, beforeDataObj, null);
 
   // Cascase delete iuran connections to kas logs and vice versa
@@ -3722,6 +3777,7 @@ app.delete("/api/data/:resource/:id", async (req, res) => {
   }
 
   await addNotification(rtId, `Data Dihapus: ${resource}`, `Terdapat penghapusan data pada modul ${resource} oleh ${updater}.`, updater);
+  broadcastEvent('update', { type: resource, rtId, action: 'delete' });
   res.json({ message: "Deleted successfully" });
 });
 
