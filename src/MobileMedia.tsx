@@ -15,7 +15,7 @@ export const MobileMedia = ({ onBack, currentUser }: { onBack: () => void, curre
 
   const fetchData = async () => {
     try {
-      const res = await apiFetch('/api/data/media');
+      const res = await apiFetch('/api/data/media?page=1&limit=20');
       const json = await res.json();
       cachedMediaData = json.data || [];
       setMedia(cachedMediaData!);
@@ -90,12 +90,13 @@ export const MobileMedia = ({ onBack, currentUser }: { onBack: () => void, curre
   };
 
   const handleDelete = async (id: string) => {
-    setMedia(prev => prev.filter(m => m.id !== id));
+    
     try {
       await apiFetch(`/api/data/media/${id}`, { method: 'DELETE' });
+      fetchData();
     } catch(e) { 
       console.error(e); 
-      fetchData();
+      console.log('Gagal menghapus foto');
     }
   };
 

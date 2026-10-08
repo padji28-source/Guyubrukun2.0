@@ -22,7 +22,7 @@ export const MobileDarurat = ({ onBack, currentUser }: { onBack: () => void, cur
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch('/api/data/darurat');
+      const res = await apiFetch('/api/data/darurat?page=1&limit=20');
       const json = await res.json();
       cachedDaruratData = json.data || [];
       setData(cachedDaruratData!);

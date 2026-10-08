@@ -60,7 +60,7 @@ export const MobileAcaraPage = ({ currentUser }: { currentUser?: any }) => {
 
   const fetchData = async () => {
     try {
-      const res = await apiFetch('/api/data/acara');
+      const res = await apiFetch('/api/data/acara?page=1&limit=20');
       const json = await res.json();
       // Mengurutkan acara berdasarkan tanggal terbaru
       const sortedEvents = (json.data || []).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -101,13 +101,14 @@ export const MobileAcaraPage = ({ currentUser }: { currentUser?: any }) => {
   };
 
   const handleDelete = async (id: string) => {
+    
+    
     setData(prev => prev.filter(item => item.id !== id));
+    
     try {
       await apiFetch(`/api/data/acara/${id}`, { method: 'DELETE' });
-    } catch(e) { 
-      console.error(e); 
-      fetchData(); 
-    }
+      fetchData();
+    } catch(e) { console.error(e); fetchData(); }
   };
 
   return (

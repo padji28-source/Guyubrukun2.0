@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import { DashboardProvider } from './DashboardContext.tsx';
 import './index.css';
 
 // Gracefully handle and ignore benign Vite WebSocket/HMR disconnect errors in sandboxed environments
@@ -55,7 +56,9 @@ if (typeof window !== 'undefined') {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <DashboardProvider>
+      <App />
+    </DashboardProvider>
   </StrictMode>,
 );
 

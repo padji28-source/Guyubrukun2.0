@@ -1,29 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { apiFetch, invalidateCache } from './apiInterceptor';
+import { apiFetch } from './apiInterceptor';
 
-export interface DemographicsData {
-  balita: number;
-  anak: number;
-  remaja: number;
-  dewasa: number;
-  lansia: number;
-  lakiLaki: number;
-  perempuan: number;
-  totalWithAge: number;
-  groups: Array<{ key: string; name: string; range: string; count: number; fill: string }>;
-}
-
-export interface KasDetail {
-  kasRT: number;
-  danaKematian: number;
-  danaSosial: number;
-}
-
-export interface IuranBulanIni {
-  totalIuranCount: number;
-  lunasCount: number;
-  totalAmount: number;
-  lunasPct: number;
+export interface DemographicGroup {
+  key: string;
+  name: string;
+  range: string;
+  count: number;
+  fill: string;
 }
 
 export interface DashboardMetrics {
@@ -32,39 +15,40 @@ export interface DashboardMetrics {
   docUploaded: number;
   docNotUploaded: number;
   saldoKas: number;
-  kasDetail: KasDetail;
-  iuranBulanIni: IuranBulanIni;
-  pengaduanAktifCount: number;
-  pengaduanAktif: any[];
-  demographics: DemographicsData;
-}
-
-export interface DashboardSummaryData {
-  metrics: DashboardMetrics;
+  kasDetail: {
+    kasRT: number;
+    danaKematian: number;
+    danaSosial: number;
+  };
+  iuranBulanIni: {
+    lunasPct: number;
+    totalIuranCount: number;
+    lunasCount: number;
+    totalAmount: number;
+  };
+  demographics: {
+    balita: number;
+    anak: number;
+    remaja: number;
+    dewasa: number;
+    lansia: number;
+    lakiLaki: number;
+    perempuan: number;
+    totalWithAge: number;
+    groups: DemographicGroup[];
+  };
   pengurusList: any[];
+  pengaduanAktif: any[];
   agendaUpcoming: any[];
-  latestMedia: any[];
-  kasChart?: Array<{ bulan: string; value: number }>;
+  wargaList?: any[];
 }
 
-interface DashboardContextType {
-  data: DashboardSummaryData | null;
+export interface DashboardContextValue {
+  metrics: DashboardMetrics;
   loading: boolean;
-  error: any;
-  refreshDashboard: (force?: boolean) => Promise<void>;
+  error: string | null;
+  refresh: () => Promise<void>;
 }
-
-const defaultDemographics: DemographicsData = {
-  balita: 0,
-  anak: 0,
-  remaja: 0,
-  dewasa: 0,
-  lansia: 0,
-  lakiLaki: 0,
-  perempuan: 0,
-  totalWithAge: 0,
-  groups: []
-};
 
 const defaultMetrics: DashboardMetrics = {
   jumlahKK: 0,
@@ -73,121 +57,109 @@ const defaultMetrics: DashboardMetrics = {
   docNotUploaded: 0,
   saldoKas: 0,
   kasDetail: { kasRT: 0, danaKematian: 0, danaSosial: 0 },
-  iuranBulanIni: { totalIuranCount: 0, lunasCount: 0, totalAmount: 0, lunasPct: 0 },
-  pengaduanAktifCount: 0,
+  iuranBulanIni: { lunasPct: 0, totalIuranCount: 0, lunasCount: 0, totalAmount: 0 },
+  demographics: {
+    balita: 0,
+    anak: 0,
+    remaja: 0,
+    dewasa: 0,
+    lansia: 0,
+    lakiLaki: 0,
+    perempuan: 0,
+    totalWithAge: 0,
+    groups: []
+  },
+  pengurusList: [],
   pengaduanAktif: [],
-  demographics: defaultDemographics
+  agendaUpcoming: [],
+  wargaList: []
 };
 
-const DashboardContext = createContext<DashboardContextType>({
-  data: null,
-  loading: true,
+const DashboardContext = createContext<DashboardContextValue>({
+  metrics: defaultMetrics,
+  loading: false,
   error: null,
-  refreshDashboard: async () => {}
+  refresh: async () => {}
 });
 
+// In-memory cache for instant hydration
+let cachedMetrics: DashboardMetrics | null = null;
+let activeFetchPromise: Promise<DashboardMetrics | null> | null = null;
+
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [data, setData] = useState<DashboardSummaryData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<any>(null);
-  const refreshTimeoutRef = useRef<any>(null);
-  const isFetchingRef = useRef<boolean>(false);
+  const [metrics, setMetrics] = useState<DashboardMetrics>(cachedMetrics || defaultMetrics);
+  const [loading, setLoading] = useState<boolean>(!cachedMetrics);
+  const [error, setError] = useState<string | null>(null);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchSummary = useCallback(async (isRefresh = false) => {
-    if (isFetchingRef.current && !isRefresh) return;
-    isFetchingRef.current = true;
-    if (!data) setLoading(true);
+  const fetchDashboardData = useCallback(async (isBackground = false): Promise<DashboardMetrics | null> => {
+    // If a request is already in-flight, return the same promise to prevent duplicate requests
+    if (activeFetchPromise) {
+      return activeFetchPromise;
+    }
 
-    try {
-      const res = await apiFetch('/api/dashboard/summary');
-      if (res.ok) {
+    if (!isBackground && !cachedMetrics) {
+      setLoading(true);
+    }
+    setError(null);
+
+    activeFetchPromise = (async () => {
+      try {
+        const res = await apiFetch('/api/dashboard/summary');
+        if (!res.ok) {
+          throw new Error(`Dashboard request failed: ${res.status}`);
+        }
         const json = await res.json();
-        const summary: DashboardSummaryData = {
-          metrics: {
-            ...defaultMetrics,
-            ...(json.metrics || {}),
-            kasDetail: { ...defaultMetrics.kasDetail, ...(json.metrics?.kasDetail || {}) },
-            iuranBulanIni: { ...defaultMetrics.iuranBulanIni, ...(json.metrics?.iuranBulanIni || {}) },
-            demographics: { ...defaultDemographics, ...(json.metrics?.demographics || {}) },
-            pengaduanAktif: json.metrics?.pengaduanAktif || []
-          },
-          pengurusList: json.pengurusList || [],
-          agendaUpcoming: json.agendaUpcoming || [],
-          latestMedia: json.latestMedia || [],
-          kasChart: json.kasChart || []
-        };
-        setData(summary);
-        setError(null);
+        const m: DashboardMetrics = json.metrics || json;
+        cachedMetrics = m;
+        setMetrics(m);
+        return m;
+      } catch (err: any) {
+        console.warn('Dashboard fetch warning:', err);
+        setError(err.message || 'Gagal memuat dashboard');
+        return null;
+      } finally {
+        activeFetchPromise = null;
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to load dashboard summary:', err);
-      setError(err);
-    } finally {
-      setLoading(false);
-      isFetchingRef.current = false;
-    }
-  }, [data]);
+    })();
 
-  const debouncedRefresh = useCallback((force = false) => {
-    if (force) {
-      invalidateCache('dashboard');
-    }
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-    refreshTimeoutRef.current = setTimeout(() => {
-      fetchSummary(true);
-    }, 350);
-  }, [fetchSummary]);
+    return activeFetchPromise;
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await fetchDashboardData(false);
+  }, [fetchDashboardData]);
 
   useEffect(() => {
-    fetchSummary();
+    fetchDashboardData(Boolean(cachedMetrics));
 
-    const handleUpdate = (e: any) => {
-      const detail = e.detail;
-      const resource = typeof detail === 'string' ? detail : detail?.resource || detail?.type;
-      
-      // Only refresh dashboard if the updated resource impacts dashboard metrics
-      const impactsDashboard = !resource || [
-        'all',
-        'dashboard',
-        'kas',
-        'warga',
-        'users',
-        'iuran',
-        'laporan',
-        'acara',
-        'media',
-        'dokumen'
-      ].some(k => String(resource).toLowerCase().includes(k));
-
-      if (impactsDashboard) {
-        debouncedRefresh(true);
+    const handleUpdate = () => {
+      // Debounce updates by 500ms so multiple rapid events don't trigger burst requests
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
       }
+      refreshTimeoutRef.current = setTimeout(() => {
+        fetchDashboardData(true);
+      }, 500);
     };
 
     window.addEventListener('app_data_update', handleUpdate);
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'selected_rt') {
-        debouncedRefresh(true);
-      }
-    };
-    window.addEventListener('storage', handleStorage);
-
     return () => {
       window.removeEventListener('app_data_update', handleUpdate);
-      window.removeEventListener('storage', handleStorage);
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [fetchSummary, debouncedRefresh]);
+  }, [fetchDashboardData]);
 
   return (
-    <DashboardContext.Provider value={{ data, loading, error, refreshDashboard: async (f) => debouncedRefresh(f) }}>
+    <DashboardContext.Provider value={{ metrics, loading, error, refresh }}>
       {children}
     </DashboardContext.Provider>
   );
 };
 
-export const useDashboardData = () => useContext(DashboardContext);
+export const useDashboardData = () => {
+  return useContext(DashboardContext);
+};

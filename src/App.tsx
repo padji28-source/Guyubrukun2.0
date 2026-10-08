@@ -459,7 +459,7 @@ const WebHeader = ({
               <h1 className="text-xl lg:text-2xl font-extrabold text-gray-800 tracking-tight" style={{ fontFamily: fontStyle }}>
                 Halo, <span className="text-teal-600">{user?.nama || 'Admin'}</span>! 👋
               </h1>
-              <p className="hidden md:block text-xs text-gray-500 font-medium mt-0.5">Pusat Kendali Guyub Rukun RT 01</p>
+              <p className="hidden md:block text-xs text-gray-500 font-medium mt-0.5">Pusat Kendali Guyub Rukun RT {((user?.rtId || localStorage.getItem('selected_rt') || 'rt01').replace('rt','')).padStart(2, '0')}</p>
             </motion.div>
           </div>
 
@@ -1743,6 +1743,7 @@ const MobileProfile = ({ user, onClick }: { user: any; onClick?: () => void }) =
   const shortName = user?.nama ? user.nama.split(' ').slice(0, 2).join(' ') : 'Warga';
   // Use a fallback so it matches original data visually if unavailable
   const displayAlamat = user?.alamat || 'Wisma Garden, Kutajaya, Pasarkemis, Tangerang';
+  const rtLabel = ((user?.rtId || localStorage.getItem('selected_rt') || 'rt01').replace('rt', '')).padStart(2, '0');
   
   return (
   <motion.section 
@@ -1755,7 +1756,7 @@ const MobileProfile = ({ user, onClick }: { user: any; onClick?: () => void }) =
     
     <div className="flex-grow z-10">
       <h2 className="text-[22px] font-extrabold text-slate-800 tracking-tight" style={{ fontFamily: fontStyle }}>Halo, {shortName}!</h2>
-      <p className="text-xs font-medium text-slate-500 mt-1">Warga RT 01, {displayAlamat.length > 25 ? displayAlamat.substring(0, 25) + '...' : displayAlamat}</p>
+      <p className="text-xs font-medium text-slate-500 mt-1">Warga RT {rtLabel}, {displayAlamat.length > 25 ? displayAlamat.substring(0, 25) + '...' : displayAlamat}</p>
     </div>
     <div className="relative z-10 shrink-0">
       <div className="w-14 h-14 bg-slate-200 rounded-full flex items-center justify-center overflow-hidden border border-slate-200 shadow-sm">
@@ -2383,7 +2384,7 @@ const quickActions = [
 
 let cachedSaldoResult: any = null;
 
-const MobileSaldoCard = () => {
+const MobileSaldoCard = ({ user }: { user?: any }) => {
   const [saldo, setSaldo] = useState(cachedSaldoResult?.saldo || 0);
   const [danaKematian, setDanaKematian] = useState(cachedSaldoResult?.danaKematian || 0);
   const [danaSosial, setDanaSosial] = useState(cachedSaldoResult?.danaSosial || 0);
@@ -2391,6 +2392,7 @@ const MobileSaldoCard = () => {
   
   // State untuk menyembunyikan saldo
   const [isMasked, setIsMasked] = useState(true);
+  const rtLabel = ((user?.rtId || localStorage.getItem('selected_rt') || 'rt01').replace('rt', '')).padStart(2, '0');
 
   useEffect(() => {
     setLoading(!cachedSaldoResult);
@@ -2419,7 +2421,7 @@ const MobileSaldoCard = () => {
           <div className="absolute bottom-0 right-0 w-24 h-24 bg-white opacity-[0.05] rounded-full translate-x-8 translate-y-8 blur-md"></div>
           
           <div className="flex justify-between items-center mb-1 relative z-10">
-            <p className="text-xs font-semibold opacity-90 uppercase tracking-widest">Saldo Kas RT 01</p>
+            <p className="text-xs font-semibold opacity-90 uppercase tracking-widest">Saldo Kas RT {rtLabel}</p>
             <div className="flex items-center gap-2">
               {/* Tombol Sembunyikan/Tampilkan Saldo */}
               <button 
@@ -2570,6 +2572,7 @@ const MobileDemographicsWidget = ({
   const isAdminRole = ['admin', 'developer', 'bendahara', 'sekretaris', 'pengurus'].includes(
     user?.role || 'admin'
   );
+  const rtLabel = ((user?.rtId || localStorage.getItem('selected_rt') || 'rt01').replace('rt', '')).padStart(2, '0');
 
   return (
     <section className="px-5 mb-6">
@@ -2578,10 +2581,10 @@ const MobileDemographicsWidget = ({
           <div>
             <div className="flex items-center gap-1.5">
               <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
-                Demografi Usia Warga (Semua Warga)
+                Demografi Usia Warga (RT {rtLabel})
               </h3>
               <span className="text-[9px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded">
-                {isAdminRole ? 'Pengurus RT' : 'Statistik RT'}
+                {isAdminRole ? `Pengurus RT ${rtLabel}` : `Statistik RT ${rtLabel}`}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5">
@@ -3637,7 +3640,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-rt-id': localStorage.getItem('selected_rt') || user?.rtId || 'rt01'
+          'x-rt-id': localStorage.getItem('rtId') || 'rt01'
         },
         body: JSON.stringify({
           name: isAnonymous ? 'Hamba Allah' : (user?.nama || 'Warga'),
@@ -4548,7 +4551,7 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
                         </div>
                       </section>
                       <MobileVotingNotification onActionClick={setActiveMobileTab} notifications={notifications} />
-                      <MobileSaldoCard/>
+                      <MobileSaldoCard user={user} />
                       {user?.role === 'developer' && (
                         <div className="mx-4 mb-5 bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-indigo-950/30 text-left relative overflow-hidden">
                           {/* Ambient radial overlay */}
@@ -4937,7 +4940,7 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
         transition={{ delay: 0.9, duration: 0.6 }}
         className="text-teal-100 text-sm mt-3 font-medium tracking-wide"
       >
-        Menghubungkan Warga RT.01
+        Menghubungkan Warga RT {((localStorage.getItem('selected_rt') || 'rt01').replace('rt', '')).padStart(2, '0')}
       </motion.p>
       
       <motion.div 
@@ -4994,10 +4997,6 @@ export default function App() {
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('auth_user', JSON.stringify(userData));
-    if (userData?.rtId) {
-      setSelectedRt(userData.rtId);
-      localStorage.setItem('selected_rt', userData.rtId);
-    }
   };
 
   const handleSelectRt = (rt: string) => {

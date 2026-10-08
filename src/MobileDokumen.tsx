@@ -248,7 +248,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
     if (!isKetuaRT) return;
     setLoadingWarga(true);
     try {
-      const res = await apiFetch('/api/warga/summary');
+      const res = await apiFetch('/api/warga');
       if (res.ok) {
         const json = await res.json();
         const users = (json.users || []).filter((u: any) => u.role !== 'developer');
@@ -268,7 +268,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
   const fetchArsipDokumen = async () => {
     setLoadingArsip(true);
     try {
-      const res = await apiFetch('/api/data/dokumen');
+      const res = await apiFetch('/api/data/dokumen?page=1&limit=20');
       if (res.ok) {
         const json = await res.json();
         setArsipList(Array.isArray(json.data) ? json.data : []);
@@ -714,78 +714,18 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
     }
   };
 
-  const handleSelectMember = async (person: any) => {
-    setSelectedMemberDetail(person);
-    try {
-      const res = await apiFetch(`/api/warga/${person.id}/documents`);
-      if (res.ok) {
-        const docData = await res.json();
-        setSelectedMemberDetail((prev: any) => (prev && prev.id === person.id ? {
-          ...prev,
-          noKk: docData.noKk || prev.noKk,
-          dokumenKk: docData.dokumenKk,
-          dokumenKtp: docData.dokumenKtp
-        } : prev));
-      }
-    } catch (err) {
-      console.error('Gagal memuat dokumen warga terpilih:', err);
-    }
-  };
-
-  const handleOpenDocPreview = async (doc: any) => {
-    if (doc.fileUrl) {
-      setPreviewItem({ url: doc.fileUrl, title: doc.title });
-      return;
-    }
-    try {
-      const res = await apiFetch(`/api/data/dokumen/${doc.id}/file`);
-      if (res.ok) {
-        const data = await res.json();
-        setPreviewItem({ url: data.fileUrl, title: data.title });
-        setArsipList(prev => prev.map(d => d.id === doc.id ? { ...d, fileUrl: data.fileUrl } : d));
-      }
-    } catch (err) {
-      console.error('Gagal memuat file dokumen:', err);
-    }
-  };
-
-  const handleDownloadDoc = async (doc: any) => {
-    let url = doc.fileUrl;
-    if (!url) {
-      try {
-        const res = await apiFetch(`/api/data/dokumen/${doc.id}/file`);
-        if (res.ok) {
-          const data = await res.json();
-          url = data.fileUrl;
-          setArsipList(prev => prev.map(d => d.id === doc.id ? { ...d, fileUrl: data.fileUrl } : d));
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
-    if (url) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.fileName || `${doc.title}.jpg`;
-      a.click();
-    }
-  };
-
   const handleDeleteArsip = async (docId: string) => {
-    // Optimistic delete
-    setArsipList(prev => prev.filter(d => d.id !== docId));
     try {
       const res = await apiFetch(`/api/data/dokumen/${docId}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('Dokumen arsip berhasil dihapus');
+        fetchArsipDokumen();
       } else {
         const data = await res.json();
         showToast(data.error || 'Gagal menghapus dokumen', true);
-        fetchArsipDokumen();
       }
     } catch {
       showToast('Gagal menghapus dokumen', true);
-      fetchArsipDokumen();
     }
   };
 
@@ -1157,7 +1097,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                             {(hasKk || hasKtp) && (
                               <button
                                 type="button"
-                                onClick={() => handleSelectMember(person)}
+                                onClick={() => setSelectedMemberDetail(person)}
                                 className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                               >
                                 Lihat & Kelola ({(hasKk ? 1 : 0) + ktpArr.length})
@@ -1464,7 +1404,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div
-                          onClick={() => handleOpenDocPreview(doc)}
+                          onClick={() => setPreviewItem({ url: doc.fileUrl, title: doc.title })}
                           className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-600 shrink-0 overflow-hidden cursor-pointer"
                         >
                           {doc.fileUrl && !isPdfUrl(doc.fileUrl) ? (
@@ -1492,18 +1432,18 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          onClick={() => handleOpenDocPreview(doc)}
+                          onClick={() => setPreviewItem({ url: doc.fileUrl, title: doc.title })}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                         >
                           Lihat
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadDoc(doc)}
-                          className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                        <a
+                          href={doc.fileUrl}
+                          download={doc.fileName || `${doc.title}.jpg`}
+                          className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold transition-colors"
                         >
                           Unduh
-                        </button>
+                        </a>
                         {canDeleteArsip(doc) && (
                           <button
                             type="button"

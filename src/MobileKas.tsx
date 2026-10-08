@@ -102,14 +102,18 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
     setLoading(false);
   };
 
-  // Fetch all transactions for comprehensive historical charting
+  // Fetch lightweight aggregated transactions for comprehensive historical charting
   const fetchAllKasHistory = async () => {
     try {
-      const res = await apiFetch('/api/data/kas');
+      const res = await apiFetch('/api/data/kas/chart');
       const json = await res.json();
-      if (json.data && Array.isArray(json.data)) {
-        cachedAllKasData = json.data;
-        setAllKasData(json.data);
+      const list = json.items || json.data || [];
+      if (Array.isArray(list)) {
+        cachedAllKasData = list;
+        setAllKasData(list);
+      }
+      if (json.balances) {
+        setBalances(json.balances);
       }
     } catch (e) {
       console.error("Gagal memuat histori transaksi kas lengkap:", e);
@@ -161,17 +165,14 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
           name: currentUser?.nama
         })
       });
-      // Update balance optimistically
-      setBalances(prev => {
-        const currentBal = prev[category] || 0;
-        const change = type === 'Masuk' ? nominal : -nominal;
-        return { ...prev, [category]: currentBal + change };
-      });
+      fetchData();
+      fetchAllKasHistory();
     } catch(e) { 
       console.error(e);
       setData(prev => prev.filter(item => item.id !== tempId));
       setAllKasData(prev => prev.filter(item => item.id !== tempId));
       fetchData();
+      fetchAllKasHistory();
     }
   };
 
@@ -183,27 +184,20 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
   const confirmDelete = async () => {
     if (!showConfirmDelete) return;
     const deletedId = showConfirmDelete;
-    const itemToDelete = data.find(i => i.id === deletedId);
     
     // Optimistic delete
     setData(prev => prev.filter(item => item.id !== deletedId));
     setAllKasData(prev => prev.filter(item => item.id !== deletedId));
     setShowConfirmDelete(null);
 
-    if (itemToDelete) {
-      setBalances(prev => {
-        const cat = itemToDelete.category || 'Kas RT';
-        const currentBal = prev[cat] || 0;
-        const revert = itemToDelete.type === 'Masuk' ? -Number(itemToDelete.amount) : Number(itemToDelete.amount);
-        return { ...prev, [cat]: currentBal + revert };
-      });
-    }
-
     try {
       await apiFetch(`/api/data/kas/${deletedId}`, { method: 'DELETE' });
+      fetchData();
+      fetchAllKasHistory();
     } catch(e) { 
       console.error(e); 
-      fetchData();
+      fetchData(); 
+      fetchAllKasHistory();
     }
   };
 

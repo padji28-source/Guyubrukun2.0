@@ -89,7 +89,7 @@ export const MobileIuran = ({ onBack, currentUser }: { onBack: () => void, curre
       }
       
       if (isAdminOrBendahara && (!cachedWargaIuranData || cachedWargaIuranData.length === 0)) {
-        const resWarga = await apiFetch('/api/warga/summary');
+        const resWarga = await apiFetch('/api/warga?dropdown=1');
         const jsonWarga = await resWarga.json();
         cachedWargaIuranData = jsonWarga.users || [];
         setWargaList(cachedWargaIuranData!);

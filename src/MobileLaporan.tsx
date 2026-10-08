@@ -35,7 +35,7 @@ export const MobileLaporan = ({
 
   const fetchAduan = async () => {
     try {
-      const res = await apiFetch('/api/data/laporan');
+      const res = await apiFetch('/api/data/laporan?page=1&limit=20');
       const json = await res.json();
       cachedLaporanData = json.data || [];
       setAduanData(cachedLaporanData!);
@@ -46,7 +46,7 @@ export const MobileLaporan = ({
 
   const fetchTamu = async () => {
     try {
-      const res = await apiFetch('/api/data/tamu');
+      const res = await apiFetch('/api/data/tamu?page=1&limit=20');
       const json = await res.json();
       cachedTamuData = json.data || [];
       setTamuData(cachedTamuData!);

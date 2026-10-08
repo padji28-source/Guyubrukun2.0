@@ -153,7 +153,7 @@ export const MobileUMKM = ({ onBack, currentUser }: { onBack: () => void; curren
 
   const fetchData = async () => {
     try {
-      const res = await apiFetch('/api/data/umkm');
+      const res = await apiFetch('/api/data/umkm?page=1&limit=20');
       const json = await res.json();
       const rawList = Array.isArray(json.data) ? json.data : [];
       const normalized: UmkmItem[] = rawList.map((item: any) => ({
@@ -192,12 +192,7 @@ export const MobileUMKM = ({ onBack, currentUser }: { onBack: () => void; curren
 
   useEffect(() => {
     fetchData();
-    const handleUpdate = (e: any) => {
-      const res = typeof e?.detail === 'string' ? e.detail : e?.detail?.resource;
-      if (!res || res === 'all' || res === 'umkm') {
-        fetchData();
-      }
-    };
+    const handleUpdate = () => fetchData();
     window.addEventListener('app_data_update', handleUpdate);
     return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);
