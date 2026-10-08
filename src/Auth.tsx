@@ -101,10 +101,13 @@ export function Login({ onLogin, onNavRegister }: any) {
       if (res.ok) {
         onLogin(data.user);
       } else {
-        setError(data.error);
+        const errorMsg = typeof data.error === 'string' 
+          ? data.error 
+          : (data.error?.message || data.message || 'Login gagal. Periksa kembali username dan password Anda.');
+        setError(errorMsg);
       }
     } catch (err: any) {
-      setError(err?.message || 'Terjadi kesalahan jaringan.');
+      setError(err?.message || 'Terjadi kesalahan jaringan. Pastikan koneksi internet stabil.');
     }
     setLoading(false);
   };
@@ -176,7 +179,10 @@ export function Register({ onRegister, onNavLogin }: any) {
         console.log('Registrasi berhasil! Silahkan masuk terlebih dahulu.');
         onNavLogin();
       } else {
-        setError(data.error);
+        const errorMsg = typeof data.error === 'string' 
+          ? data.error 
+          : (data.error?.message || data.message || 'Pendaftaran gagal. Periksa data yang Anda masukkan.');
+        setError(errorMsg);
       }
     } catch (err: any) {
       setError(err?.message || 'Terjadi kesalahan jaringan.');

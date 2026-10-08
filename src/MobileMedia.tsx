@@ -90,13 +90,12 @@ export const MobileMedia = ({ onBack, currentUser }: { onBack: () => void, curre
   };
 
   const handleDelete = async (id: string) => {
-    
+    setMedia(prev => prev.filter(m => m.id !== id));
     try {
       await apiFetch(`/api/data/media/${id}`, { method: 'DELETE' });
-      fetchData();
     } catch(e) { 
       console.error(e); 
-      console.log('Gagal menghapus foto');
+      fetchData();
     }
   };
 

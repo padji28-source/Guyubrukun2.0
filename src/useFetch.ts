@@ -1,23 +1,24 @@
 import { useState, useEffect } from 'react';
-import { apiFetch } from './apiInterceptor';
+import { apiFetch, getCompositeCacheKey } from './apiInterceptor';
 
 const globalCache = new Map<string, any>();
 const listeners = new Map<string, Set<(data: any) => void>>();
 
 export function useFetch<T>(url: string | null) {
-  const [data, setData] = useState<T | null>(url ? globalCache.get(url) || null : null);
+  const cacheKey = url ? getCompositeCacheKey(url) : null;
+  const [data, setData] = useState<T | null>(cacheKey ? globalCache.get(cacheKey) || null : null);
   const [loading, setLoading] = useState<boolean>(!data);
   const [error, setError] = useState<any>(null);
 
   useEffect(() => {
-    if (!url) return;
+    if (!url || !cacheKey) return;
 
     let isMounted = true;
     
-    if (!listeners.has(url)) {
-      listeners.set(url, new Set());
+    if (!listeners.has(cacheKey)) {
+      listeners.set(cacheKey, new Set());
     }
-    const urlListeners = listeners.get(url)!;
+    const urlListeners = listeners.get(cacheKey)!;
     
     // Add local updater
     const onUpdate = (newData: any) => {
@@ -29,9 +30,9 @@ export function useFetch<T>(url: string | null) {
     urlListeners.add(onUpdate);
 
     // Initial state based on cache
-    if (globalCache.has(url)) {
+    if (globalCache.has(cacheKey)) {
       setLoading(false);
-      setData(globalCache.get(url));
+      setData(globalCache.get(cacheKey));
     } else {
       setLoading(true);
     }
@@ -41,7 +42,7 @@ export function useFetch<T>(url: string | null) {
       .then(res => res.json())
       .then(json => {
         const newData = json.data || json; // adjust based on API response structure
-        globalCache.set(url, newData);
+        globalCache.set(cacheKey, newData);
         // notify all components listening to this url
         urlListeners.forEach(fn => fn(newData));
       })
@@ -56,12 +57,12 @@ export function useFetch<T>(url: string | null) {
       isMounted = false;
       urlListeners.delete(onUpdate);
     };
-  }, [url]);
+  }, [url, cacheKey]);
 
   const mutate = (newData: T) => {
-    if (!url) return;
-    globalCache.set(url, newData);
-    const urlListeners = listeners.get(url);
+    if (!url || !cacheKey) return;
+    globalCache.set(cacheKey, newData);
+    const urlListeners = listeners.get(cacheKey);
     if (urlListeners) {
       urlListeners.forEach(fn => fn(newData));
     }

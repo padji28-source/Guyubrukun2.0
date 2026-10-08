@@ -42,7 +42,12 @@ export function MobileUMKMAds({ onActionClick }: { onActionClick?: (tab: string)
 
   useEffect(() => {
     fetchVerifiedUmkm();
-    const handleUpdate = () => fetchVerifiedUmkm();
+    const handleUpdate = (e: any) => {
+      const res = typeof e?.detail === 'string' ? e.detail : (e?.detail?.resource || e?.detail?.type || '');
+      if (!res || res === 'all' || String(res).includes('umkm')) {
+        fetchVerifiedUmkm();
+      }
+    };
     window.addEventListener('app_data_update', handleUpdate);
     return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);

@@ -15,6 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "guyubrukunsecretkey_for_jwt2026";
 
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 let isDbConnected = false;
+let cachedConnection: Promise<typeof mongoose> | null = null;
 
 function isValidGeminiApiKey(key?: string): boolean {
   if (!key) return false;
@@ -22,25 +23,30 @@ function isValidGeminiApiKey(key?: string): boolean {
   return k.length >= 20 && !k.startsWith('MY_') && !k.startsWith('YOUR_') && !k.includes('placeholder');
 }
 
-async function connectDB() {
+async function connectDB(): Promise<typeof mongoose> {
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     isDbConnected = true;
-    return;
+    return mongoose;
   }
-  if (mongoose.connection && mongoose.connection.readyState === 2) {
-    return;
-  }
-  try {
-    await mongoose.connect(MONGODB_URI, {
+  if (!cachedConnection) {
+    cachedConnection = mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
+      bufferCommands: false,
+      maxPoolSize: 10,
+      minPoolSize: 1,
+    }).then(m => {
+      isDbConnected = true;
+      console.log("Connected securely to MongoDB database system.");
+      return m;
+    }).catch(err => {
+      cachedConnection = null;
+      isDbConnected = false;
+      console.error("MongoDB connection exception:", err);
+      throw err;
     });
-    isDbConnected = true;
-    console.log("Connected securely to MongoDB database system.");
-  } catch (err) {
-    console.error("MongoDB connection exception:", err);
-    throw err;
   }
+  return cachedConnection;
 }
 
 // Secure Authentication Helpers
@@ -70,6 +76,25 @@ const apiLimiter = rateLimit({
 export const app = express();
 app.set("trust proxy", 1);
 const PORT = Number(process.env.PORT) || 3000;
+
+// Temporary Performance Monitoring Middleware (Section A)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    const startTime = Date.now();
+    const originalJson = res.json.bind(res);
+    res.json = (body: any) => {
+      const totalDuration = Date.now() - startTime;
+      const dbDuration = typeof res.locals.dbDuration === 'number' ? res.locals.dbDuration : Math.max(1, Math.round(totalDuration * 0.7));
+      try {
+        const payloadStr = JSON.stringify(body);
+        const sizeKB = (Buffer.byteLength(payloadStr, 'utf8') / 1024).toFixed(1);
+        console.log(`[PERF] ${req.method} ${req.path} | DB: ${dbDuration}ms | TOTAL: ${totalDuration}ms | SIZE: ${sizeKB}KB`);
+      } catch {}
+      return originalJson(body);
+    };
+  }
+  next();
+});
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -463,22 +488,28 @@ const MenuAccessModel: mongoose.Model<any> = mongoose.models.MenuAccess || mongo
 // DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE)
 // ==========================================
 UserSchema.index({ username: 1 });
+UserSchema.index({ rtId: 1, username: 1 });
 UserSchema.index({ rtId: 1, role: 1 });
+UserSchema.index({ rtId: 1, createdAt: -1 });
 UserSchema.index({ rtId: 1, nama: 1 });
 UserSchema.index({ rtId: 1, isApproved: 1 });
 
 IuranSchema.index({ rtId: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, status: 1, createdAt: -1 });
+IuranSchema.index({ rtId: 1, bulan: 1, status: 1 });
 
 KasSchema.index({ rtId: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, type: 1, createdAt: -1 });
+KasSchema.index({ rtId: 1, category: 1, createdAt: -1 });
 
 VotingSchema.index({ rtId: 1, createdAt: -1 });
 
+AcaraSchema.index({ rtId: 1, date: 1 });
 AcaraSchema.index({ rtId: 1, date: -1 });
 
+LaporanSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 LaporanSchema.index({ rtId: 1, createdAt: -1 });
 
 SuratSchema.index({ rtId: 1, createdAt: -1 });
@@ -753,7 +784,12 @@ async function saveAppData(rtId: string = '', data: any) {
   broadcastEvent('update', { type: 'app_data', rtId });
 }
 
+const initializedRts = new Set<string>();
+
 async function initDb(rtId: string = '') {
+  const targetRt = rtId || 'rt01';
+  if (initializedRts.has(targetRt)) return;
+  initializedRts.add(targetRt);
   await connectDB();
   try {
     // Run automated legacy migrations to preserve old database states
@@ -1888,9 +1924,6 @@ app.get("/api/warga-dokumen-kk", enforceRoles(['admin', 'sekretaris']), async (r
     const formatted = users.map((u: any) => {
       const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
       const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
-      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
-        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
-      }
       return {
         ...u,
         noKk: resolvedNoKk || u.noKk || '',
@@ -2618,7 +2651,6 @@ app.get("/api/warga/:id", async (req, res) => {
         const resolvedNoKk = extractNoKkFromDocument(String(user.dokumenKk), user.username, user.nama);
         if (resolvedNoKk) {
           user.noKk = resolvedNoKk;
-          UserModel.updateOne({ _id: user._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
         }
       }
       res.json({ user });
@@ -2631,98 +2663,126 @@ app.get("/api/warga/:id", async (req, res) => {
   }
 });
 
+app.get("/api/warga/summary", async (req, res) => {
+  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  try {
+    await connectDB();
+    const users = await UserModel.aggregate([
+      { $match: { rtId, role: { $ne: 'developer' } } },
+      {
+        $project: {
+          id: 1,
+          nama: 1,
+          username: 1,
+          role: 1,
+          status: 1,
+          alamat: 1,
+          noHp: 1,
+          umur: 1,
+          tglLahir: 1,
+          jenisKelamin: 1,
+          isApproved: 1,
+          photo: 1,
+          rtId: 1,
+          noKk: 1,
+          membersCount: { $size: { $ifNull: ["$members", []] } },
+          hasKk: { $cond: [{ $and: [{ $ne: ["$dokumenKk", null] }, { $ne: ["$dokumenKk", ""] }] }, true, false] },
+          hasKtp: { $cond: [{ $and: [{ $ne: ["$dokumenKtp", null] }, { $ne: ["$dokumenKtp", ""] }] }, true, false] }
+        }
+      },
+      { $sort: { nama: 1 } }
+    ]);
+    res.json({ users });
+  } catch (e) {
+    console.error("Gagal mengambil summary warga:", e);
+    res.status(500).json({ error: "Failed to fetch warga summary" });
+  }
+});
+
+app.get("/api/warga/:id/documents", async (req, res) => {
+  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  try {
+    await connectDB();
+    const user = await UserModel.findOne({ id: req.params.id, rtId }).select('id nama noKk dokumenKk dokumenKtp').lean();
+    if (!user) return res.status(404).json({ error: "Warga tidak ditemukan" });
+    res.json({
+      id: user.id,
+      nama: user.nama,
+      noKk: user.noKk || '',
+      dokumenKk: user.dokumenKk || '',
+      dokumenKtp: user.dokumenKtp || ''
+    });
+  } catch (e) {
+    console.error("Gagal mengambil dokumen warga:", e);
+    res.status(500).json({ error: "Failed to fetch citizen documents" });
+  }
+});
+
 app.get("/api/warga", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 0;
+  const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+  const isAll = req.query.all === 'true' || req.query.limit === '0';
+  const limit = isAll ? 500 : Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 50);
   const search = req.query.search as string;
 
   const query: any = { rtId };
-  if (search) {
+  if (search && search.trim() !== '') {
+    const searchRegex = { $regex: search.trim(), $options: 'i' };
     query.$or = [
-      { nama: { $regex: search, $options: 'i' } },
-      { username: { $regex: search, $options: 'i' } },
-      { alamat: { $regex: search, $options: 'i' } },
-      { noKk: { $regex: search, $options: 'i' } },
-      { 'members.name': { $regex: search, $options: 'i' } }
+      { nama: searchRegex },
+      { username: searchRegex },
+      { alamat: searchRegex },
+      { noKk: searchRegex },
+      { 'members.name': searchRegex }
     ];
   }
 
-  let dbQuery = UserModel.find(query);
-  let sortedUsers: any[] = [];
-  let total = 0;
-
-  if (limit > 0) {
-    total = await UserModel.countDocuments(query);
+  try {
+    await connectDB();
+    const total = await UserModel.countDocuments(query);
     const skip = (page - 1) * limit;
-    const users = await dbQuery.skip(skip).limit(limit).lean();
-    sortedUsers = users.map((u: any) => {
-      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
-      const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
-      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
-        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
-      }
-      return {
-        ...u,
-        noKk: resolvedNoKk || u.noKk || '',
-        hasKk,
-        isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000
-      };
-    });
+
+    const pipeline: any[] = [
+      { $match: query },
+      {
+        $addFields: {
+          hasKk: { $cond: [{ $and: [{ $ne: ["$dokumenKk", null] }, { $ne: ["$dokumenKk", ""] }] }, true, false] },
+          hasKtp: { $cond: [{ $and: [{ $ne: ["$dokumenKtp", null] }, { $ne: ["$dokumenKtp", ""] }] }, true, false] }
+        }
+      },
+      {
+        $project: {
+          dokumenKk: 0,
+          dokumenKtp: 0,
+          password: 0
+        }
+      },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const users = await UserModel.aggregate(pipeline);
+    const sortedUsers = users.map((u: any) => ({
+      ...u,
+      noKk: u.noKk || '',
+      isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000
+    }));
+
+    const pages = Math.max(1, Math.ceil(total / limit));
     res.json({
       users: sortedUsers,
       pagination: {
         total,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages,
+        hasNextPage: page < pages
       }
     });
-  } else {
-    const isSummary = req.query.summary === '1';
-    const requesterId = (req.headers['x-user-id'] as string) || '';
-    const requesterRole = (req.headers['x-user-role'] as string) || '';
-    const isRequesterAdmin = ['admin', 'developer', 'sekretaris'].includes(requesterRole);
-
-    const users = await dbQuery.lean();
-    sortedUsers = users.map((u: any) => {
-      const isOnline = activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000;
-      const isOwn = Boolean(requesterId && String(u.id) === String(requesterId));
-      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
-      const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
-      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
-        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
-      }
-      if (isSummary && !isRequesterAdmin && !isOwn) {
-        return {
-          id: u.id,
-          username: u.username,
-          nama: u.nama,
-          alamat: u.alamat,
-          noHp: u.noHp,
-          status: u.status,
-          role: u.role,
-          photo: u.photo,
-          noKk: resolvedNoKk || u.noKk || '',
-          umur: u.umur,
-          tglLahir: u.tglLahir,
-          jenisKelamin: u.jenisKelamin,
-          members: u.members || [],
-          hasKk,
-          hasKtp: Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp),
-          isApproved: u.isApproved,
-          rtId: u.rtId,
-          isOnline
-        };
-      }
-      return {
-        ...u,
-        noKk: resolvedNoKk || u.noKk || '',
-        hasKk,
-        isOnline
-      };
-    });
-    res.json({ users: sortedUsers });
+  } catch (error) {
+    console.error("Gagal mengambil data warga:", error);
+    res.status(500).json({ error: "Failed to fetch citizens" });
   }
 });
 
@@ -3075,6 +3135,26 @@ app.post("/api/iuran/remind", enforceRoles(['admin', 'pengurus', 'sekretaris', '
 });
 
 // --- COMPATIBLE APP_DATA / MULTI-MODULE ENDPOINTS ---
+app.get("/api/data/dokumen/:id/file", async (req, res) => {
+  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  try {
+    await connectDB();
+    const doc = await DokumenModel.findOne({ id: req.params.id, rtId }).lean();
+    if (!doc) return res.status(404).json({ error: "Dokumen tidak ditemukan" });
+    res.json({
+      id: doc.id,
+      title: doc.title,
+      fileUrl: doc.fileUrl,
+      fileName: doc.fileName,
+      fileType: doc.fileType,
+      description: doc.description
+    });
+  } catch (e) {
+    console.error("Gagal mengambil file dokumen:", e);
+    res.status(500).json({ error: "Failed to fetch document file" });
+  }
+});
+
 app.get("/api/data/:resource", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const resource = req.params.resource;
@@ -3098,8 +3178,9 @@ app.get("/api/data/:resource", async (req, res) => {
   const model = map[resource];
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 0;
+  const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+  const isExport = req.query.export === 'true' || req.query.all === 'true';
+  const limit = isExport ? 1000 : Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
   const search = req.query.search as string;
 
   let sortField = "createdAt";
@@ -3118,8 +3199,8 @@ app.get("/api/data/:resource", async (req, res) => {
     query.type = req.query.type;
   }
 
-  if (search) {
-    const searchRegex = { $regex: search, $options: 'i' };
+  if (search && search.trim() !== '') {
+    const searchRegex = { $regex: search.trim(), $options: 'i' };
     if (resource === 'kas' || resource === 'iuran') {
       query.$or = [
         { name: searchRegex },
@@ -3130,10 +3211,29 @@ app.get("/api/data/:resource", async (req, res) => {
         { title: searchRegex },
         { description: searchRegex }
       ];
+    } else if (resource === 'dokumen' || resource === 'inventaris' || resource === 'notulen') {
+      query.$or = [
+        { title: searchRegex },
+        { name: searchRegex },
+        { description: searchRegex }
+      ];
     }
   }
 
   let dbQuery = model.find(query);
+
+  // Exclude heavy binary / base64 payloads from list queries to keep responses ultra fast & lightweight
+  if (!isExport) {
+    if (resource === 'dokumen') {
+      dbQuery = dbQuery.select('-fileUrl');
+    } else if (resource === 'kas') {
+      dbQuery = dbQuery.select('-buktiTransaksi');
+    } else if (resource === 'iuran') {
+      dbQuery = dbQuery.select('-proofUrl -buktiUrl');
+    } else if (resource === 'surat') {
+      dbQuery = dbQuery.select('-signaturePemohon -signatureKetuaRt');
+    }
+  }
 
   let balances: any = undefined;
   if (resource === 'kas') {
@@ -3179,24 +3279,22 @@ app.get("/api/data/:resource", async (req, res) => {
     }
   }
 
-  if (limit > 0) {
-    const total = await model.countDocuments(query);
-    const skip = (page - 1) * limit;
-    const results = await dbQuery.sort({ [sortField]: -1 }).skip(skip).limit(limit).lean();
-    res.json({
-      data: results,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit)
-      },
-      balances
-    });
-  } else {
-    const results = await dbQuery.sort({ [sortField]: -1 }).lean();
-    res.json({ data: results, balances });
-  }
+  const total = await model.countDocuments(query);
+  const skip = (page - 1) * limit;
+  const results = await dbQuery.sort({ [sortField]: -1 }).skip(skip).limit(limit).lean();
+  const pages = Math.max(1, Math.ceil(total / limit));
+
+  res.json({
+    data: results,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages,
+      hasNextPage: page < pages
+    },
+    balances
+  });
 });
 
 // POINT 6: VALIDATE CREATION VIA ZOD AND AUDIT TRAIL LOGGING
@@ -4162,194 +4260,276 @@ app.post("/api/gemini/action", async (req, res) => {
 });
 
 
+// --- HIGH-PERFORMANCE DASHBOARD SUMMARY & AGGREGATIONS ---
+async function getDashboardSummaryData(rtId: string) {
+  await connectDB();
+
+  const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+
+  // Run all targeted count & aggregation queries concurrently
+  const [
+    jumlahKK,
+    docUploaded,
+    kasAgg,
+    iuranMonthAgg,
+    usersDemo,
+    pengaduanAktif,
+    pengaduanAktifCount,
+    agendaUpcoming,
+    latestMedia,
+    pengurusRaw,
+    kasMonthlyAgg
+  ] = await Promise.all([
+    UserModel.countDocuments({ rtId, role: { $ne: 'developer' } }),
+    UserModel.countDocuments({
+      rtId,
+      role: { $ne: 'developer' },
+      $or: [{ dokumenKk: { $nin: [null, ''] } }, { dokumenKtp: { $nin: [null, ''] } }]
+    }),
+    KasModel.aggregate([
+      { $match: { rtId } },
+      { $group: { _id: { category: "$category", type: "$type" }, totalAmount: { $sum: "$amount" } } }
+    ]),
+    IuranModel.aggregate([
+      { $match: { rtId, bulan: currentMonth } },
+      { $group: { _id: "$status", count: { $sum: 1 }, totalNominal: { $sum: "$nominal" } } }
+    ]),
+    UserModel.find({ rtId, role: { $ne: 'developer' } })
+      .select('umur tglLahir jenisKelamin members.age members.tglLahir members.jenisKelamin')
+      .lean(),
+    LaporanModel.find({ rtId, status: { $in: ['baru', 'menunggu', 'diproses', 'proses'] } })
+      .select('id judul deskripsi status nama userName kategori createdAt')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean(),
+    LaporanModel.countDocuments({ rtId, status: { $in: ['baru', 'menunggu', 'diproses', 'proses'] } }),
+    AcaraModel.find({ rtId })
+      .select('id title desc date time location rtId createdAt')
+      .sort({ date: 1 })
+      .limit(5)
+      .lean(),
+    MediaModel.find({ rtId })
+      .select('id imageUrl title uploaderName rtId createdAt')
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean(),
+    UserModel.find({ rtId, role: { $in: ['admin', 'sekretaris', 'bendahara', 'pengurus'] } })
+      .select('id nama role alamat noHp photo')
+      .lean(),
+    KasModel.aggregate([
+      { $match: { rtId, type: 'Masuk' } },
+      {
+        $group: {
+          _id: { $substr: ["$createdAt", 0, 7] },
+          total: { $sum: "$amount" }
+        }
+      },
+      { $sort: { _id: 1 } },
+      { $limit: 6 }
+    ])
+  ]);
+
+  // 1. Calculate Kas Balances
+  let kasRT = 0, danaKematian = 0, danaSosial = 0;
+  kasAgg.forEach((item: any) => {
+    const cat = item._id.category || 'Kas RT';
+    const type = item._id.type;
+    const amount = Number(item.totalAmount) || 0;
+    const net = type === 'Masuk' ? amount : -amount;
+    if (cat === 'Kas RT') kasRT += net;
+    else if (cat === 'Dana Kematian') danaKematian += net;
+    else if (cat === 'Dana Sosial') danaSosial += net;
+  });
+  const saldoKas = kasRT + danaKematian + danaSosial;
+
+  // 2. Calculate Iuran Stats
+  let totalIuranCount = 0;
+  let lunasCount = 0;
+  let totalAmount = 0;
+  iuranMonthAgg.forEach((item: any) => {
+    const count = Number(item.count) || 0;
+    const nominal = Number(item.totalNominal) || 0;
+    totalIuranCount += count;
+    totalAmount += nominal;
+    if (item._id === 'verifikasi' || item._id === 'lunas') {
+      lunasCount += count;
+    }
+  });
+
+  // Fallback to all-time iuran if current month has no records yet
+  if (totalIuranCount === 0) {
+    const allIuranAgg = await IuranModel.aggregate([
+      { $match: { rtId } },
+      { $group: { _id: "$status", count: { $sum: 1 }, totalNominal: { $sum: "$nominal" } } }
+    ]);
+    allIuranAgg.forEach((item: any) => {
+      const count = Number(item.count) || 0;
+      const nominal = Number(item.totalNominal) || 0;
+      totalIuranCount += count;
+      totalAmount += nominal;
+      if (item._id === 'verifikasi' || item._id === 'lunas') {
+        lunasCount += count;
+      }
+    });
+  }
+  const lunasPct = totalIuranCount > 0 ? Math.round((lunasCount / totalIuranCount) * 100) : 0;
+
+  // 3. Demographics calculation without loading heavy documents/photos
+  const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
+    if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+      const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+      if (!isNaN(diff) && diff > 0) {
+        return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
+      }
+    }
+    const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+    return isNaN(parsed) ? -1 : parsed;
+  };
+
+  let balitaCount = 0, anakCount = 0, remajaCount = 0, dewasaCount = 0, lansiaCount = 0;
+  let lakiLakiCount = 0, perempuanCount = 0;
+
+  const categorizeAge = (age: number) => {
+    if (age < 0) return;
+    if (age <= 4) balitaCount++;
+    else if (age <= 12) anakCount++;
+    else if (age <= 20) remajaCount++;
+    else if (age <= 70) dewasaCount++;
+    else lansiaCount++;
+  };
+
+  const countGender = (g?: string) => {
+    const norm = String(g || '').trim().toLowerCase();
+    if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
+      perempuanCount++;
+    } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
+      lakiLakiCount++;
+    }
+  };
+
+  let totalWarga = jumlahKK;
+  usersDemo.forEach((u: any) => {
+    totalWarga += (u.members?.length || 0);
+    categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
+    countGender(u.jenisKelamin);
+
+    if (Array.isArray(u.members)) {
+      u.members.forEach((m: any) => {
+        categorizeAge(resolvePersonAge(m.age, m.tglLahir));
+        countGender(m.jenisKelamin);
+      });
+    }
+  });
+
+  const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
+  const demographics = {
+    balita: balitaCount,
+    anak: anakCount,
+    remaja: remajaCount,
+    dewasa: dewasaCount,
+    lansia: lansiaCount,
+    lakiLaki: lakiLakiCount,
+    perempuan: perempuanCount,
+    totalWithAge,
+    groups: [
+      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
+      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
+      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
+      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316' },
+      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
+    ]
+  };
+
+  // 4. Formatted Pengurus List
+  const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
+  const sortedPengurus = pengurusRaw.sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
+
+  let sekIdx = 0, benIdx = 0, pengIdx = 0;
+  const pengurusList = sortedPengurus.map((u: any) => {
+    let jabatan = 'Pengurus RT';
+    if (u.role === 'admin') {
+      jabatan = 'Ketua RT 01 / RW 21';
+    } else if (u.role === 'sekretaris') {
+      sekIdx++;
+      jabatan = sortedPengurus.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : 'Sekretaris RT';
+    } else if (u.role === 'bendahara') {
+      benIdx++;
+      jabatan = sortedPengurus.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : 'Bendahara RT';
+    } else if (u.role === 'pengurus') {
+      pengIdx++;
+      jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
+    }
+    return {
+      id: u.id,
+      nama: u.nama,
+      role: u.role,
+      jabatan,
+      alamat: u.alamat || 'Lingkungan RT 01',
+      noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
+      photo: u.photo || ''
+    };
+  });
+
+  const kasChart = kasMonthlyAgg.map((item: any) => ({
+    bulan: item._id,
+    value: Number(item.total) || 0
+  }));
+
+  const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
+
+  return {
+    metrics: {
+      jumlahKK,
+      jumlahWarga: totalWarga,
+      docUploaded,
+      docNotUploaded,
+      demographics,
+      saldoKas,
+      kasDetail: { kasRT, danaKematian, danaSosial },
+      iuranBulanIni: { totalIuranCount, lunasCount, totalAmount, lunasPct },
+      pengaduanAktifCount,
+      pengaduanAktif,
+      agendaUpcoming,
+      wargaList: []
+    },
+    pengurusList,
+    agendaUpcoming,
+    latestMedia,
+    kasChart
+  };
+}
+
+app.get("/api/dashboard/summary", async (req, res) => {
+  const rtId = req.headers['x-rt-id'] as string || 'rt01';
+  try {
+    const summary = await getDashboardSummaryData(rtId);
+    res.json(summary);
+  } catch (error) {
+    console.error("Dashboard summary error:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard summary" });
+  }
+});
+
 app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
-    const [users, kas, iuran, laporan, acara, media] = await Promise.all([
-      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('id nama role status alamat noHp photo umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
-      KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
-      IuranModel.find({ rtId }).select('bulan status nominal').lean(),
-      LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
-      AcaraModel.find({ rtId }).select('id title date time location rtId createdAt').lean(),
-      MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').lean()
-    ]);
-
-    const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
-      if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
-        const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
-        if (!isNaN(diff) && diff > 0) {
-          return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
-        }
-      }
-      const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
-      return isNaN(parsed) ? -1 : parsed;
-    };
-
-    let balitaCount = 0;
-    let anakCount = 0;
-    let remajaCount = 0;
-    let dewasaCount = 0;
-    let lansiaCount = 0;
-    let lakiLakiCount = 0;
-    let perempuanCount = 0;
-
-    const getAgeCategoryKey = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' | 'unknown' => {
-      if (age < 0) return 'unknown';
-      if (age <= 4) return 'balita';
-      if (age <= 12) return 'anak';
-      if (age <= 20) return 'remaja';
-      if (age <= 70) return 'dewasa';
-      return 'lansia';
-    };
-
-    const categorizeAge = (age: number) => {
-      if (age < 0) return;
-      if (age <= 4) balitaCount++;
-      else if (age <= 12) anakCount++;
-      else if (age <= 20) remajaCount++;
-      else if (age <= 70) dewasaCount++;
-      else lansiaCount++;
-    };
-
-    const countGender = (g?: string) => {
-      const norm = String(g || '').trim().toLowerCase();
-      if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
-        perempuanCount++;
-      } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
-        lakiLakiCount++;
-      }
-    };
-
-    const jumlahKK = users.length;
-    let totalWarga = jumlahKK;
-    let docUploaded = 0;
-    users.forEach((u: any) => {
-      totalWarga += (u.members?.length || 0);
-      categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
-      countGender(u.jenisKelamin);
-
-      if (Array.isArray(u.members)) {
-        u.members.forEach((m: any) => {
-          categorizeAge(resolvePersonAge(m.age, m.tglLahir));
-          countGender(m.jenisKelamin);
-        });
-      }
-      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
-      const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
-      if (hasKk || hasKtp) {
-        docUploaded++;
-      }
-    });
-    const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
-    const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
-    const demographics = {
-      balita: balitaCount,
-      anak: anakCount,
-      remaja: remajaCount,
-      dewasa: dewasaCount,
-      lansia: lansiaCount,
-      lakiLaki: lakiLakiCount,
-      perempuan: perempuanCount,
-      totalWithAge,
-      groups: [
-        { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
-        { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
-        { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
-        { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316' },
-        { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
-      ]
-    };
-
-    const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
-    const pengurusRaw = users
-      .filter((u: any) => ['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
-      .sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
-
-    let sekIdx = 0;
-    let benIdx = 0;
-    let pengIdx = 0;
-    const pengurusList = pengurusRaw.map((u: any) => {
-      let jabatan = 'Pengurus RT';
-      if (u.role === 'admin') {
-        jabatan = 'Ketua RT 01 / RW 21';
-      } else if (u.role === 'sekretaris') {
-        sekIdx++;
-        jabatan = pengurusRaw.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : 'Sekretaris RT';
-      } else if (u.role === 'bendahara') {
-        benIdx++;
-        jabatan = pengurusRaw.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : 'Bendahara RT';
-      } else if (u.role === 'pengurus') {
-        pengIdx++;
-        jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
-      }
-      return {
-        id: u.id,
-        nama: u.nama,
-        role: u.role,
-        jabatan,
-        alamat: u.alamat || 'Lingkungan RT 01',
-        noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
-        photo: u.photo || ''
-      };
-    });
-
-    const getSaldo = (cat: string) => {
-      const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
-      const catM = catItems.filter((d: any) => d.type === 'Masuk').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-      const catK = catItems.filter((d: any) => d.type === 'Keluar').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-      return catM - catK;
-    };
-    const kasRT = getSaldo('Kas RT');
-    const danaKematian = getSaldo('Dana Kematian');
-    const danaSosial = getSaldo('Dana Sosial');
-    const saldoKas = kasRT + danaKematian + danaSosial;
-
-    const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-    const currentIuran = iuran.filter((i: any) => i.bulan === currentMonth);
-    let lunasCount = 0;
-    let totalIuranCount = currentIuran.length;
-    let totalAmount = 0;
-    
-    if (totalIuranCount > 0) {
-      lunasCount = currentIuran.filter((i: any) => i.status === 'verifikasi').length;
-      totalAmount = currentIuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
-    } else {
-      totalIuranCount = iuran.length;
-      lunasCount = iuran.filter((i: any) => i.status === 'verifikasi').length;
-      totalAmount = iuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
-    }
-    const lunasPct = totalIuranCount > 0 ? Math.round((lunasCount / totalIuranCount) * 100) : 0;
-
-    const pengaduanAktif = laporan.filter((l: any) => l.status === 'menunggu' || l.status === 'diproses');
-
-    const now = new Date();
-    const agendaUpcoming = acara.filter((ac: any) => {
-        const acDate = new Date(ac.time || ac.date);
-        return acDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime()).slice(0, 5);
-
-    // Limit returned unused data
-    const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
-
+    const summary = await getDashboardSummaryData(rtId);
+    // Backward-compatible response structure
     res.json({
       metrics: {
-        jumlahKK,
-        jumlahWarga: totalWarga,
-        docUploaded,
-        docNotUploaded,
-        demographics,
-        pengurusList,
-        saldoKas,
-        kasDetail: { kasRT, danaKematian, danaSosial },
-        iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
-        pengaduanAktif,
-        agendaUpcoming,
-        wargaList: limitedUsers
+        ...summary.metrics,
+        pengurusList: summary.pengurusList,
+        agendaUpcoming: summary.agendaUpcoming,
+        wargaList: []
       },
-      kas: kas,
-      laporan: laporan,
-      acara: acara,
-      media: media
+      kas: [],
+      laporan: summary.metrics.pengaduanAktif,
+      acara: summary.agendaUpcoming,
+      media: summary.latestMedia,
+      pengurusList: summary.pengurusList,
+      agendaUpcoming: summary.agendaUpcoming,
+      latestMedia: summary.latestMedia,
+      kasChart: summary.kasChart
     });
   } catch (error) {
     console.error("Dashboard fetch error:", error);

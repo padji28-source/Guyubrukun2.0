@@ -1,4 +1,5 @@
 import { apiFetch } from './apiInterceptor';
+import { DashboardProvider, useDashboardData } from './DashboardContext';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
@@ -42,7 +43,8 @@ const MobileVotingNotification = ({ onActionClick, notifications }: { onActionCl
   useEffect(() => {
     loadActiveVotings();
     const handleUpdate = (e: any) => {
-      if (e.detail === 'voting') {
+      const res = typeof e?.detail === 'string' ? e.detail : (e?.detail?.resource || e?.detail?.type || '');
+      if (res === 'voting' || res === 'voting_updated' || res === 'all') {
         loadActiveVotings();
       }
     };
@@ -595,47 +597,24 @@ const WebHeader = ({
 };
 
 const WebStatsCards = () => {
-  const [stats, setStats] = useState({ warga: 0, totalWarga: 0, laporan: 0, saldo: 0, iuranRef: 0, iuranTotal: 0, kasRT: 0, danaKematian: 0, danaSosial: 0, docUploaded: 0, docNotUploaded: 0 });
+  const { data: dashboardData } = useDashboardData();
   const [showKasDetail, setShowKasDetail] = useState(false);
-  
-  // Tambahkan state ini untuk kontrol menyembunyikan saldo di Web
   const [isMasked, setIsMasked] = useState(true);
 
-  useEffect(() => {
-    // ... (Biarkan kode useEffect kamu sebelumnya apa adanya) ...
-// [TIDAK ADA PERUBAHAN DI AREA INI]
-
-    const fetchStats = async () => {
-      try {
-        const res = await apiFetch('/api/dashboard');
-        const json = await res.json();
-        const metrics = json.metrics;
-
-        setStats({
-          warga: metrics.jumlahKK || 0,
-          totalWarga: metrics.jumlahWarga || 0,
-          laporan: (metrics.pengaduanAktif || []).length,
-          saldo: metrics.saldoKas || 0,
-          iuranRef: metrics.iuranBulanIni?.lunasCount || 0,
-          iuranTotal: metrics.iuranBulanIni?.totalIuranCount || 1,
-          kasRT: metrics.kasDetail?.kasRT || 0,
-          danaKematian: metrics.kasDetail?.danaKematian || 0,
-          danaSosial: metrics.kasDetail?.danaSosial || 0,
-          docUploaded: metrics.docUploaded || 0,
-          docNotUploaded: metrics.docNotUploaded || 0
-        });
-
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchStats();
-    const handleUpdate = () => {
-      fetchStats();
-    };
-    window.addEventListener('app_data_update', handleUpdate);
-    return () => window.removeEventListener('app_data_update', handleUpdate);
-  }, []);
+  const metrics = dashboardData?.metrics;
+  const stats = useMemo(() => ({
+    warga: metrics?.jumlahKK || 0,
+    totalWarga: metrics?.jumlahWarga || 0,
+    laporan: metrics?.pengaduanAktifCount ?? (metrics?.pengaduanAktif || []).length,
+    saldo: metrics?.saldoKas || 0,
+    iuranRef: metrics?.iuranBulanIni?.lunasCount || 0,
+    iuranTotal: metrics?.iuranBulanIni?.totalIuranCount || 1,
+    kasRT: metrics?.kasDetail?.kasRT || 0,
+    danaKematian: metrics?.kasDetail?.danaKematian || 0,
+    danaSosial: metrics?.kasDetail?.danaSosial || 0,
+    docUploaded: metrics?.docUploaded || 0,
+    docNotUploaded: metrics?.docNotUploaded || 0
+  }), [metrics]);
 
   const formatter = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
   const saldoFormatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
@@ -719,7 +698,6 @@ const WebStatsCards = () => {
 const WebDateWidget = () => {
   const [date, setDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
-  const [events, setEvents] = useState<any[]>([]);
   const [selectedDateState, setSelectedDateState] = useState<number>(date.getDate());
   const [reminders, setReminders] = useState<string[]>(() => {
     const saved = localStorage.getItem('event_reminders');
@@ -748,11 +726,8 @@ const WebDateWidget = () => {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
-      setEvents(json.acara || []);
-    }).catch(console.error);
-  }, []);
+  const { data: dashboardData } = useDashboardData();
+  const events = dashboardData?.agendaUpcoming || [];
 
   const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][date.getDay()];
   const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][date.getMonth()];
@@ -950,14 +925,9 @@ const WebDateWidget = () => {
 
 // --- 3. UPDATE: WebMediaSlider ---
 const WebMediaSlider = () => {
-  const [media, setMedia] = useState<any[]>([]);
+  const { data: dashboardData } = useDashboardData();
+  const media = dashboardData?.latestMedia || [];
   const [currentIndex, setCurrentIndex] = useState(0);
-
-  useEffect(() => {
-    apiFetch('/api/dashboard').then(r => r.json()).then(d => {
-      setMedia(d.media || []);
-    }).catch(console.error);
-  }, []);
 
   useEffect(() => {
     if (media.length <= 1) return;
@@ -1049,12 +1019,8 @@ const WebMediaSlider = () => {
 };
 
 const WebLaporanTable = () => {
-  const [laporanWargaData, setLaporanWargaData] = useState<any[]>([]);
-  useEffect(() => {
-    apiFetch('/api/dashboard').then(r => r.json()).then(d => {
-      setLaporanWargaData(d.laporan?.slice(-5).reverse() || []);
-    }).catch(console.error);
-  }, []);
+  const { data: dashboardData } = useDashboardData();
+  const laporanWargaData = dashboardData?.metrics?.pengaduanAktif?.slice(-5).reverse() || [];
 
   return (
     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -1093,23 +1059,16 @@ const WebLaporanTable = () => {
 };
 
 const WebIuranChart = () => {
-  const [chartData, setChartData] = useState<{bulan: string, value: number}[]>([]);
-  useEffect(() => {
-    apiFetch('/api/dashboard').then(res => res.json()).then(data => {
-      const items = data.kas || [];
-      const stats: Record<string, number> = {};
-      items.forEach((i: any) => {
-        if (i.type === 'Masuk') {
-          const dateStr = i.createdAt 
-            ? new Date(i.createdAt).toLocaleString('id-ID', { month: 'long', year: 'numeric' }) 
-            : new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-          stats[dateStr] = (stats[dateStr] || 0) + (parseInt(i.amount) || 0);
-        }
-      });
-      const keys = Object.keys(stats).slice(-6);
-      setChartData(keys.map(k => ({ bulan: k.split(' ')[0].substring(0,3), value: stats[k] })));
-    }).catch(console.error);
-  }, []);
+  const { data: dashboardData } = useDashboardData();
+  const chartData = useMemo(() => {
+    if (dashboardData?.kasChart && dashboardData.kasChart.length > 0) {
+      return dashboardData.kasChart.map(k => ({
+        bulan: k.bulan.split('-')[1] ? `Bln ${k.bulan.split('-')[1]}` : k.bulan,
+        value: k.value
+      }));
+    }
+    return [];
+  }, [dashboardData?.kasChart]);
 
   const maxValue = Math.max(...chartData.map(d => d.value), 100000);
 
@@ -1942,28 +1901,20 @@ let cachedMediaList: any[] | null = null;
 let cachedBackendEvents: any[] | null = null;
 
 const MobileMediaStory = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
-  const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
+  const { data: dashboardData, loading: dashboardLoading } = useDashboardData();
+  const mediaList = useMemo(() => {
+    if (dashboardData?.latestMedia && dashboardData.latestMedia.length > 0) {
+      return dashboardData.latestMedia;
+    }
+    return [{
+      imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
+      title: "Kerja Bakti Sambut Ramadhan",
+      uploaderName: "Admin RT",
+      desc: "Keseruan warga RT 01 bergotong royong."
+    }];
+  }, [dashboardData?.latestMedia]);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
-
-  useEffect(() => {
-    setLoadingMedia(!cachedMediaList);
-    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
-      let list = [];
-      if (json.media && json.media.length > 0) {
-        list = json.media.slice(-5).reverse();
-      } else {
-        list = [{
-          imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
-          title: "Kerja Bakti Sambut Ramadhan",
-          uploaderName: "Admin RT",
-          desc: "Keseruan warga RT 01 bergotong royong."
-        }];
-      }
-      cachedMediaList = list;
-      setMediaList(list);
-    }).catch(console.error).finally(() => setLoadingMedia(false));
-  }, []);
+  const loadingMedia = dashboardLoading && mediaList.length === 0;
 
   useEffect(() => {
     if (mediaList.length <= 1) return;
@@ -2054,7 +2005,6 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showYearPicker, setShowYearPicker] = useState(false);
-  const [backendEvents, setBackendEvents] = useState<any[]>(cachedBackendEvents || []);
   const [reminders, setReminders] = useState<string[]>(() => {
     const saved = localStorage.getItem('event_reminders');
     return saved ? JSON.parse(saved) : [];
@@ -2074,12 +2024,8 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  useEffect(() => {
-    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
-      cachedBackendEvents = json.acara || [];
-      setBackendEvents(cachedBackendEvents);
-    }).catch(console.error);
-  }, []);
+  const { data: dashboardData } = useDashboardData();
+  const backendEvents = dashboardData?.agendaUpcoming || [];
 
   // Calendar Logic
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -2383,31 +2329,15 @@ const quickActions = [
 let cachedSaldoResult: any = null;
 
 const MobileSaldoCard = () => {
-  const [saldo, setSaldo] = useState(cachedSaldoResult?.saldo || 0);
-  const [danaKematian, setDanaKematian] = useState(cachedSaldoResult?.danaKematian || 0);
-  const [danaSosial, setDanaSosial] = useState(cachedSaldoResult?.danaSosial || 0);
-  const [loading, setLoading] = useState(!cachedSaldoResult);
+  const { data: dashboardData, loading: dashboardLoading } = useDashboardData();
+  const detail = dashboardData?.metrics?.kasDetail;
+  const saldo = detail?.kasRT || 0;
+  const danaKematian = detail?.danaKematian || 0;
+  const danaSosial = detail?.danaSosial || 0;
+  const loading = dashboardLoading && !dashboardData;
   
   // State untuk menyembunyikan saldo
   const [isMasked, setIsMasked] = useState(true);
-
-  useEffect(() => {
-    setLoading(!cachedSaldoResult);
-    apiFetch('/api/dashboard')
-      .then(res => res.json())
-      .then(json => {
-        if (json.metrics && json.metrics.kasDetail) {
-          const detail = json.metrics.kasDetail;
-          setSaldo(detail.kasRT);
-          setDanaKematian(detail.danaKematian);
-          setDanaSosial(detail.danaSosial);
-          
-          cachedSaldoResult = { saldo: detail.kasRT, danaKematian: detail.danaKematian, danaSosial: detail.danaSosial };
-        }
-      })
-      .catch(e => console.error(e))
-      .finally(() => setLoading(false));
-  }, []);
 
   const formatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 
@@ -2473,97 +2403,17 @@ const MobileDemographicsWidget = ({
   user?: any;
   onActionClick: (tab: string) => void;
 }) => {
-  const [groups, setGroups] = useState<
-    Array<{ key: string; name: string; range: string; count: number; fill: string }>
-  >(
-    cachedDemographicsWidget?.groups || [
-      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
-      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
-      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
-      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 0, fill: '#f97316' },
-      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e' }
-    ]
-  );
-  const [jumlahKK, setJumlahKK] = useState<number>(cachedDemographicsWidget?.jumlahKK || 0);
-  const [loading, setLoading] = useState(!cachedDemographicsWidget);
-
-  const loadDemographics = async () => {
-    try {
-      const res = await apiFetch('/api/dashboard');
-      const json = await res.json();
-      const demo = json?.metrics?.demographics;
-      if (demo && Array.isArray(demo.groups) && demo.totalWithAge > 0) {
-        setGroups(demo.groups);
-        setJumlahKK(json.metrics.jumlahKK || 0);
-        cachedDemographicsWidget = {
-          groups: demo.groups,
-          jumlahKK: json.metrics.jumlahKK || 0
-        };
-        setLoading(false);
-        return;
-      }
-
-      // Fallback computation from /api/warga?limit=0&summary=1
-      const wRes = await apiFetch('/api/warga?limit=0&summary=1');
-      if (wRes.ok) {
-        const wJson = await wRes.json();
-        const users = (wJson.users || []).filter((u: any) => u.role !== 'developer');
-        const resolveAge = (rawAge: any, rawDob?: string): number => {
-          if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
-            const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
-            if (!isNaN(diff) && diff > 0) {
-              return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
-            }
-          }
-          const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
-          return isNaN(parsed) ? -1 : parsed;
-        };
-
-        let balita = 0,
-          anak = 0,
-          remaja = 0,
-          dewasa = 0,
-          lansia = 0;
-        const addAge = (age: number) => {
-          if (age < 0) return;
-          if (age <= 4) balita++;
-          else if (age <= 12) anak++;
-          else if (age <= 20) remaja++;
-          else if (age <= 70) dewasa++;
-          else lansia++;
-        };
-
-        users.forEach((u: any) => {
-          addAge(resolveAge(u.umur, u.tglLahir));
-          if (Array.isArray(u.members)) {
-            u.members.forEach((m: any) => addAge(resolveAge(m.age, m.tglLahir)));
-          }
-        });
-
-        const nextGroups = [
-          { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balita, fill: '#3b82f6' },
-          { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anak, fill: '#10b981' },
-          { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remaja, fill: '#8b5cf6' },
-          { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasa, fill: '#f97316' },
-          { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansia, fill: '#f43f5e' }
-        ];
-        setGroups(nextGroups);
-        setJumlahKK(users.length);
-        cachedDemographicsWidget = { groups: nextGroups, jumlahKK: users.length };
-      }
-    } catch (e) {
-      console.error('Gagal memuat demografi usia warga:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadDemographics();
-    const handleUpdate = () => loadDemographics();
-    window.addEventListener('app_data_update', handleUpdate);
-    return () => window.removeEventListener('app_data_update', handleUpdate);
-  }, []);
+  const { data: dashboardData, loading: dashboardLoading } = useDashboardData();
+  const demo = dashboardData?.metrics?.demographics;
+  const groups = demo?.groups && demo.groups.length > 0 ? demo.groups : [
+    { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
+    { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
+    { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
+    { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 0, fill: '#f97316' },
+    { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e' }
+  ];
+  const jumlahKK = dashboardData?.metrics?.jumlahKK || 0;
+  const loading = dashboardLoading && !dashboardData;
 
   const totalPersons = groups.reduce((acc, g) => acc + (Number(g.count) || 0), 0);
   const isAdminRole = ['admin', 'developer', 'bendahara', 'sekretaris', 'pengurus'].includes(
@@ -5084,14 +4934,17 @@ export default function App() {
     if (!user?.id) return;
 
     const fetchGlobalEvents = () => {
-      apiFetch('/api/dashboard')
+      apiFetch('/api/dashboard/summary')
         .then(res => {
           if (!res || !res.ok) return null;
           return res.json();
         })
         .then(json => {
-          if (json && Array.isArray(json.acara)) {
-            setGlobalEvents(json.acara);
+          if (json) {
+            const list = json.agendaUpcoming || json.acara;
+            if (Array.isArray(list)) {
+              setGlobalEvents(list);
+            }
           }
         })
         .catch(() => {});
@@ -5302,7 +5155,9 @@ export default function App() {
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="w-full min-h-screen"
           >
-            <MainApp user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
+            <DashboardProvider>
+              <MainApp user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
+            </DashboardProvider>
           </motion.div>
         )
       )}

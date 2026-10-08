@@ -192,7 +192,12 @@ export const MobileUMKM = ({ onBack, currentUser }: { onBack: () => void; curren
 
   useEffect(() => {
     fetchData();
-    const handleUpdate = () => fetchData();
+    const handleUpdate = (e: any) => {
+      const res = typeof e?.detail === 'string' ? e.detail : e?.detail?.resource;
+      if (!res || res === 'all' || res === 'umkm') {
+        fetchData();
+      }
+    };
     window.addEventListener('app_data_update', handleUpdate);
     return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);

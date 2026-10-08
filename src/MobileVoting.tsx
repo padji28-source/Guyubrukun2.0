@@ -75,7 +75,8 @@ export const MobileVoting = ({ currentUser, onBack }: { currentUser: any; onBack
   useEffect(() => {
     fetchVotings();
     const handleUpdate = (e: any) => {
-      if (e.detail === 'voting') {
+      const res = typeof e?.detail === 'string' ? e.detail : e?.detail?.resource;
+      if (!res || res === 'all' || res === 'voting') {
         fetchVotings();
       }
     };

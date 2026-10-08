@@ -254,7 +254,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   const fetchAllWargaFull = async () => {
     try {
-      const res = await apiFetch('/api/warga?limit=0&summary=1');
+      const res = await apiFetch('/api/warga/summary');
       if (res.ok) {
         const data = await res.json();
         const list = data.users || [];
@@ -299,7 +299,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
   useEffect(() => {
     const handleUpdate = (e: any) => {
-      if (e.detail === 'users' || e.detail === 'online_status') {
+      const res = typeof e?.detail === 'string' ? e.detail : (e?.detail?.resource || e?.detail?.type || '');
+      if (['users', 'warga', 'online_status'].some(k => String(res).toLowerCase().includes(k))) {
         fetchWarga();
         fetchAllWargaFull();
         if (isPrivilegedKkViewer) {
@@ -2570,7 +2571,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
                                   <option value="tidak_aktif">Nonaktif / Belum disetujui</option>
                                 </select>
                               </div>
-                              <button onClick={(e) => { e.stopPropagation(); apiFetch(`/api/warga/${warga.id}`, { method: 'DELETE' }).then(() => { showStatusBanner('Warga berhasil dihapus.'); fetchWarga(); if (isKetuaRT) fetchAllKkWargaForKetuaRT(); }); }} className="text-red-600 bg-red-50 hover:bg-red-100 font-semibold px-3 py-2 rounded-xl text-xs transition-colors h-[34px]">
+                              <button onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setWargaData(prev => prev.filter(w => w.id !== warga.id));
+                                setAllWargaFullData(prev => prev.filter(w => w.id !== warga.id));
+                                apiFetch(`/api/warga/${warga.id}`, { method: 'DELETE' }).then(() => { 
+                                  showStatusBanner('Warga berhasil dihapus.'); 
+                                  if (isKetuaRT) fetchAllKkWargaForKetuaRT(); 
+                                }).catch(() => {
+                                  fetchWarga();
+                                }); 
+                              }} className="text-red-600 bg-red-50 hover:bg-red-100 font-semibold px-3 py-2 rounded-xl text-xs transition-colors h-[34px]">
                                 Hapus Warga
                               </button>
                             </div>

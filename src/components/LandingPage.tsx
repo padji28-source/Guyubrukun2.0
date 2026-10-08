@@ -94,7 +94,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
 
   useEffect(() => {
     let mounted = true;
-    fetch('/api/dashboard', { headers: { 'x-rt-id': 'rt01' } })
+    fetch('/api/dashboard/summary', { headers: { 'x-rt-id': 'rt01' } })
       .then(r => r.json())
       .then(data => {
         if (!mounted || !data?.metrics) return;
@@ -121,7 +121,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
           lakiLaki: d.lakiLaki || prev.lakiLaki,
           perempuan: d.perempuan || prev.perempuan,
           groups: updatedGroups,
-          pengurusList: Array.isArray(m.pengurusList) && m.pengurusList.length > 0 ? m.pengurusList : prev.pengurusList
+          pengurusList: Array.isArray(data.pengurusList) && data.pengurusList.length > 0 ? data.pengurusList : (Array.isArray(m.pengurusList) && m.pengurusList.length > 0 ? m.pengurusList : prev.pengurusList)
         }));
       })
       .catch(() => {});

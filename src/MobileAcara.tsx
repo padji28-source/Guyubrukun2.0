@@ -101,14 +101,13 @@ export const MobileAcaraPage = ({ currentUser }: { currentUser?: any }) => {
   };
 
   const handleDelete = async (id: string) => {
-    
-    
     setData(prev => prev.filter(item => item.id !== id));
-    
     try {
       await apiFetch(`/api/data/acara/${id}`, { method: 'DELETE' });
-      fetchData();
-    } catch(e) { console.error(e); fetchData(); }
+    } catch(e) { 
+      console.error(e); 
+      fetchData(); 
+    }
   };
 
   return (

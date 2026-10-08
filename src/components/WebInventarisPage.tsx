@@ -129,7 +129,7 @@ export const WebInventarisPage = ({ user }: { user: any }) => {
         resetForm();
         fetchInventaris();
         // Trigger global data update event for widgets
-        window.dispatchEvent(new Event('app_data_update'));
+        window.dispatchEvent(new CustomEvent('app_data_update', { detail: { resource: 'inventaris', type: 'inventaris_updated' } }));
       } else {
         setFormError(json.error || 'Gagal menyimpan barang.');
       }
@@ -157,7 +157,7 @@ export const WebInventarisPage = ({ user }: { user: any }) => {
 
       if (res.ok) {
         fetchInventaris();
-        window.dispatchEvent(new Event('app_data_update'));
+        window.dispatchEvent(new CustomEvent('app_data_update', { detail: { resource: 'inventaris', type: 'inventaris_updated' } }));
       } else {
         alert('Gagal menghapus aset');
       }

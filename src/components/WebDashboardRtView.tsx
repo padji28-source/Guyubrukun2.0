@@ -109,21 +109,44 @@ export const WebDashboardRtView = ({
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await apiFetch('/api/dashboard');
+      const [res, umkmRes] = await Promise.all([
+        apiFetch('/api/dashboard/summary'),
+        apiFetch('/api/data/umkm?limit=10')
+      ]);
       const data = await res.json();
+      const umkmData = await umkmRes.json();
 
       let nextDemographics = data?.metrics?.demographics;
       if (!nextDemographics || !Array.isArray(nextDemographics.groups) || nextDemographics.totalWithAge === 0) {
-        const wargaRes = await apiFetch('/api/warga?limit=0&summary=1');
+        const wargaRes = await apiFetch('/api/warga/summary');
         if (wargaRes.ok) {
           const wargaJson = await wargaRes.json();
           nextDemographics = computeDemographicsFromUsers(wargaJson.users || []);
         }
       }
 
-      if (data.metrics) {
+      if (data?.metrics) {
+        const agenda = Array.isArray(data.agendaUpcoming)
+          ? data.agendaUpcoming
+          : Array.isArray(data.metrics.agendaUpcoming)
+          ? data.metrics.agendaUpcoming
+          : [];
+        const aduan = Array.isArray(data.metrics.pengaduanAktif)
+          ? data.metrics.pengaduanAktif
+          : Array.isArray(data.pengaduanAktif)
+          ? data.pengaduanAktif
+          : [];
+        const warga = Array.isArray(data.metrics.wargaList)
+          ? data.metrics.wargaList
+          : Array.isArray(data.wargaList)
+          ? data.wargaList
+          : [];
+
         setMetrics({
           ...data.metrics,
+          agendaUpcoming: agenda,
+          pengaduanAktif: aduan,
+          wargaList: warga,
           demographics: nextDemographics || {
             balita: 0,
             anak: 0,
@@ -136,10 +159,10 @@ export const WebDashboardRtView = ({
         });
       }
 
-      const umkmRes = await apiFetch('/api/data/umkm');
-      const umkmData = await umkmRes.json();
-      if (umkmData.data) {
+      if (umkmData?.data && Array.isArray(umkmData.data)) {
         setUmkmList(umkmData.data);
+      } else if (Array.isArray(umkmData)) {
+        setUmkmList(umkmData);
       }
     } catch (e) {
       console.error('Failed to load Dashboard RT metrics:', e);
@@ -150,8 +173,14 @@ export const WebDashboardRtView = ({
 
   useEffect(() => {
     fetchData();
-    window.addEventListener('app_data_update', fetchData);
-    return () => window.removeEventListener('app_data_update', fetchData);
+    const handleUpdate = (e: any) => {
+      const res = typeof e?.detail === 'string' ? e.detail : (e?.detail?.resource || e?.detail?.type || '');
+      if (!res || ['all', 'dashboard', 'kas', 'warga', 'users', 'iuran', 'umkm'].some(k => String(res).toLowerCase().includes(k))) {
+        fetchData();
+      }
+    };
+    window.addEventListener('app_data_update', handleUpdate);
+    return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);
 
   const formatCurrency = (val: number) => {
@@ -515,14 +544,14 @@ export const WebDashboardRtView = ({
           <div className="border-b pb-3 flex items-center justify-between">
             <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2 text-rose-700">
               <AlertTriangle className="w-4 h-4 text-rose-500" />
-              Laporan Pengaduan Aktif ({metrics.pengaduanAktif.length})
+              Laporan Pengaduan Aktif ({(metrics.pengaduanAktif || []).length})
             </h3>
             <span className="text-[10px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded">
               Butuh Penanganan
             </span>
           </div>
           <div className="space-y-3 max-h-[250px] overflow-y-auto no-scrollbar">
-            {metrics.pengaduanAktif.map((l, index) => (
+            {(metrics.pengaduanAktif || []).map((l, index) => (
               <div key={index} className="p-3 bg-red-50/40 border border-red-100/55 rounded-xl space-y-1">
                 <div className="flex justify-between items-start">
                   <span className="text-xs font-bold text-gray-800 line-clamp-1">{l.judul}</span>
@@ -541,7 +570,7 @@ export const WebDashboardRtView = ({
                 </div>
               </div>
             ))}
-            {metrics.pengaduanAktif.length === 0 && (
+            {(!metrics.pengaduanAktif || metrics.pengaduanAktif.length === 0) && (
               <div className="text-center py-8">
                 <CheckCircle className="w-9 h-9 text-emerald-500 mx-auto mb-2 opacity-80" />
                 <p className="text-xs font-bold text-gray-700">Semua Laporan Selesai</p>
@@ -563,7 +592,7 @@ export const WebDashboardRtView = ({
             <span className="text-[10px] text-gray-400 font-mono">Kalender Kegiatan</span>
           </div>
           <div className="space-y-3 max-h-[250px] overflow-y-auto no-scrollbar">
-            {metrics.agendaUpcoming.map((ac, index) => {
+            {(metrics.agendaUpcoming || []).map((ac, index) => {
               const dt = new Date(ac.time || ac.date);
               const day = dt.toLocaleDateString('id-ID', { day: 'numeric' });
               const month = dt.toLocaleDateString('id-ID', { month: 'short' });
@@ -585,7 +614,7 @@ export const WebDashboardRtView = ({
                 </div>
               );
             })}
-            {metrics.agendaUpcoming.length === 0 && (
+            {(!metrics.agendaUpcoming || metrics.agendaUpcoming.length === 0) && (
               <div className="text-center py-8 text-gray-400 space-y-2">
                 <Calendar className="w-9 h-9 mx-auto text-gray-300" />
                 <p className="text-xs font-medium">Belum ada agenda terdekat</p>
@@ -596,7 +625,7 @@ export const WebDashboardRtView = ({
       </div>
 
       {/* Etalase Promosi UMKM Warga (Gambar Slide & Kartu) */}
-      {umkmList.length > 0 && (
+      {(umkmList || []).length > 0 && (
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between border-b pb-4">
             <div className="flex items-center gap-2.5">
@@ -611,12 +640,12 @@ export const WebDashboardRtView = ({
               </div>
             </div>
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-              {umkmList.filter((u: any) => !u.status || u.status === 'disetujui').length} Usaha Terverifikasi
+              {(umkmList || []).filter((u: any) => !u.status || u.status === 'disetujui').length} Usaha Terverifikasi
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {umkmList
+            {(umkmList || [])
               .filter((item: any) => !item.status || item.status === 'disetujui')
               .map((item, idx) => {
                 const fallbackImgs = [

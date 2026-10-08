@@ -161,14 +161,17 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
           name: currentUser?.nama
         })
       });
-      fetchData();
-      fetchAllKasHistory();
+      // Update balance optimistically
+      setBalances(prev => {
+        const currentBal = prev[category] || 0;
+        const change = type === 'Masuk' ? nominal : -nominal;
+        return { ...prev, [category]: currentBal + change };
+      });
     } catch(e) { 
       console.error(e);
       setData(prev => prev.filter(item => item.id !== tempId));
       setAllKasData(prev => prev.filter(item => item.id !== tempId));
       fetchData();
-      fetchAllKasHistory();
     }
   };
 
@@ -180,20 +183,27 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
   const confirmDelete = async () => {
     if (!showConfirmDelete) return;
     const deletedId = showConfirmDelete;
+    const itemToDelete = data.find(i => i.id === deletedId);
     
     // Optimistic delete
     setData(prev => prev.filter(item => item.id !== deletedId));
     setAllKasData(prev => prev.filter(item => item.id !== deletedId));
     setShowConfirmDelete(null);
 
+    if (itemToDelete) {
+      setBalances(prev => {
+        const cat = itemToDelete.category || 'Kas RT';
+        const currentBal = prev[cat] || 0;
+        const revert = itemToDelete.type === 'Masuk' ? -Number(itemToDelete.amount) : Number(itemToDelete.amount);
+        return { ...prev, [cat]: currentBal + revert };
+      });
+    }
+
     try {
       await apiFetch(`/api/data/kas/${deletedId}`, { method: 'DELETE' });
-      fetchData();
-      fetchAllKasHistory();
     } catch(e) { 
       console.error(e); 
-      fetchData(); 
-      fetchAllKasHistory();
+      fetchData();
     }
   };
 
