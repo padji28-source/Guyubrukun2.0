@@ -1,71 +1,6 @@
 const cache = new Map<string, { data: string; timestamp: number }>();
 const inflight = new Map<string, Promise<Response>>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes TTL
-const MAX_CACHE_ENTRIES = 120;
-
-function getContextPrefix(): string {
-  const selectedRt = localStorage.getItem('selected_rt') || 'rt01';
-  let userId = 'anon';
-  let userRole = 'warga';
-  const authUser = localStorage.getItem('auth_user');
-  if (authUser) {
-    try {
-      const u = JSON.parse(authUser);
-      if (u.id) userId = u.id;
-      if (u.role) userRole = u.role;
-    } catch {}
-  }
-  return `${selectedRt}:${userId}:${userRole}`;
-}
-
-export function getCompositeCacheKey(url: string): string {
-  return `${getContextPrefix()}:${url}`;
-}
-
-export function invalidateCache(resource?: string): void {
-  if (!resource || resource === 'all') {
-    cache.clear();
-    return;
-  }
-
-  const norm = resource.toLowerCase();
-  const patterns: string[] = [norm];
-
-  if (['kas', 'iuran', 'warga', 'users', 'laporan', 'acara', 'media', 'dokumen'].some(k => norm.includes(k))) {
-    patterns.push('dashboard');
-  }
-  if (norm.includes('warga') || norm.includes('user')) {
-    patterns.push('warga');
-    patterns.push('users');
-  }
-
-  const keysToDelete: string[] = [];
-  for (const key of cache.keys()) {
-    if (patterns.some(p => key.toLowerCase().includes(p))) {
-      keysToDelete.push(key);
-    }
-  }
-
-  for (const k of keysToDelete) {
-    cache.delete(k);
-  }
-}
-
-function enforceMaxCacheSize() {
-  if (cache.size > MAX_CACHE_ENTRIES) {
-    let oldestKey: string | null = null;
-    let oldestTime = Infinity;
-    for (const [k, v] of cache.entries()) {
-      if (v.timestamp < oldestTime) {
-        oldestTime = v.timestamp;
-        oldestKey = k;
-      }
-    }
-    if (oldestKey) {
-      cache.delete(oldestKey);
-    }
-  }
-}
+const CACHE_TTL = 10 * 60 * 1000;
 
 const DEFAULT_FALLBACK_JSON = {
   data: [],
@@ -154,9 +89,8 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, isGet
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
   const url = typeof input === 'string' ? input : input.toString();
-  const cacheKey = getCompositeCacheKey(url);
 
-  // Handle mutations (POST, PUT, DELETE) with targeted invalidation
+  // Clear cache on mutations (POST, PUT, DELETE) unless it's a non-mutating action
   if (!isGet) {
     const isNonMutating =
       url.includes('/api/ping') ||
@@ -170,20 +104,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       url.includes('/api/password');
 
     if (!isNonMutating) {
-      // Detect specific resource from URL
-      let targetResource = 'all';
-      const resourceNames = ['kas', 'iuran', 'warga', 'users', 'dokumen', 'laporan', 'acara', 'media', 'voting', 'umkm', 'inventaris', 'notulen', 'tamu', 'surat'];
-      for (const resName of resourceNames) {
-        if (url.toLowerCase().includes(resName)) {
-          targetResource = resName;
-          break;
-        }
-      }
-      invalidateCache(targetResource);
+      cache.clear();
     }
   } else {
-    // 1. Check composite cache
-    const cached = cache.get(cacheKey);
+    // 1. Check cache
+    const cached = cache.get(url);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       const mockRes = new Response(cached.data, {
         status: 200,
@@ -192,9 +117,9 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       return attachSafeJsonParser(mockRes, url);
     }
 
-    // 2. Check inflight requests with identical composite key (deduplication)
-    if (inflight.has(cacheKey)) {
-      const res = await inflight.get(cacheKey)!;
+    // 2. Check inflight requests
+    if (inflight.has(url)) {
+      const res = await inflight.get(url)!;
       const finalRes = res.clone();
       return attachSafeJsonParser(finalRes, url);
     }
@@ -202,7 +127,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
   const modifiedInit: RequestInit = { ...init };
   modifiedInit.headers = new Headers(init?.headers);
-  const selectedRt = localStorage.getItem('selected_rt');
+  const selectedRt = localStorage.getItem('selected_rt') || localStorage.getItem('rtId');
   if (selectedRt) {
     modifiedInit.headers.set('x-rt-id', selectedRt);
   }
@@ -219,6 +144,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       }
       if (userObj.token) {
         modifiedInit.headers.set('Authorization', `Bearer ${userObj.token}`);
+      }
+      if (userObj.rtId && userObj.role !== 'developer') {
+        // Enforce that authenticated non-developer users communicate strictly within their own RT
+        modifiedInit.headers.set('x-rt-id', userObj.rtId);
       }
     } catch {}
   }
@@ -244,33 +173,21 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
         try {
           const text = await clonedForCache.text();
           if (tryParseJson(text) !== null) {
-            enforceMaxCacheSize();
-            cache.set(cacheKey, { data: text, timestamp: Date.now() });
+            cache.set(url, { data: text, timestamp: Date.now() });
           }
         } catch {}
-      } else if (!isGet && res.ok) {
-        // Trigger debounced UI refresh on mutation success
-        let targetResource = 'general';
-        const resourceNames = ['kas', 'iuran', 'warga', 'users', 'dokumen', 'laporan', 'acara', 'media', 'voting', 'umkm', 'inventaris', 'notulen', 'tamu', 'surat'];
-        for (const resName of resourceNames) {
-          if (url.toLowerCase().includes(resName)) {
-            targetResource = resName;
-            break;
-          }
-        }
-        window.dispatchEvent(new CustomEvent('app_data_update', { detail: { resource: targetResource, type: `${targetResource}_updated` } }));
       }
 
       return attachSafeJsonParser(res, url);
     })
     .finally(() => {
       if (isGet) {
-        inflight.delete(cacheKey);
+        inflight.delete(url);
       }
     });
 
   if (isGet) {
-    inflight.set(cacheKey, fetchPromise);
+    inflight.set(url, fetchPromise);
   }
 
   return fetchPromise;

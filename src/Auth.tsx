@@ -87,6 +87,8 @@ export function Login({ onLogin, onNavRegister }: any) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isFocusedPassword, setIsFocusedPassword] = useState(false);
+  const currentRt = localStorage.getItem('selected_rt') || 'rt01';
+  const displayRt = currentRt.toUpperCase().replace('RT', 'RT ');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,13 +103,10 @@ export function Login({ onLogin, onNavRegister }: any) {
       if (res.ok) {
         onLogin(data.user);
       } else {
-        const errorMsg = typeof data.error === 'string' 
-          ? data.error 
-          : (data.error?.message || data.message || 'Login gagal. Periksa kembali username dan password Anda.');
-        setError(errorMsg);
+        setError(data.error);
       }
     } catch (err: any) {
-      setError(err?.message || 'Terjadi kesalahan jaringan. Pastikan koneksi internet stabil.');
+      setError(err?.message || 'Terjadi kesalahan jaringan.');
     }
     setLoading(false);
   };
@@ -116,8 +115,11 @@ export function Login({ onLogin, onNavRegister }: any) {
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md">
         <CuteMascot isFocusedPassword={isFocusedPassword} />
         <div className="text-center mb-8">
+          <div className="inline-block bg-teal-50 border border-teal-200 text-teal-700 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full mb-2">
+            Lingkungan {displayRt}
+          </div>
           <h1 className="text-2xl font-bold text-teal-600 mb-2">Login</h1>
-          <p className="text-sm text-gray-500">Masuk ke aplikasi Guyub Rukun</p>
+          <p className="text-sm text-gray-500">Masuk ke aplikasi Guyub Rukun ({displayRt})</p>
         </div>
         {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -152,6 +154,11 @@ export function Register({ onRegister, onNavLogin }: any) {
   const [loading, setLoading] = useState(false);
   const [isFocusedPassword, setIsFocusedPassword] = useState(false);
 
+  const currentRt = localStorage.getItem('selected_rt') || 'rt01';
+  const isRt01 = currentRt.toLowerCase() === 'rt01';
+  const displayRt = currentRt.toUpperCase().replace('RT', 'RT ');
+  const availableBlocks = isRt01 ? ['A', 'C', 'D', 'E', 'F'] : ['G', 'H', 'I', 'J'];
+
   const calculateAge = (dob: string) => {
     if (!dob) return '';
     const diff_ms = Date.now() - new Date(dob).getTime();
@@ -179,10 +186,7 @@ export function Register({ onRegister, onNavLogin }: any) {
         console.log('Registrasi berhasil! Silahkan masuk terlebih dahulu.');
         onNavLogin();
       } else {
-        const errorMsg = typeof data.error === 'string' 
-          ? data.error 
-          : (data.error?.message || data.message || 'Pendaftaran gagal. Periksa data yang Anda masukkan.');
-        setError(errorMsg);
+        setError(data.error);
       }
     } catch (err: any) {
       setError(err?.message || 'Terjadi kesalahan jaringan.');
@@ -194,8 +198,13 @@ export function Register({ onRegister, onNavLogin }: any) {
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md">
         <CuteMascot isFocusedPassword={isFocusedPassword} />
         <div className="text-center mb-8">
+          <div className="inline-block bg-teal-50 border border-teal-200 text-teal-700 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full mb-2">
+            Pendaftaran {displayRt}
+          </div>
           <h1 className="text-2xl font-bold text-teal-600 mb-2">Daftar Akun</h1>
-          <p className="text-sm text-gray-500">Bergabung dengan Guyub Rukun</p>
+          <p className="text-xs text-gray-500">
+            {isRt01 ? 'Wilayah RT 01: Blok A, Blok C, Blok D, Blok E, Blok F' : `Wilayah ${displayRt}`}
+          </p>
         </div>
         {error && (
           <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-start gap-2">
@@ -217,19 +226,14 @@ export function Register({ onRegister, onNavLogin }: any) {
             <input type="password" value={formData.password} onChange={e => { setError(''); setFormData({...formData, password: e.target.value}); }} onFocus={() => setIsFocusedPassword(true)} onBlur={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Masukkan password"/>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Blok Rumah</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              Blok Rumah {isRt01 ? '(Wilayah RT 01)' : `(${displayRt})`}
+            </label>
             <select value={blok} onChange={e => { setError(''); setBlok(e.target.value); }} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500">
               <option value="">Pilih Blok</option>
-              <option value="A">Blok A</option>
-              <option value="B">Blok B</option>
-              <option value="C">Blok C</option>
-              <option value="D">Blok D</option>
-              <option value="E">Blok E</option>
-              <option value="F">Blok F</option>
-              <option value="G">Blok G</option>
-              <option value="H">Blok H</option>
-              <option value="I">Blok I</option>
-              <option value="J">Blok J</option>
+              {availableBlocks.map(b => (
+                <option key={b} value={b}>Blok {b}</option>
+              ))}
             </select>
           </div>
           <div>

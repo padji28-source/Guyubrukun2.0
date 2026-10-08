@@ -15,7 +15,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "guyubrukunsecretkey_for_jwt2026";
 
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/guyubrukun";
 let isDbConnected = false;
-let cachedConnection: Promise<typeof mongoose> | null = null;
 
 function isValidGeminiApiKey(key?: string): boolean {
   if (!key) return false;
@@ -23,30 +22,25 @@ function isValidGeminiApiKey(key?: string): boolean {
   return k.length >= 20 && !k.startsWith('MY_') && !k.startsWith('YOUR_') && !k.includes('placeholder');
 }
 
-async function connectDB(): Promise<typeof mongoose> {
+async function connectDB() {
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     isDbConnected = true;
-    return mongoose;
+    return;
   }
-  if (!cachedConnection) {
-    cachedConnection = mongoose.connect(MONGODB_URI, {
+  if (mongoose.connection && mongoose.connection.readyState === 2) {
+    return;
+  }
+  try {
+    await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      bufferCommands: false,
-      maxPoolSize: 10,
-      minPoolSize: 1,
-    }).then(m => {
-      isDbConnected = true;
-      console.log("Connected securely to MongoDB database system.");
-      return m;
-    }).catch(err => {
-      cachedConnection = null;
-      isDbConnected = false;
-      console.error("MongoDB connection exception:", err);
-      throw err;
     });
+    isDbConnected = true;
+    console.log("Connected securely to MongoDB database system.");
+  } catch (err) {
+    console.error("MongoDB connection exception:", err);
+    throw err;
   }
-  return cachedConnection;
 }
 
 // Secure Authentication Helpers
@@ -76,25 +70,6 @@ const apiLimiter = rateLimit({
 export const app = express();
 app.set("trust proxy", 1);
 const PORT = Number(process.env.PORT) || 3000;
-
-// Temporary Performance Monitoring Middleware (Section A)
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/")) {
-    const startTime = Date.now();
-    const originalJson = res.json.bind(res);
-    res.json = (body: any) => {
-      const totalDuration = Date.now() - startTime;
-      const dbDuration = typeof res.locals.dbDuration === 'number' ? res.locals.dbDuration : Math.max(1, Math.round(totalDuration * 0.7));
-      try {
-        const payloadStr = JSON.stringify(body);
-        const sizeKB = (Buffer.byteLength(payloadStr, 'utf8') / 1024).toFixed(1);
-        console.log(`[PERF] ${req.method} ${req.path} | DB: ${dbDuration}ms | TOTAL: ${totalDuration}ms | SIZE: ${sizeKB}KB`);
-      } catch {}
-      return originalJson(body);
-    };
-  }
-  next();
-});
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -146,8 +121,15 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
       req.headers['x-user-role'] = decoded.role;
       req.headers['x-user-username'] = decoded.username;
       req.headers['x-user-nama'] = decoded.nama;
-      if (decoded.rtId && !req.headers['x-rt-id']) {
-        req.headers['x-rt-id'] = decoded.rtId;
+      if (decoded.rtId) {
+        if (decoded.role === 'developer') {
+          if (!req.headers['x-rt-id']) {
+            req.headers['x-rt-id'] = decoded.rtId;
+          }
+        } else {
+          // Strictly restrict non-developer users to their own RT
+          req.headers['x-rt-id'] = decoded.rtId;
+        }
       }
       (req as any).user = decoded;
       return next();
@@ -488,28 +470,22 @@ const MenuAccessModel: mongoose.Model<any> = mongoose.models.MenuAccess || mongo
 // DATABASE INDEX OPTIMIZATION (HIGH PERFORMANCE)
 // ==========================================
 UserSchema.index({ username: 1 });
-UserSchema.index({ rtId: 1, username: 1 });
 UserSchema.index({ rtId: 1, role: 1 });
-UserSchema.index({ rtId: 1, createdAt: -1 });
 UserSchema.index({ rtId: 1, nama: 1 });
 UserSchema.index({ rtId: 1, isApproved: 1 });
 
 IuranSchema.index({ rtId: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 IuranSchema.index({ rtId: 1, status: 1, createdAt: -1 });
-IuranSchema.index({ rtId: 1, bulan: 1, status: 1 });
 
 KasSchema.index({ rtId: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, name: 1, createdAt: -1 });
 KasSchema.index({ rtId: 1, type: 1, createdAt: -1 });
-KasSchema.index({ rtId: 1, category: 1, createdAt: -1 });
 
 VotingSchema.index({ rtId: 1, createdAt: -1 });
 
-AcaraSchema.index({ rtId: 1, date: 1 });
 AcaraSchema.index({ rtId: 1, date: -1 });
 
-LaporanSchema.index({ rtId: 1, status: 1, createdAt: -1 });
 LaporanSchema.index({ rtId: 1, createdAt: -1 });
 
 SuratSchema.index({ rtId: 1, createdAt: -1 });
@@ -784,12 +760,7 @@ async function saveAppData(rtId: string = '', data: any) {
   broadcastEvent('update', { type: 'app_data', rtId });
 }
 
-const initializedRts = new Set<string>();
-
 async function initDb(rtId: string = '') {
-  const targetRt = rtId || 'rt01';
-  if (initializedRts.has(targetRt)) return;
-  initializedRts.add(targetRt);
   await connectDB();
   try {
     // Run automated legacy migrations to preserve old database states
@@ -936,195 +907,219 @@ async function initDb(rtId: string = '') {
       ]
     });
 
-    // Seed initial verified UMKM Warga with banner images if none exist
-    const umkmCount = await UmkmModel.countDocuments({ rtId: rtId || 'rt01' });
-    if (umkmCount === 0) {
-      const initialUmkm = [
-        {
-          id: `${rtId || 'rt01'}_umkm1`,
-          nama: 'Dapur Nusantara Bu Siti',
-          name: 'Dapur Nusantara Bu Siti',
-          bannerUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80',
-          owner: 'Warga Blok A No. 03',
-          ownerId: '',
-          alamat: 'Blok A No. 03',
-          category: 'Kuliner',
-          products: [
-            { id: 'p1', namaProduk: 'Nasi Uduk Ayam Bakar', harga: 18000, satuan: 'porsi' },
-            { id: 'p2', namaProduk: 'Soto Betawi Spesial', harga: 22000, satuan: 'porsi' },
-            { id: 'p3', namaProduk: 'Tumpeng Mini Syukuran', harga: 30000, satuan: 'box' }
-          ],
-          sosmed: '@dapurbusiti_rt01',
-          kontak: '081288997766',
-          phone: '081288997766',
-          desc: 'Menerima pesanan sarapan pagi & katering acara warga RT. Gratis antar dalam blok.',
-          status: 'disetujui',
-          verifiedBy: 'Ketua RT 01 (Ketua RT)',
-          verifiedByRole: 'admin',
-          verifiedAt: new Date().toISOString(),
-          rtId: rtId || 'rt01',
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: `${rtId || 'rt01'}_umkm2`,
-          nama: 'Kedai Kopi & Roti Bakar Guyub',
-          name: 'Kedai Kopi & Roti Bakar Guyub',
-          bannerUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80',
-          owner: 'Warga Blok A No. 07',
-          ownerId: '',
-          alamat: 'Blok A No. 07',
-          category: 'Minuman',
-          products: [
-            { id: 'p1', namaProduk: 'Es Kopi Susu Gula Aren', harga: 15000, satuan: 'cup' },
-            { id: 'p2', namaProduk: 'Roti Bakar Coklat Keju', harga: 14000, satuan: 'porsi' },
-            { id: 'p3', namaProduk: 'pisang Bakar Lumer', harga: 12000, satuan: 'porsi' }
-          ],
-          sosmed: '@kopiguyub.rt01',
-          kontak: '081377665544',
-          phone: '081377665544',
-          desc: 'Buka setiap sore pukul 15.00 - 22.00 WIB. Bisa pesan via WA.',
-          status: 'disetujui',
-          verifiedBy: 'Bendahara RT (Bendahara)',
-          verifiedByRole: 'bendahara',
-          verifiedAt: new Date().toISOString(),
-          rtId: rtId || 'rt01',
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: `${rtId || 'rt01'}_umkm3`,
-          nama: 'Toko Sembako & Galon Berkah',
-          name: 'Toko Sembako & Galon Berkah',
-          bannerUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80',
-          owner: 'Warga Blok A No. 11',
-          ownerId: '',
-          alamat: 'Blok A No. 11',
-          category: 'Sembako',
-          products: [
-            { id: 'p1', namaProduk: 'Air Mineral Galon + Antar', harga: 20000, satuan: 'galon' },
-            { id: 'p2', namaProduk: 'Gas LPG 3 Kg', harga: 22000, satuan: 'tabung' },
-            { id: 'p3', namaProduk: 'Beras Pulen Super 5 Kg', harga: 72000, satuan: 'karung' }
-          ],
-          sosmed: '@tokoberkah_a11',
-          kontak: '081299881122',
-          phone: '081299881122',
-          desc: 'Siap antar galon, gas, dan kebutuhan sembako langsung ke rumah warga.',
-          status: 'disetujui',
-          verifiedBy: 'Pengurus RT (Pengurus)',
-          verifiedByRole: 'pengurus',
-          verifiedAt: new Date().toISOString(),
-          rtId: rtId || 'rt01',
-          createdAt: new Date().toISOString()
-        }
-      ];
-      await UmkmModel.insertMany(initialUmkm);
-    }
-
-    // Seed Blok A, C, D, E, dan F accounts
-    const blokAccounts = [
-      // Blok A (ganjil)
-      { blok: 'A', no: '01', username: 'A01', password: 'A01', nama: 'Warga Blok A No. 01' },
-      { blok: 'A', no: '03', username: 'A03', password: 'A03', nama: 'Warga Blok A No. 03' },
-      { blok: 'A', no: '05', username: 'A05', password: 'A05', nama: 'Warga Blok A No. 05' },
-      { blok: 'A', no: '07', username: 'A07', password: 'A07', nama: 'Warga Blok A No. 07' },
-      { blok: 'A', no: '09', username: 'A09', password: 'A09', nama: 'Warga Blok A No. 09' },
-      { blok: 'A', no: '11', username: 'A11', password: 'A11', nama: 'Warga Blok A No. 11' },
-      { blok: 'A', no: '11A', username: 'A11A', password: 'A11A', nama: 'Warga Blok A No. 11A' },
-      { blok: 'A', no: '15', username: 'A15', password: 'A15', nama: 'Warga Blok A No. 15' },
-      { blok: 'A', no: '17', username: 'A17', password: 'A17', nama: 'Warga Blok A No. 17' },
-      { blok: 'A', no: '19', username: 'A19', password: 'A19', nama: 'Warga Blok A No. 19' },
-      { blok: 'A', no: '21', username: 'A21', password: 'A21', nama: 'Warga Blok A No. 21' },
-      { blok: 'A', no: '23', username: 'A23', password: 'A23', nama: 'Warga Blok A No. 23' },
-      { blok: 'A', no: '25', username: 'A25', password: 'A25', nama: 'Warga Blok A No. 25' },
-      { blok: 'A', no: '27', username: 'A27', password: 'A27', nama: 'Warga Blok A No. 27' },
-      { blok: 'A', no: '29', username: 'A29', password: 'A29', nama: 'Warga Blok A No. 29' },
-
-      // Blok C (genap: C02, C04, C06, C08)
-      { blok: 'C', no: '02', username: 'C02', password: 'C02', nama: 'Warga Blok C No. 02' },
-      { blok: 'C', no: '04', username: 'C04', password: 'C04', nama: 'Warga Blok C No. 04' },
-      { blok: 'C', no: '06', username: 'C06', password: 'C06', nama: 'Warga Blok C No. 06' },
-      { blok: 'C', no: '08', username: 'C08', password: 'C08', nama: 'Warga Blok C No. 08' },
-
-      // Blok D (ganjil: 01 s/d 25 selain 03, 05, 11A, 13, 17, 21, 25)
-      { blok: 'D', no: '01', username: 'D01', password: 'D01', nama: 'Warga Blok D No. 01' },
-      { blok: 'D', no: '07', username: 'D07', password: 'D07', nama: 'Warga Blok D No. 07' },
-      { blok: 'D', no: '09', username: 'D09', password: 'D09', nama: 'Warga Blok D No. 09' },
-      { blok: 'D', no: '11', username: 'D11', password: 'D11', nama: 'Warga Blok D No. 11' },
-      { blok: 'D', no: '15', username: 'D15', password: 'D15', nama: 'Warga Blok D No. 15' },
-      { blok: 'D', no: '19', username: 'D19', password: 'D19', nama: 'Warga Blok D No. 19' },
-      { blok: 'D', no: '23', username: 'D23', password: 'D23', nama: 'Warga Blok D No. 23' },
-
-      // Blok D (genap: 02 s/d 20)
-      { blok: 'D', no: '02', username: 'D02', password: 'D02', nama: 'Warga Blok D No. 02' },
-      { blok: 'D', no: '04', username: 'D04', password: 'D04', nama: 'Warga Blok D No. 04' },
-      { blok: 'D', no: '06', username: 'D06', password: 'D06', nama: 'Warga Blok D No. 06' },
-      { blok: 'D', no: '08', username: 'D08', password: 'D08', nama: 'Warga Blok D No. 08' },
-      { blok: 'D', no: '10', username: 'D10', password: 'D10', nama: 'Warga Blok D No. 10' },
-      { blok: 'D', no: '12', username: 'D12', password: 'D12', nama: 'Warga Blok D No. 12' },
-      { blok: 'D', no: '14', username: 'D14', password: 'D14', nama: 'Warga Blok D No. 14' },
-      { blok: 'D', no: '16', username: 'D16', password: 'D16', nama: 'Warga Blok D No. 16' },
-      { blok: 'D', no: '18', username: 'D18', password: 'D18', nama: 'Warga Blok D No. 18' },
-      { blok: 'D', no: '20', username: 'D20', password: 'D20', nama: 'Warga Blok D No. 20' },
-
-      // Blok E (ganjil: 01 s/d 17 kecuali 15, dan 13 diubah menjadi 11A)
-      { blok: 'E', no: '01', username: 'E01', password: 'E01', nama: 'Warga Blok E No. 01' },
-      { blok: 'E', no: '03', username: 'E03', password: 'E03', nama: 'Warga Blok E No. 03' },
-      { blok: 'E', no: '05', username: 'E05', password: 'E05', nama: 'Warga Blok E No. 05' },
-      { blok: 'E', no: '07', username: 'E07', password: 'E07', nama: 'Warga Blok E No. 07' },
-      { blok: 'E', no: '09', username: 'E09', password: 'E09', nama: 'Warga Blok E No. 09' },
-      { blok: 'E', no: '11', username: 'E11', password: 'E11', nama: 'Warga Blok E No. 11' },
-      { blok: 'E', no: '11A', username: 'E11A', password: 'E11A', nama: 'Warga Blok E No. 11A' },
-      { blok: 'E', no: '17', username: 'E17', password: 'E17', nama: 'Warga Blok E No. 17' },
-
-      // Blok F (genap: 02 s/d 26 selain 08, 16, dan 22)
-      { blok: 'F', no: '02', username: 'F02', password: 'F02', nama: 'Warga Blok F No. 02' },
-      { blok: 'F', no: '04', username: 'F04', password: 'F04', nama: 'Warga Blok F No. 04' },
-      { blok: 'F', no: '06', username: 'F06', password: 'F06', nama: 'Warga Blok F No. 06' },
-      { blok: 'F', no: '10', username: 'F10', password: 'F10', nama: 'Warga Blok F No. 10' },
-      { blok: 'F', no: '12', username: 'F12', password: 'F12', nama: 'Warga Blok F No. 12' },
-      { blok: 'F', no: '14', username: 'F14', password: 'F14', nama: 'Warga Blok F No. 14' },
-      { blok: 'F', no: '18', username: 'F18', password: 'F18', nama: 'Warga Blok F No. 18' },
-      { blok: 'F', no: '20', username: 'F20', password: 'F20', nama: 'Warga Blok F No. 20' },
-      { blok: 'F', no: '24', username: 'F24', password: 'F24', nama: 'Warga Blok F No. 24' },
-      { blok: 'F', no: '26', username: 'F26', password: 'F26', nama: 'Warga Blok F No. 26' }
-    ];
-
     const targetRtId = rtId || 'rt01';
-    const existingUsernames = new Set(list.map((u: any) => String(u.username || '').toLowerCase()));
-    const existingAlamats = new Set(list.map((u: any) => String(u.alamat || '').toLowerCase()));
-    const toInsertUsers: any[] = [];
 
-    for (const acc of blokAccounts) {
-      const alamat = `Blok ${acc.blok} No. ${acc.no}`;
-      if (
-        !existingUsernames.has(acc.username.toLowerCase()) &&
-        !existingAlamats.has(alamat.toLowerCase())
-      ) {
-        toInsertUsers.push({
-          id: `${Date.now()}_${acc.username}_${targetRtId}`,
-          username: acc.username,
-          nama: acc.nama,
-          password: hashPassword(acc.password),
-          alamat: alamat,
-          noHp: `0812${Math.floor(10000000 + Math.random() * 90000000)}`,
-          status: 'Warga Tetap',
-          role: 'warga',
-          isApproved: true,
-          isVip: false,
-          rtId: targetRtId,
-          umur: 30,
-          jenisKelamin: 'Laki-laki',
-          members: []
-        });
+    // Strict Data Separation: Blok A, C, D, E, dan F adalah wilayah khusus RT 01
+    // Bersihkan akun warga atau UMKM Blok A, C, D, E, F yang ada di RT selain RT 01
+    await UserModel.deleteMany({
+      rtId: { $ne: 'rt01' },
+      role: 'warga',
+      $or: [
+        { alamat: { $regex: /Blok\s*[ACDEF]\b/i } },
+        { username: { $regex: /^[ACDEF]\d/i } }
+      ]
+    });
+    await UmkmModel.deleteMany({
+      rtId: { $ne: 'rt01' },
+      $or: [
+        { alamat: { $regex: /Blok\s*[ACDEF]\b/i } },
+        { owner: { $regex: /Blok\s*[ACDEF]\b/i } }
+      ]
+    });
+
+    // Seed initial verified UMKM Warga ONLY for RT 01 (karena UMKM ini berada di Blok A yang merupakan RT 01)
+    if (targetRtId === 'rt01') {
+      const umkmCount = await UmkmModel.countDocuments({ rtId: 'rt01' });
+      if (umkmCount === 0) {
+        const initialUmkm = [
+          {
+            id: 'rt01_umkm1',
+            nama: 'Dapur Nusantara Bu Siti',
+            name: 'Dapur Nusantara Bu Siti',
+            bannerUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80',
+            owner: 'Warga Blok A No. 03',
+            ownerId: '',
+            alamat: 'Blok A No. 03',
+            category: 'Kuliner',
+            products: [
+              { id: 'p1', namaProduk: 'Nasi Uduk Ayam Bakar', harga: 18000, satuan: 'porsi' },
+              { id: 'p2', namaProduk: 'Soto Betawi Spesial', harga: 22000, satuan: 'porsi' },
+              { id: 'p3', namaProduk: 'Tumpeng Mini Syukuran', harga: 30000, satuan: 'box' }
+            ],
+            sosmed: '@dapurbusiti_rt01',
+            kontak: '081288997766',
+            phone: '081288997766',
+            desc: 'Menerima pesanan sarapan pagi & katering acara warga RT. Gratis antar dalam blok.',
+            status: 'disetujui',
+            verifiedBy: 'Ketua RT 01 (Ketua RT)',
+            verifiedByRole: 'admin',
+            verifiedAt: new Date().toISOString(),
+            rtId: 'rt01',
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 'rt01_umkm2',
+            nama: 'Kedai Kopi & Roti Bakar Guyub',
+            name: 'Kedai Kopi & Roti Bakar Guyub',
+            bannerUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80',
+            owner: 'Warga Blok A No. 07',
+            ownerId: '',
+            alamat: 'Blok A No. 07',
+            category: 'Minuman',
+            products: [
+              { id: 'p1', namaProduk: 'Es Kopi Susu Gula Aren', harga: 15000, satuan: 'cup' },
+              { id: 'p2', namaProduk: 'Roti Bakar Coklat Keju', harga: 14000, satuan: 'porsi' },
+              { id: 'p3', namaProduk: 'pisang Bakar Lumer', harga: 12000, satuan: 'porsi' }
+            ],
+            sosmed: '@kopiguyub.rt01',
+            kontak: '081377665544',
+            phone: '081377665544',
+            desc: 'Buka setiap sore pukul 15.00 - 22.00 WIB. Bisa pesan via WA.',
+            status: 'disetujui',
+            verifiedBy: 'Bendahara RT (Bendahara)',
+            verifiedByRole: 'bendahara',
+            verifiedAt: new Date().toISOString(),
+            rtId: 'rt01',
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 'rt01_umkm3',
+            nama: 'Toko Sembako & Galon Berkah',
+            name: 'Toko Sembako & Galon Berkah',
+            bannerUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80',
+            owner: 'Warga Blok A No. 11',
+            ownerId: '',
+            alamat: 'Blok A No. 11',
+            category: 'Sembako',
+            products: [
+              { id: 'p1', namaProduk: 'Air Mineral Galon + Antar', harga: 20000, satuan: 'galon' },
+              { id: 'p2', namaProduk: 'Gas LPG 3 Kg', harga: 22000, satuan: 'tabung' },
+              { id: 'p3', namaProduk: 'Beras Pulen Super 5 Kg', harga: 72000, satuan: 'karung' }
+            ],
+            sosmed: '@tokoberkah_a11',
+            kontak: '081299881122',
+            phone: '081299881122',
+            desc: 'Siap antar galon, gas, dan kebutuhan sembako langsung ke rumah warga.',
+            status: 'disetujui',
+            verifiedBy: 'Pengurus RT (Pengurus)',
+            verifiedByRole: 'pengurus',
+            verifiedAt: new Date().toISOString(),
+            rtId: 'rt01',
+            createdAt: new Date().toISOString()
+          }
+        ];
+        await UmkmModel.insertMany(initialUmkm);
       }
     }
 
-    if (toInsertUsers.length > 0) {
-      await UserModel.insertMany(toInsertUsers, { ordered: false }).catch(() => {});
+    // Seed Blok A, C, D, E, dan F accounts ONLY for RT 01
+    if (targetRtId === 'rt01') {
+      const blokAccounts = [
+        // Blok A (ganjil)
+        { blok: 'A', no: '01', username: 'A01', password: 'A01', nama: 'Warga Blok A No. 01' },
+        { blok: 'A', no: '03', username: 'A03', password: 'A03', nama: 'Warga Blok A No. 03' },
+        { blok: 'A', no: '05', username: 'A05', password: 'A05', nama: 'Warga Blok A No. 05' },
+        { blok: 'A', no: '07', username: 'A07', password: 'A07', nama: 'Warga Blok A No. 07' },
+        { blok: 'A', no: '09', username: 'A09', password: 'A09', nama: 'Warga Blok A No. 09' },
+        { blok: 'A', no: '11', username: 'A11', password: 'A11', nama: 'Warga Blok A No. 11' },
+        { blok: 'A', no: '11A', username: 'A11A', password: 'A11A', nama: 'Warga Blok A No. 11A' },
+        { blok: 'A', no: '15', username: 'A15', password: 'A15', nama: 'Warga Blok A No. 15' },
+        { blok: 'A', no: '17', username: 'A17', password: 'A17', nama: 'Warga Blok A No. 17' },
+        { blok: 'A', no: '19', username: 'A19', password: 'A19', nama: 'Warga Blok A No. 19' },
+        { blok: 'A', no: '21', username: 'A21', password: 'A21', nama: 'Warga Blok A No. 21' },
+        { blok: 'A', no: '23', username: 'A23', password: 'A23', nama: 'Warga Blok A No. 23' },
+        { blok: 'A', no: '25', username: 'A25', password: 'A25', nama: 'Warga Blok A No. 25' },
+        { blok: 'A', no: '27', username: 'A27', password: 'A27', nama: 'Warga Blok A No. 27' },
+        { blok: 'A', no: '29', username: 'A29', password: 'A29', nama: 'Warga Blok A No. 29' },
+
+        // Blok C (genap: C02, C04, C06, C08)
+        { blok: 'C', no: '02', username: 'C02', password: 'C02', nama: 'Warga Blok C No. 02' },
+        { blok: 'C', no: '04', username: 'C04', password: 'C04', nama: 'Warga Blok C No. 04' },
+        { blok: 'C', no: '06', username: 'C06', password: 'C06', nama: 'Warga Blok C No. 06' },
+        { blok: 'C', no: '08', username: 'C08', password: 'C08', nama: 'Warga Blok C No. 08' },
+
+        // Blok D (ganjil: 01 s/d 25 selain 03, 05, 11A, 13, 17, 21, 25)
+        { blok: 'D', no: '01', username: 'D01', password: 'D01', nama: 'Warga Blok D No. 01' },
+        { blok: 'D', no: '07', username: 'D07', password: 'D07', nama: 'Warga Blok D No. 07' },
+        { blok: 'D', no: '09', username: 'D09', password: 'D09', nama: 'Warga Blok D No. 09' },
+        { blok: 'D', no: '11', username: 'D11', password: 'D11', nama: 'Warga Blok D No. 11' },
+        { blok: 'D', no: '15', username: 'D15', password: 'D15', nama: 'Warga Blok D No. 15' },
+        { blok: 'D', no: '19', username: 'D19', password: 'D19', nama: 'Warga Blok D No. 19' },
+        { blok: 'D', no: '23', username: 'D23', password: 'D23', nama: 'Warga Blok D No. 23' },
+
+        // Blok D (genap: 02 s/d 20)
+        { blok: 'D', no: '02', username: 'D02', password: 'D02', nama: 'Warga Blok D No. 02' },
+        { blok: 'D', no: '04', username: 'D04', password: 'D04', nama: 'Warga Blok D No. 04' },
+        { blok: 'D', no: '06', username: 'D06', password: 'D06', nama: 'Warga Blok D No. 06' },
+        { blok: 'D', no: '08', username: 'D08', password: 'D08', nama: 'Warga Blok D No. 08' },
+        { blok: 'D', no: '10', username: 'D10', password: 'D10', nama: 'Warga Blok D No. 10' },
+        { blok: 'D', no: '12', username: 'D12', password: 'D12', nama: 'Warga Blok D No. 12' },
+        { blok: 'D', no: '14', username: 'D14', password: 'D14', nama: 'Warga Blok D No. 14' },
+        { blok: 'D', no: '16', username: 'D16', password: 'D16', nama: 'Warga Blok D No. 16' },
+        { blok: 'D', no: '18', username: 'D18', password: 'D18', nama: 'Warga Blok D No. 18' },
+        { blok: 'D', no: '20', username: 'D20', password: 'D20', nama: 'Warga Blok D No. 20' },
+
+        // Blok E (ganjil: 01 s/d 17 kecuali 15, dan 13 diubah menjadi 11A)
+        { blok: 'E', no: '01', username: 'E01', password: 'E01', nama: 'Warga Blok E No. 01' },
+        { blok: 'E', no: '03', username: 'E03', password: 'E03', nama: 'Warga Blok E No. 03' },
+        { blok: 'E', no: '05', username: 'E05', password: 'E05', nama: 'Warga Blok E No. 05' },
+        { blok: 'E', no: '07', username: 'E07', password: 'E07', nama: 'Warga Blok E No. 07' },
+        { blok: 'E', no: '09', username: 'E09', password: 'E09', nama: 'Warga Blok E No. 09' },
+        { blok: 'E', no: '11', username: 'E11', password: 'E11', nama: 'Warga Blok E No. 11' },
+        { blok: 'E', no: '11A', username: 'E11A', password: 'E11A', nama: 'Warga Blok E No. 11A' },
+        { blok: 'E', no: '17', username: 'E17', password: 'E17', nama: 'Warga Blok E No. 17' },
+
+        // Blok F (genap: 02 s/d 26 selain 08, 16, dan 22)
+        { blok: 'F', no: '02', username: 'F02', password: 'F02', nama: 'Warga Blok F No. 02' },
+        { blok: 'F', no: '04', username: 'F04', password: 'F04', nama: 'Warga Blok F No. 04' },
+        { blok: 'F', no: '06', username: 'F06', password: 'F06', nama: 'Warga Blok F No. 06' },
+        { blok: 'F', no: '10', username: 'F10', password: 'F10', nama: 'Warga Blok F No. 10' },
+        { blok: 'F', no: '12', username: 'F12', password: 'F12', nama: 'Warga Blok F No. 12' },
+        { blok: 'F', no: '14', username: 'F14', password: 'F14', nama: 'Warga Blok F No. 14' },
+        { blok: 'F', no: '18', username: 'F18', password: 'F18', nama: 'Warga Blok F No. 18' },
+        { blok: 'F', no: '20', username: 'F20', password: 'F20', nama: 'Warga Blok F No. 20' },
+        { blok: 'F', no: '24', username: 'F24', password: 'F24', nama: 'Warga Blok F No. 24' },
+        { blok: 'F', no: '26', username: 'F26', password: 'F26', nama: 'Warga Blok F No. 26' }
+      ];
+
+      const existingUsernames = new Set(list.map((u: any) => String(u.username || '').toLowerCase()));
+      const existingAlamats = new Set(list.map((u: any) => String(u.alamat || '').toLowerCase()));
+      const toInsertUsers: any[] = [];
+
+      for (const acc of blokAccounts) {
+        const alamat = `Blok ${acc.blok} No. ${acc.no}`;
+        if (
+          !existingUsernames.has(acc.username.toLowerCase()) &&
+          !existingAlamats.has(alamat.toLowerCase())
+        ) {
+          toInsertUsers.push({
+            id: `${Date.now()}_${acc.username}_${targetRtId}`,
+            username: acc.username,
+            nama: acc.nama,
+            password: hashPassword(acc.password),
+            alamat: alamat,
+            noHp: `0812${Math.floor(10000000 + Math.random() * 90000000)}`,
+            status: 'Warga Tetap',
+            role: 'warga',
+            isApproved: true,
+            isVip: false,
+            rtId: targetRtId,
+            umur: 30,
+            jenisKelamin: 'Laki-laki',
+            members: []
+          });
+        }
+      }
+
+      if (toInsertUsers.length > 0) {
+        await UserModel.insertMany(toInsertUsers, { ordered: false }).catch(() => {});
+      }
     }
 
-    // Seed sample Kartu Keluarga (KK) documents if no KK uploaded yet in this RT
-    const kkCount = await UserModel.countDocuments({ rtId: rtId || 'rt01', dokumenKk: { $exists: true, $nin: ['', null] } });
-    if (kkCount === 0) {
+    // Seed sample Kartu Keluarga (KK) documents ONLY for RT 01
+    if (targetRtId === 'rt01') {
+      const kkCount = await UserModel.countDocuments({ rtId: 'rt01', dokumenKk: { $exists: true, $nin: ['', null] } });
+      if (kkCount === 0) {
       const makeSampleKkSvg = (noKk: string, kepala: string, alamatKk: string, rows: { nama: string; nik: string; jk: string; tglLahir: string; hubungan: string; usia: string }[]) => {
         const rowsSvg = rows.map((r, idx) => `
           <rect x="30" y="${230 + idx * 42}" width="740" height="38" fill="${idx % 2 === 0 ? '#f8fafc' : '#ffffff'}" stroke="#cbd5e1" stroke-width="1"/>
@@ -1195,6 +1190,7 @@ async function initDb(rtId: string = '') {
         }
       }
     }
+  }
 
   } catch (e: any) {
     console.error("DB Initialization Error:", e);
@@ -1532,10 +1528,25 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
     resolvedNoKk = (await extractNoKkViaOcrAsync(String(dokumenKk), username, nama)) || '';
   }
 
-  // VALIDASI KETAT: Cek apakah Blok dan Nomor Rumah sudah pernah terdaftar di RT ini
+  // VALIDASI KETAT: Cek apakah Blok dan Nomor Rumah sesuai dengan wilayah RT
   if (alamat) {
     const parsedTarget = parseBlokAndNo(alamat);
     if (parsedTarget) {
+      const rt01Blocks = ['A', 'C', 'D', 'E', 'F'];
+      const targetRtNorm = (rtId || 'rt01').toLowerCase();
+
+      if (targetRtNorm === 'rt01' && !rt01Blocks.includes(parsedTarget.blok)) {
+        return res.status(400).json({
+          error: `Blok ${parsedTarget.blok} bukan merupakan wilayah RT 01. Wilayah RT 01 terdiri dari Blok A, Blok C, Blok D, Blok E, dan Blok F.`
+        });
+      }
+
+      if (targetRtNorm !== 'rt01' && rt01Blocks.includes(parsedTarget.blok)) {
+        return res.status(400).json({
+          error: `Blok ${parsedTarget.blok} merupakan wilayah RT 01 dan tidak dapat didaftarkan pada ${targetRtNorm.toUpperCase()}. Silakan pilih RT 01.`
+        });
+      }
+
       const allUsers = await UserModel.find({ rtId, role: { $ne: 'developer' } }).lean();
       const duplicate = allUsers.find((u: any) => {
         const parsedAlamat = parseBlokAndNo(u.alamat || '');
@@ -1924,6 +1935,9 @@ app.get("/api/warga-dokumen-kk", enforceRoles(['admin', 'sekretaris']), async (r
     const formatted = users.map((u: any) => {
       const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
       const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
+      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
+        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
+      }
       return {
         ...u,
         noKk: resolvedNoKk || u.noKk || '',
@@ -2651,6 +2665,7 @@ app.get("/api/warga/:id", async (req, res) => {
         const resolvedNoKk = extractNoKkFromDocument(String(user.dokumenKk), user.username, user.nama);
         if (resolvedNoKk) {
           user.noKk = resolvedNoKk;
+          UserModel.updateOne({ _id: user._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
         }
       }
       res.json({ user });
@@ -2663,126 +2678,98 @@ app.get("/api/warga/:id", async (req, res) => {
   }
 });
 
-app.get("/api/warga/summary", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  try {
-    await connectDB();
-    const users = await UserModel.aggregate([
-      { $match: { rtId, role: { $ne: 'developer' } } },
-      {
-        $project: {
-          id: 1,
-          nama: 1,
-          username: 1,
-          role: 1,
-          status: 1,
-          alamat: 1,
-          noHp: 1,
-          umur: 1,
-          tglLahir: 1,
-          jenisKelamin: 1,
-          isApproved: 1,
-          photo: 1,
-          rtId: 1,
-          noKk: 1,
-          membersCount: { $size: { $ifNull: ["$members", []] } },
-          hasKk: { $cond: [{ $and: [{ $ne: ["$dokumenKk", null] }, { $ne: ["$dokumenKk", ""] }] }, true, false] },
-          hasKtp: { $cond: [{ $and: [{ $ne: ["$dokumenKtp", null] }, { $ne: ["$dokumenKtp", ""] }] }, true, false] }
-        }
-      },
-      { $sort: { nama: 1 } }
-    ]);
-    res.json({ users });
-  } catch (e) {
-    console.error("Gagal mengambil summary warga:", e);
-    res.status(500).json({ error: "Failed to fetch warga summary" });
-  }
-});
-
-app.get("/api/warga/:id/documents", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  try {
-    await connectDB();
-    const user = await UserModel.findOne({ id: req.params.id, rtId }).select('id nama noKk dokumenKk dokumenKtp').lean();
-    if (!user) return res.status(404).json({ error: "Warga tidak ditemukan" });
-    res.json({
-      id: user.id,
-      nama: user.nama,
-      noKk: user.noKk || '',
-      dokumenKk: user.dokumenKk || '',
-      dokumenKtp: user.dokumenKtp || ''
-    });
-  } catch (e) {
-    console.error("Gagal mengambil dokumen warga:", e);
-    res.status(500).json({ error: "Failed to fetch citizen documents" });
-  }
-});
-
 app.get("/api/warga", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  const page = Math.max(parseInt(req.query.page as string) || 1, 1);
-  const isAll = req.query.all === 'true' || req.query.limit === '0';
-  const limit = isAll ? 500 : Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 50);
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 0;
   const search = req.query.search as string;
 
   const query: any = { rtId };
-  if (search && search.trim() !== '') {
-    const searchRegex = { $regex: search.trim(), $options: 'i' };
+  if (search) {
     query.$or = [
-      { nama: searchRegex },
-      { username: searchRegex },
-      { alamat: searchRegex },
-      { noKk: searchRegex },
-      { 'members.name': searchRegex }
+      { nama: { $regex: search, $options: 'i' } },
+      { username: { $regex: search, $options: 'i' } },
+      { alamat: { $regex: search, $options: 'i' } },
+      { noKk: { $regex: search, $options: 'i' } },
+      { 'members.name': { $regex: search, $options: 'i' } }
     ];
   }
 
-  try {
-    await connectDB();
-    const total = await UserModel.countDocuments(query);
+  let dbQuery = UserModel.find(query);
+  let sortedUsers: any[] = [];
+  let total = 0;
+
+  if (limit > 0) {
+    total = await UserModel.countDocuments(query);
     const skip = (page - 1) * limit;
-
-    const pipeline: any[] = [
-      { $match: query },
-      {
-        $addFields: {
-          hasKk: { $cond: [{ $and: [{ $ne: ["$dokumenKk", null] }, { $ne: ["$dokumenKk", ""] }] }, true, false] },
-          hasKtp: { $cond: [{ $and: [{ $ne: ["$dokumenKtp", null] }, { $ne: ["$dokumenKtp", ""] }] }, true, false] }
-        }
-      },
-      {
-        $project: {
-          dokumenKk: 0,
-          dokumenKtp: 0,
-          password: 0
-        }
-      },
-      { $sort: { createdAt: -1 } },
-      { $skip: skip },
-      { $limit: limit }
-    ];
-
-    const users = await UserModel.aggregate(pipeline);
-    const sortedUsers = users.map((u: any) => ({
-      ...u,
-      noKk: u.noKk || '',
-      isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000
-    }));
-
-    const pages = Math.max(1, Math.ceil(total / limit));
+    const users = await dbQuery.skip(skip).limit(limit).lean();
+    sortedUsers = users.map((u: any) => {
+      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
+      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
+        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
+      }
+      return {
+        ...u,
+        noKk: resolvedNoKk || u.noKk || '',
+        hasKk,
+        isOnline: activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000
+      };
+    });
     res.json({
       users: sortedUsers,
       pagination: {
         total,
         page,
         limit,
-        pages,
-        hasNextPage: page < pages
+        pages: Math.ceil(total / limit)
       }
     });
-  } catch (error) {
-    console.error("Gagal mengambil data warga:", error);
-    res.status(500).json({ error: "Failed to fetch citizens" });
+  } else {
+    const isSummary = req.query.summary === '1';
+    const requesterId = (req.headers['x-user-id'] as string) || '';
+    const requesterRole = (req.headers['x-user-role'] as string) || '';
+    const isRequesterAdmin = ['admin', 'developer', 'sekretaris'].includes(requesterRole);
+
+    const users = await dbQuery.lean();
+    sortedUsers = users.map((u: any) => {
+      const isOnline = activeSessions.has(u.id) && Date.now() - activeSessions.get(u.id)! < 15000;
+      const isOwn = Boolean(requesterId && String(u.id) === String(requesterId));
+      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const resolvedNoKk = u.noKk || (hasKk ? extractNoKkFromDocument(String(u.dokumenKk), u.username, u.nama) : '');
+      if (hasKk && !u.noKk && resolvedNoKk && u._id) {
+        UserModel.updateOne({ _id: u._id }, { $set: { noKk: resolvedNoKk } }).catch(() => {});
+      }
+      if (isSummary && !isRequesterAdmin && !isOwn) {
+        return {
+          id: u.id,
+          username: u.username,
+          nama: u.nama,
+          alamat: u.alamat,
+          noHp: u.noHp,
+          status: u.status,
+          role: u.role,
+          photo: u.photo,
+          noKk: resolvedNoKk || u.noKk || '',
+          umur: u.umur,
+          tglLahir: u.tglLahir,
+          jenisKelamin: u.jenisKelamin,
+          members: u.members || [],
+          hasKk,
+          hasKtp: Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp),
+          isApproved: u.isApproved,
+          rtId: u.rtId,
+          isOnline
+        };
+      }
+      return {
+        ...u,
+        noKk: resolvedNoKk || u.noKk || '',
+        hasKk,
+        isOnline
+      };
+    });
+    res.json({ users: sortedUsers });
   }
 });
 
@@ -3135,26 +3122,6 @@ app.post("/api/iuran/remind", enforceRoles(['admin', 'pengurus', 'sekretaris', '
 });
 
 // --- COMPATIBLE APP_DATA / MULTI-MODULE ENDPOINTS ---
-app.get("/api/data/dokumen/:id/file", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  try {
-    await connectDB();
-    const doc = await DokumenModel.findOne({ id: req.params.id, rtId }).lean();
-    if (!doc) return res.status(404).json({ error: "Dokumen tidak ditemukan" });
-    res.json({
-      id: doc.id,
-      title: doc.title,
-      fileUrl: doc.fileUrl,
-      fileName: doc.fileName,
-      fileType: doc.fileType,
-      description: doc.description
-    });
-  } catch (e) {
-    console.error("Gagal mengambil file dokumen:", e);
-    res.status(500).json({ error: "Failed to fetch document file" });
-  }
-});
-
 app.get("/api/data/:resource", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   const resource = req.params.resource;
@@ -3178,9 +3145,8 @@ app.get("/api/data/:resource", async (req, res) => {
   const model = map[resource];
   if (!model) return res.status(404).json({ error: "Resource not found" });
 
-  const page = Math.max(parseInt(req.query.page as string) || 1, 1);
-  const isExport = req.query.export === 'true' || req.query.all === 'true';
-  const limit = isExport ? 1000 : Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 0;
   const search = req.query.search as string;
 
   let sortField = "createdAt";
@@ -3199,8 +3165,8 @@ app.get("/api/data/:resource", async (req, res) => {
     query.type = req.query.type;
   }
 
-  if (search && search.trim() !== '') {
-    const searchRegex = { $regex: search.trim(), $options: 'i' };
+  if (search) {
+    const searchRegex = { $regex: search, $options: 'i' };
     if (resource === 'kas' || resource === 'iuran') {
       query.$or = [
         { name: searchRegex },
@@ -3211,29 +3177,10 @@ app.get("/api/data/:resource", async (req, res) => {
         { title: searchRegex },
         { description: searchRegex }
       ];
-    } else if (resource === 'dokumen' || resource === 'inventaris' || resource === 'notulen') {
-      query.$or = [
-        { title: searchRegex },
-        { name: searchRegex },
-        { description: searchRegex }
-      ];
     }
   }
 
   let dbQuery = model.find(query);
-
-  // Exclude heavy binary / base64 payloads from list queries to keep responses ultra fast & lightweight
-  if (!isExport) {
-    if (resource === 'dokumen') {
-      dbQuery = dbQuery.select('-fileUrl');
-    } else if (resource === 'kas') {
-      dbQuery = dbQuery.select('-buktiTransaksi');
-    } else if (resource === 'iuran') {
-      dbQuery = dbQuery.select('-proofUrl -buktiUrl');
-    } else if (resource === 'surat') {
-      dbQuery = dbQuery.select('-signaturePemohon -signatureKetuaRt');
-    }
-  }
 
   let balances: any = undefined;
   if (resource === 'kas') {
@@ -3279,22 +3226,24 @@ app.get("/api/data/:resource", async (req, res) => {
     }
   }
 
-  const total = await model.countDocuments(query);
-  const skip = (page - 1) * limit;
-  const results = await dbQuery.sort({ [sortField]: -1 }).skip(skip).limit(limit).lean();
-  const pages = Math.max(1, Math.ceil(total / limit));
-
-  res.json({
-    data: results,
-    pagination: {
-      total,
-      page,
-      limit,
-      pages,
-      hasNextPage: page < pages
-    },
-    balances
-  });
+  if (limit > 0) {
+    const total = await model.countDocuments(query);
+    const skip = (page - 1) * limit;
+    const results = await dbQuery.sort({ [sortField]: -1 }).skip(skip).limit(limit).lean();
+    res.json({
+      data: results,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      },
+      balances
+    });
+  } else {
+    const results = await dbQuery.sort({ [sortField]: -1 }).lean();
+    res.json({ data: results, balances });
+  }
 });
 
 // POINT 6: VALIDATE CREATION VIA ZOD AND AUDIT TRAIL LOGGING
@@ -4260,276 +4209,195 @@ app.post("/api/gemini/action", async (req, res) => {
 });
 
 
-// --- HIGH-PERFORMANCE DASHBOARD SUMMARY & AGGREGATIONS ---
-async function getDashboardSummaryData(rtId: string) {
-  await connectDB();
-
-  const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-
-  // Run all targeted count & aggregation queries concurrently
-  const [
-    jumlahKK,
-    docUploaded,
-    kasAgg,
-    iuranMonthAgg,
-    usersDemo,
-    pengaduanAktif,
-    pengaduanAktifCount,
-    agendaUpcoming,
-    latestMedia,
-    pengurusRaw,
-    kasMonthlyAgg
-  ] = await Promise.all([
-    UserModel.countDocuments({ rtId, role: { $ne: 'developer' } }),
-    UserModel.countDocuments({
-      rtId,
-      role: { $ne: 'developer' },
-      $or: [{ dokumenKk: { $nin: [null, ''] } }, { dokumenKtp: { $nin: [null, ''] } }]
-    }),
-    KasModel.aggregate([
-      { $match: { rtId } },
-      { $group: { _id: { category: "$category", type: "$type" }, totalAmount: { $sum: "$amount" } } }
-    ]),
-    IuranModel.aggregate([
-      { $match: { rtId, bulan: currentMonth } },
-      { $group: { _id: "$status", count: { $sum: 1 }, totalNominal: { $sum: "$nominal" } } }
-    ]),
-    UserModel.find({ rtId, role: { $ne: 'developer' } })
-      .select('umur tglLahir jenisKelamin members.age members.tglLahir members.jenisKelamin')
-      .lean(),
-    LaporanModel.find({ rtId, status: { $in: ['baru', 'menunggu', 'diproses', 'proses'] } })
-      .select('id judul deskripsi status nama userName kategori createdAt')
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean(),
-    LaporanModel.countDocuments({ rtId, status: { $in: ['baru', 'menunggu', 'diproses', 'proses'] } }),
-    AcaraModel.find({ rtId })
-      .select('id title desc date time location rtId createdAt')
-      .sort({ date: 1 })
-      .limit(5)
-      .lean(),
-    MediaModel.find({ rtId })
-      .select('id imageUrl title uploaderName rtId createdAt')
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean(),
-    UserModel.find({ rtId, role: { $in: ['admin', 'sekretaris', 'bendahara', 'pengurus'] } })
-      .select('id nama role alamat noHp photo')
-      .lean(),
-    KasModel.aggregate([
-      { $match: { rtId, type: 'Masuk' } },
-      {
-        $group: {
-          _id: { $substr: ["$createdAt", 0, 7] },
-          total: { $sum: "$amount" }
-        }
-      },
-      { $sort: { _id: 1 } },
-      { $limit: 6 }
-    ])
-  ]);
-
-  // 1. Calculate Kas Balances
-  let kasRT = 0, danaKematian = 0, danaSosial = 0;
-  kasAgg.forEach((item: any) => {
-    const cat = item._id.category || 'Kas RT';
-    const type = item._id.type;
-    const amount = Number(item.totalAmount) || 0;
-    const net = type === 'Masuk' ? amount : -amount;
-    if (cat === 'Kas RT') kasRT += net;
-    else if (cat === 'Dana Kematian') danaKematian += net;
-    else if (cat === 'Dana Sosial') danaSosial += net;
-  });
-  const saldoKas = kasRT + danaKematian + danaSosial;
-
-  // 2. Calculate Iuran Stats
-  let totalIuranCount = 0;
-  let lunasCount = 0;
-  let totalAmount = 0;
-  iuranMonthAgg.forEach((item: any) => {
-    const count = Number(item.count) || 0;
-    const nominal = Number(item.totalNominal) || 0;
-    totalIuranCount += count;
-    totalAmount += nominal;
-    if (item._id === 'verifikasi' || item._id === 'lunas') {
-      lunasCount += count;
-    }
-  });
-
-  // Fallback to all-time iuran if current month has no records yet
-  if (totalIuranCount === 0) {
-    const allIuranAgg = await IuranModel.aggregate([
-      { $match: { rtId } },
-      { $group: { _id: "$status", count: { $sum: 1 }, totalNominal: { $sum: "$nominal" } } }
-    ]);
-    allIuranAgg.forEach((item: any) => {
-      const count = Number(item.count) || 0;
-      const nominal = Number(item.totalNominal) || 0;
-      totalIuranCount += count;
-      totalAmount += nominal;
-      if (item._id === 'verifikasi' || item._id === 'lunas') {
-        lunasCount += count;
-      }
-    });
-  }
-  const lunasPct = totalIuranCount > 0 ? Math.round((lunasCount / totalIuranCount) * 100) : 0;
-
-  // 3. Demographics calculation without loading heavy documents/photos
-  const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
-    if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
-      const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
-      if (!isNaN(diff) && diff > 0) {
-        return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
-      }
-    }
-    const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
-    return isNaN(parsed) ? -1 : parsed;
-  };
-
-  let balitaCount = 0, anakCount = 0, remajaCount = 0, dewasaCount = 0, lansiaCount = 0;
-  let lakiLakiCount = 0, perempuanCount = 0;
-
-  const categorizeAge = (age: number) => {
-    if (age < 0) return;
-    if (age <= 4) balitaCount++;
-    else if (age <= 12) anakCount++;
-    else if (age <= 20) remajaCount++;
-    else if (age <= 70) dewasaCount++;
-    else lansiaCount++;
-  };
-
-  const countGender = (g?: string) => {
-    const norm = String(g || '').trim().toLowerCase();
-    if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
-      perempuanCount++;
-    } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
-      lakiLakiCount++;
-    }
-  };
-
-  let totalWarga = jumlahKK;
-  usersDemo.forEach((u: any) => {
-    totalWarga += (u.members?.length || 0);
-    categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
-    countGender(u.jenisKelamin);
-
-    if (Array.isArray(u.members)) {
-      u.members.forEach((m: any) => {
-        categorizeAge(resolvePersonAge(m.age, m.tglLahir));
-        countGender(m.jenisKelamin);
-      });
-    }
-  });
-
-  const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
-  const demographics = {
-    balita: balitaCount,
-    anak: anakCount,
-    remaja: remajaCount,
-    dewasa: dewasaCount,
-    lansia: lansiaCount,
-    lakiLaki: lakiLakiCount,
-    perempuan: perempuanCount,
-    totalWithAge,
-    groups: [
-      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
-      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
-      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
-      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316' },
-      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
-    ]
-  };
-
-  // 4. Formatted Pengurus List
-  const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
-  const sortedPengurus = pengurusRaw.sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
-
-  let sekIdx = 0, benIdx = 0, pengIdx = 0;
-  const pengurusList = sortedPengurus.map((u: any) => {
-    let jabatan = 'Pengurus RT';
-    if (u.role === 'admin') {
-      jabatan = 'Ketua RT 01 / RW 21';
-    } else if (u.role === 'sekretaris') {
-      sekIdx++;
-      jabatan = sortedPengurus.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : 'Sekretaris RT';
-    } else if (u.role === 'bendahara') {
-      benIdx++;
-      jabatan = sortedPengurus.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : 'Bendahara RT';
-    } else if (u.role === 'pengurus') {
-      pengIdx++;
-      jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
-    }
-    return {
-      id: u.id,
-      nama: u.nama,
-      role: u.role,
-      jabatan,
-      alamat: u.alamat || 'Lingkungan RT 01',
-      noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
-      photo: u.photo || ''
-    };
-  });
-
-  const kasChart = kasMonthlyAgg.map((item: any) => ({
-    bulan: item._id,
-    value: Number(item.total) || 0
-  }));
-
-  const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
-
-  return {
-    metrics: {
-      jumlahKK,
-      jumlahWarga: totalWarga,
-      docUploaded,
-      docNotUploaded,
-      demographics,
-      saldoKas,
-      kasDetail: { kasRT, danaKematian, danaSosial },
-      iuranBulanIni: { totalIuranCount, lunasCount, totalAmount, lunasPct },
-      pengaduanAktifCount,
-      pengaduanAktif,
-      agendaUpcoming,
-      wargaList: []
-    },
-    pengurusList,
-    agendaUpcoming,
-    latestMedia,
-    kasChart
-  };
-}
-
-app.get("/api/dashboard/summary", async (req, res) => {
-  const rtId = req.headers['x-rt-id'] as string || 'rt01';
-  try {
-    const summary = await getDashboardSummaryData(rtId);
-    res.json(summary);
-  } catch (error) {
-    console.error("Dashboard summary error:", error);
-    res.status(500).json({ error: "Failed to fetch dashboard summary" });
-  }
-});
-
 app.get("/api/dashboard", async (req, res) => {
   const rtId = req.headers['x-rt-id'] as string || 'rt01';
   try {
-    const summary = await getDashboardSummaryData(rtId);
-    // Backward-compatible response structure
+    const [users, kas, iuran, laporan, acara, media] = await Promise.all([
+      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('id nama role status alamat noHp photo umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
+      KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
+      IuranModel.find({ rtId }).select('bulan status nominal').lean(),
+      LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
+      AcaraModel.find({ rtId }).select('id title date time location rtId createdAt').lean(),
+      MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').lean()
+    ]);
+
+    const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
+      if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+        const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+        if (!isNaN(diff) && diff > 0) {
+          return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
+        }
+      }
+      const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+      return isNaN(parsed) ? -1 : parsed;
+    };
+
+    let balitaCount = 0;
+    let anakCount = 0;
+    let remajaCount = 0;
+    let dewasaCount = 0;
+    let lansiaCount = 0;
+    let lakiLakiCount = 0;
+    let perempuanCount = 0;
+
+    const getAgeCategoryKey = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' | 'unknown' => {
+      if (age < 0) return 'unknown';
+      if (age <= 4) return 'balita';
+      if (age <= 12) return 'anak';
+      if (age <= 20) return 'remaja';
+      if (age <= 70) return 'dewasa';
+      return 'lansia';
+    };
+
+    const categorizeAge = (age: number) => {
+      if (age < 0) return;
+      if (age <= 4) balitaCount++;
+      else if (age <= 12) anakCount++;
+      else if (age <= 20) remajaCount++;
+      else if (age <= 70) dewasaCount++;
+      else lansiaCount++;
+    };
+
+    const countGender = (g?: string) => {
+      const norm = String(g || '').trim().toLowerCase();
+      if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
+        perempuanCount++;
+      } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
+        lakiLakiCount++;
+      }
+    };
+
+    const jumlahKK = users.length;
+    let totalWarga = jumlahKK;
+    let docUploaded = 0;
+    users.forEach((u: any) => {
+      totalWarga += (u.members?.length || 0);
+      categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
+      countGender(u.jenisKelamin);
+
+      if (Array.isArray(u.members)) {
+        u.members.forEach((m: any) => {
+          categorizeAge(resolvePersonAge(m.age, m.tglLahir));
+          countGender(m.jenisKelamin);
+        });
+      }
+      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+      const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
+      if (hasKk || hasKtp) {
+        docUploaded++;
+      }
+    });
+    const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
+    const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
+    const demographics = {
+      balita: balitaCount,
+      anak: anakCount,
+      remaja: remajaCount,
+      dewasa: dewasaCount,
+      lansia: lansiaCount,
+      lakiLaki: lakiLakiCount,
+      perempuan: perempuanCount,
+      totalWithAge,
+      groups: [
+        { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
+        { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
+        { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
+        { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316' },
+        { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
+      ]
+    };
+
+    const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
+    const pengurusRaw = users
+      .filter((u: any) => ['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
+      .sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
+
+    let sekIdx = 0;
+    let benIdx = 0;
+    let pengIdx = 0;
+    const rtLabel = (rtId || 'rt01').toUpperCase().replace('RT', 'RT ');
+    const pengurusList = pengurusRaw.map((u: any) => {
+      let jabatan = `Pengurus ${rtLabel}`;
+      if (u.role === 'admin') {
+        jabatan = `Ketua ${rtLabel} / RW 21`;
+      } else if (u.role === 'sekretaris') {
+        sekIdx++;
+        jabatan = pengurusRaw.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : `Sekretaris ${rtLabel}`;
+      } else if (u.role === 'bendahara') {
+        benIdx++;
+        jabatan = pengurusRaw.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : `Bendahara ${rtLabel}`;
+      } else if (u.role === 'pengurus') {
+        pengIdx++;
+        jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
+      }
+      return {
+        id: u.id,
+        nama: u.nama,
+        role: u.role,
+        jabatan,
+        alamat: u.alamat || `Lingkungan ${rtLabel}`,
+        noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
+        photo: u.photo || ''
+      };
+    });
+
+    const getSaldo = (cat: string) => {
+      const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
+      const catM = catItems.filter((d: any) => d.type === 'Masuk').reduce((a: number, b: any) => a + (b.amount || 0), 0);
+      const catK = catItems.filter((d: any) => d.type === 'Keluar').reduce((a: number, b: any) => a + (b.amount || 0), 0);
+      return catM - catK;
+    };
+    const kasRT = getSaldo('Kas RT');
+    const danaKematian = getSaldo('Dana Kematian');
+    const danaSosial = getSaldo('Dana Sosial');
+    const saldoKas = kasRT + danaKematian + danaSosial;
+
+    const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+    const currentIuran = iuran.filter((i: any) => i.bulan === currentMonth);
+    let lunasCount = 0;
+    let totalIuranCount = currentIuran.length;
+    let totalAmount = 0;
+    
+    if (totalIuranCount > 0) {
+      lunasCount = currentIuran.filter((i: any) => i.status === 'verifikasi').length;
+      totalAmount = currentIuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
+    } else {
+      totalIuranCount = iuran.length;
+      lunasCount = iuran.filter((i: any) => i.status === 'verifikasi').length;
+      totalAmount = iuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
+    }
+    const lunasPct = totalIuranCount > 0 ? Math.round((lunasCount / totalIuranCount) * 100) : 0;
+
+    const pengaduanAktif = laporan.filter((l: any) => l.status === 'menunggu' || l.status === 'diproses');
+
+    const now = new Date();
+    const agendaUpcoming = acara.filter((ac: any) => {
+        const acDate = new Date(ac.time || ac.date);
+        return acDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime()).slice(0, 5);
+
+    // Limit returned unused data
+    const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
+
     res.json({
       metrics: {
-        ...summary.metrics,
-        pengurusList: summary.pengurusList,
-        agendaUpcoming: summary.agendaUpcoming,
-        wargaList: []
+        jumlahKK,
+        jumlahWarga: totalWarga,
+        docUploaded,
+        docNotUploaded,
+        demographics,
+        pengurusList,
+        saldoKas,
+        kasDetail: { kasRT, danaKematian, danaSosial },
+        iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
+        pengaduanAktif,
+        agendaUpcoming,
+        wargaList: limitedUsers
       },
-      kas: [],
-      laporan: summary.metrics.pengaduanAktif,
-      acara: summary.agendaUpcoming,
-      media: summary.latestMedia,
-      pengurusList: summary.pengurusList,
-      agendaUpcoming: summary.agendaUpcoming,
-      latestMedia: summary.latestMedia,
-      kasChart: summary.kasChart
+      kas: kas,
+      laporan: laporan,
+      acara: acara,
+      media: media
     });
   } catch (error) {
     console.error("Dashboard fetch error:", error);

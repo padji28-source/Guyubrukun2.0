@@ -62,7 +62,7 @@ export const WebInventarisPage = ({ user }: { user: any }) => {
       setLoading(true);
       const res = await apiFetch('/api/data/inventaris', {
         headers: {
-          'x-rt-id': localStorage.getItem('rtId') || 'rt01'
+          'x-rt-id': localStorage.getItem('selected_rt') || user?.rtId || 'rt01'
         }
       });
       const json = await res.json();
@@ -117,7 +117,7 @@ export const WebInventarisPage = ({ user }: { user: any }) => {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'x-rt-id': localStorage.getItem('rtId') || 'rt01'
+          'x-rt-id': localStorage.getItem('selected_rt') || user?.rtId || 'rt01'
         },
         body: JSON.stringify(payload)
       });
@@ -129,7 +129,7 @@ export const WebInventarisPage = ({ user }: { user: any }) => {
         resetForm();
         fetchInventaris();
         // Trigger global data update event for widgets
-        window.dispatchEvent(new CustomEvent('app_data_update', { detail: { resource: 'inventaris', type: 'inventaris_updated' } }));
+        window.dispatchEvent(new Event('app_data_update'));
       } else {
         setFormError(json.error || 'Gagal menyimpan barang.');
       }
@@ -150,14 +150,14 @@ export const WebInventarisPage = ({ user }: { user: any }) => {
       const res = await apiFetch(`/api/data/inventaris/${itemId}`, {
         method: 'DELETE',
         headers: {
-          'x-rt-id': localStorage.getItem('rtId') || 'rt01'
+          'x-rt-id': localStorage.getItem('selected_rt') || user?.rtId || 'rt01'
         },
         body: JSON.stringify({ updaterName: user.name })
       });
 
       if (res.ok) {
         fetchInventaris();
-        window.dispatchEvent(new CustomEvent('app_data_update', { detail: { resource: 'inventaris', type: 'inventaris_updated' } }));
+        window.dispatchEvent(new Event('app_data_update'));
       } else {
         alert('Gagal menghapus aset');
       }

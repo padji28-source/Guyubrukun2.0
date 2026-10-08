@@ -40,7 +40,7 @@ export const WebSmartRtAiPage = ({ user }: { user: any }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-rt-id': localStorage.getItem('rtId') || 'rt01'
+          'x-rt-id': localStorage.getItem('selected_rt') || localStorage.getItem('rtId') || 'rt01'
         },
         body: JSON.stringify({ action, payload })
       });

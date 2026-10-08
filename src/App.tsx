@@ -1,31 +1,18 @@
 import { apiFetch } from './apiInterceptor';
-import { DashboardProvider, useDashboardData } from './DashboardContext';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { ReactSortable } from 'react-sortablejs';
 import { AnimatePresence, motion, Reorder } from 'motion/react';
-import { MobileDataWarga } from './MobileDataWarga';
-import { MobileScanQR } from './MobileScanQR';
-import { MobileSuratPengantar } from './MobileSuratPengantar';
-import { MobileLaporRT } from './MobileLaporRT';
-import { MobileLaporan } from './MobileLaporan';
-import { WebSuratOnlinePage } from './components/WebSuratOnlinePage';
-import { MobileDarurat } from './MobileDarurat';
-import { MobileDokumen } from './MobileDokumen';
-import { MobileVoting } from './MobileVoting';
-import { MobileAcaraPage } from './MobileAcara';
-import { MobileIuran } from './MobileIuran';
-import { MobileKas } from './MobileKas';
-import { MobileUMKM } from './MobileUMKM';
-import { MobileUMKMAds } from './components/MobileUMKMAds';
-import { WebSmartRtAiPage } from './components/WebSmartRtAiPage';
-import { WebDashboardRtView } from './components/WebDashboardRtView';
-import { WebInventarisPage } from './components/WebInventarisPage';
-import { WebNotulenPage } from './components/WebNotulenPage';
-import { WebMenuAccessPage } from './components/WebMenuAccessPage';
-import { LandingPage } from './components/LandingPage';
-import { MobileMedia } from './MobileMedia';
-import { Login, Register, CuteMascot } from './Auth';
-import { InstallPrompt } from './components/InstallPrompt';
+
+const MobileDataWarga = React.lazy(() => import('./MobileDataWarga').then(m => ({ default: m.MobileDataWarga })));
+const MobileScanQR = React.lazy(() => import('./MobileScanQR').then(m => ({ default: m.MobileScanQR })));
+const MobileSuratPengantar = React.lazy(() => import('./MobileSuratPengantar').then(m => ({ default: m.MobileSuratPengantar })));
+const MobileLaporRT = React.lazy(() => import('./MobileLaporRT').then(m => ({ default: m.MobileLaporRT })));
+const MobileLaporan = React.lazy(() => import('./MobileLaporan').then(m => ({ default: m.MobileLaporan })));
+const WebSuratOnlinePage = React.lazy(() => import('./components/WebSuratOnlinePage').then(m => ({ default: m.WebSuratOnlinePage })));
+
+const MobileDarurat = React.lazy(() => import('./MobileDarurat').then(m => ({ default: m.MobileDarurat })));
+const MobileDokumen = React.lazy(() => import('./MobileDokumen').then(m => ({ default: m.MobileDokumen })));
+const MobileVoting = React.lazy(() => import('./MobileVoting').then(m => ({ default: m.MobileVoting })));
 
 const MobileVotingNotification = ({ onActionClick, notifications }: { onActionClick: (n: string) => void, notifications: any[] }) => {
   const [activeVotings, setActiveVotings] = useState<any[]>([]);
@@ -43,8 +30,7 @@ const MobileVotingNotification = ({ onActionClick, notifications }: { onActionCl
   useEffect(() => {
     loadActiveVotings();
     const handleUpdate = (e: any) => {
-      const res = typeof e?.detail === 'string' ? e.detail : (e?.detail?.resource || e?.detail?.type || '');
-      if (res === 'voting' || res === 'voting_updated' || res === 'all') {
+      if (e.detail === 'voting') {
         loadActiveVotings();
       }
     };
@@ -78,6 +64,17 @@ const MobileVotingNotification = ({ onActionClick, notifications }: { onActionCl
     </section>
   );
 };
+const MobileAcaraPage = React.lazy(() => import('./MobileAcara').then(m => ({ default: m.MobileAcaraPage })));
+const MobileIuran = React.lazy(() => import('./MobileIuran').then(m => ({ default: m.MobileIuran })));
+const MobileKas = React.lazy(() => import('./MobileKas').then(m => ({ default: m.MobileKas })));
+const MobileUMKM = React.lazy(() => import('./MobileUMKM').then(m => ({ default: m.MobileUMKM })));
+const MobileUMKMAds = React.lazy(() => import('./components/MobileUMKMAds').then(m => ({ default: m.MobileUMKMAds })));
+const WebSmartRtAiPage = React.lazy(() => import('./components/WebSmartRtAiPage').then(m => ({ default: m.WebSmartRtAiPage })));
+const WebDashboardRtView = React.lazy(() => import('./components/WebDashboardRtView').then(m => ({ default: m.WebDashboardRtView })));
+const WebInventarisPage = React.lazy(() => import('./components/WebInventarisPage').then(m => ({ default: m.WebInventarisPage })));
+const WebNotulenPage = React.lazy(() => import('./components/WebNotulenPage').then(m => ({ default: m.WebNotulenPage })));
+const WebMenuAccessPage = React.lazy(() => import('./components/WebMenuAccessPage').then(m => ({ default: m.WebMenuAccessPage })));
+const LandingPage = React.lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
 
 // --- Modern Icons Set ---
 export const icons = {
@@ -597,24 +594,47 @@ const WebHeader = ({
 };
 
 const WebStatsCards = () => {
-  const { data: dashboardData } = useDashboardData();
+  const [stats, setStats] = useState({ warga: 0, totalWarga: 0, laporan: 0, saldo: 0, iuranRef: 0, iuranTotal: 0, kasRT: 0, danaKematian: 0, danaSosial: 0, docUploaded: 0, docNotUploaded: 0 });
   const [showKasDetail, setShowKasDetail] = useState(false);
+  
+  // Tambahkan state ini untuk kontrol menyembunyikan saldo di Web
   const [isMasked, setIsMasked] = useState(true);
 
-  const metrics = dashboardData?.metrics;
-  const stats = useMemo(() => ({
-    warga: metrics?.jumlahKK || 0,
-    totalWarga: metrics?.jumlahWarga || 0,
-    laporan: metrics?.pengaduanAktifCount ?? (metrics?.pengaduanAktif || []).length,
-    saldo: metrics?.saldoKas || 0,
-    iuranRef: metrics?.iuranBulanIni?.lunasCount || 0,
-    iuranTotal: metrics?.iuranBulanIni?.totalIuranCount || 1,
-    kasRT: metrics?.kasDetail?.kasRT || 0,
-    danaKematian: metrics?.kasDetail?.danaKematian || 0,
-    danaSosial: metrics?.kasDetail?.danaSosial || 0,
-    docUploaded: metrics?.docUploaded || 0,
-    docNotUploaded: metrics?.docNotUploaded || 0
-  }), [metrics]);
+  useEffect(() => {
+    // ... (Biarkan kode useEffect kamu sebelumnya apa adanya) ...
+// [TIDAK ADA PERUBAHAN DI AREA INI]
+
+    const fetchStats = async () => {
+      try {
+        const res = await apiFetch('/api/dashboard');
+        const json = await res.json();
+        const metrics = json.metrics;
+
+        setStats({
+          warga: metrics.jumlahKK || 0,
+          totalWarga: metrics.jumlahWarga || 0,
+          laporan: (metrics.pengaduanAktif || []).length,
+          saldo: metrics.saldoKas || 0,
+          iuranRef: metrics.iuranBulanIni?.lunasCount || 0,
+          iuranTotal: metrics.iuranBulanIni?.totalIuranCount || 1,
+          kasRT: metrics.kasDetail?.kasRT || 0,
+          danaKematian: metrics.kasDetail?.danaKematian || 0,
+          danaSosial: metrics.kasDetail?.danaSosial || 0,
+          docUploaded: metrics.docUploaded || 0,
+          docNotUploaded: metrics.docNotUploaded || 0
+        });
+
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchStats();
+    const handleUpdate = () => {
+      fetchStats();
+    };
+    window.addEventListener('app_data_update', handleUpdate);
+    return () => window.removeEventListener('app_data_update', handleUpdate);
+  }, []);
 
   const formatter = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
   const saldoFormatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
@@ -698,6 +718,7 @@ const WebStatsCards = () => {
 const WebDateWidget = () => {
   const [date, setDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
+  const [events, setEvents] = useState<any[]>([]);
   const [selectedDateState, setSelectedDateState] = useState<number>(date.getDate());
   const [reminders, setReminders] = useState<string[]>(() => {
     const saved = localStorage.getItem('event_reminders');
@@ -726,8 +747,11 @@ const WebDateWidget = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const { data: dashboardData } = useDashboardData();
-  const events = dashboardData?.agendaUpcoming || [];
+  useEffect(() => {
+    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
+      setEvents(json.acara || []);
+    }).catch(console.error);
+  }, []);
 
   const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][date.getDay()];
   const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][date.getMonth()];
@@ -925,9 +949,14 @@ const WebDateWidget = () => {
 
 // --- 3. UPDATE: WebMediaSlider ---
 const WebMediaSlider = () => {
-  const { data: dashboardData } = useDashboardData();
-  const media = dashboardData?.latestMedia || [];
+  const [media, setMedia] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    apiFetch('/api/dashboard').then(r => r.json()).then(d => {
+      setMedia(d.media || []);
+    }).catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (media.length <= 1) return;
@@ -1019,8 +1048,12 @@ const WebMediaSlider = () => {
 };
 
 const WebLaporanTable = () => {
-  const { data: dashboardData } = useDashboardData();
-  const laporanWargaData = dashboardData?.metrics?.pengaduanAktif?.slice(-5).reverse() || [];
+  const [laporanWargaData, setLaporanWargaData] = useState<any[]>([]);
+  useEffect(() => {
+    apiFetch('/api/dashboard').then(r => r.json()).then(d => {
+      setLaporanWargaData(d.laporan?.slice(-5).reverse() || []);
+    }).catch(console.error);
+  }, []);
 
   return (
     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -1059,16 +1092,23 @@ const WebLaporanTable = () => {
 };
 
 const WebIuranChart = () => {
-  const { data: dashboardData } = useDashboardData();
-  const chartData = useMemo(() => {
-    if (dashboardData?.kasChart && dashboardData.kasChart.length > 0) {
-      return dashboardData.kasChart.map(k => ({
-        bulan: k.bulan.split('-')[1] ? `Bln ${k.bulan.split('-')[1]}` : k.bulan,
-        value: k.value
-      }));
-    }
-    return [];
-  }, [dashboardData?.kasChart]);
+  const [chartData, setChartData] = useState<{bulan: string, value: number}[]>([]);
+  useEffect(() => {
+    apiFetch('/api/dashboard').then(res => res.json()).then(data => {
+      const items = data.kas || [];
+      const stats: Record<string, number> = {};
+      items.forEach((i: any) => {
+        if (i.type === 'Masuk') {
+          const dateStr = i.createdAt 
+            ? new Date(i.createdAt).toLocaleString('id-ID', { month: 'long', year: 'numeric' }) 
+            : new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+          stats[dateStr] = (stats[dateStr] || 0) + (parseInt(i.amount) || 0);
+        }
+      });
+      const keys = Object.keys(stats).slice(-6);
+      setChartData(keys.map(k => ({ bulan: k.split(' ')[0].substring(0,3), value: stats[k] })));
+    }).catch(console.error);
+  }, []);
 
   const maxValue = Math.max(...chartData.map(d => d.value), 100000);
 
@@ -1901,20 +1941,28 @@ let cachedMediaList: any[] | null = null;
 let cachedBackendEvents: any[] | null = null;
 
 const MobileMediaStory = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
-  const { data: dashboardData, loading: dashboardLoading } = useDashboardData();
-  const mediaList = useMemo(() => {
-    if (dashboardData?.latestMedia && dashboardData.latestMedia.length > 0) {
-      return dashboardData.latestMedia;
-    }
-    return [{
-      imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
-      title: "Kerja Bakti Sambut Ramadhan",
-      uploaderName: "Admin RT",
-      desc: "Keseruan warga RT 01 bergotong royong."
-    }];
-  }, [dashboardData?.latestMedia]);
+  const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const loadingMedia = dashboardLoading && mediaList.length === 0;
+  const [loadingMedia, setLoadingMedia] = useState(!cachedMediaList);
+
+  useEffect(() => {
+    setLoadingMedia(!cachedMediaList);
+    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
+      let list = [];
+      if (json.media && json.media.length > 0) {
+        list = json.media.slice(-5).reverse();
+      } else {
+        list = [{
+          imageUrl: "https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=600&q=80",
+          title: "Kerja Bakti Sambut Ramadhan",
+          uploaderName: "Admin RT",
+          desc: "Keseruan warga RT 01 bergotong royong."
+        }];
+      }
+      cachedMediaList = list;
+      setMediaList(list);
+    }).catch(console.error).finally(() => setLoadingMedia(false));
+  }, []);
 
   useEffect(() => {
     if (mediaList.length <= 1) return;
@@ -2005,6 +2053,7 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showYearPicker, setShowYearPicker] = useState(false);
+  const [backendEvents, setBackendEvents] = useState<any[]>(cachedBackendEvents || []);
   const [reminders, setReminders] = useState<string[]>(() => {
     const saved = localStorage.getItem('event_reminders');
     return saved ? JSON.parse(saved) : [];
@@ -2024,8 +2073,12 @@ const MobileCalendarWidget = ({ onActionClick }: { onActionClick: (action: strin
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  const { data: dashboardData } = useDashboardData();
-  const backendEvents = dashboardData?.agendaUpcoming || [];
+  useEffect(() => {
+    apiFetch('/api/dashboard').then(r => r.json()).then(json => {
+      cachedBackendEvents = json.acara || [];
+      setBackendEvents(cachedBackendEvents);
+    }).catch(console.error);
+  }, []);
 
   // Calendar Logic
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -2278,6 +2331,8 @@ const MobileBottomNav = ({ activeTab, onTabChange, user }: { activeTab: string, 
   );
 };
 
+const MobileMedia = React.lazy(() => import('./MobileMedia').then(m => ({ default: m.MobileMedia })));
+
 // --- Simplified Inline Illustrations (as functional components) ---
 
 const IllustrationFamilyGroup = () => (
@@ -2329,15 +2384,31 @@ const quickActions = [
 let cachedSaldoResult: any = null;
 
 const MobileSaldoCard = () => {
-  const { data: dashboardData, loading: dashboardLoading } = useDashboardData();
-  const detail = dashboardData?.metrics?.kasDetail;
-  const saldo = detail?.kasRT || 0;
-  const danaKematian = detail?.danaKematian || 0;
-  const danaSosial = detail?.danaSosial || 0;
-  const loading = dashboardLoading && !dashboardData;
+  const [saldo, setSaldo] = useState(cachedSaldoResult?.saldo || 0);
+  const [danaKematian, setDanaKematian] = useState(cachedSaldoResult?.danaKematian || 0);
+  const [danaSosial, setDanaSosial] = useState(cachedSaldoResult?.danaSosial || 0);
+  const [loading, setLoading] = useState(!cachedSaldoResult);
   
   // State untuk menyembunyikan saldo
   const [isMasked, setIsMasked] = useState(true);
+
+  useEffect(() => {
+    setLoading(!cachedSaldoResult);
+    apiFetch('/api/dashboard')
+      .then(res => res.json())
+      .then(json => {
+        if (json.metrics && json.metrics.kasDetail) {
+          const detail = json.metrics.kasDetail;
+          setSaldo(detail.kasRT);
+          setDanaKematian(detail.danaKematian);
+          setDanaSosial(detail.danaSosial);
+          
+          cachedSaldoResult = { saldo: detail.kasRT, danaKematian: detail.danaKematian, danaSosial: detail.danaSosial };
+        }
+      })
+      .catch(e => console.error(e))
+      .finally(() => setLoading(false));
+  }, []);
 
   const formatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 
@@ -2403,17 +2474,97 @@ const MobileDemographicsWidget = ({
   user?: any;
   onActionClick: (tab: string) => void;
 }) => {
-  const { data: dashboardData, loading: dashboardLoading } = useDashboardData();
-  const demo = dashboardData?.metrics?.demographics;
-  const groups = demo?.groups && demo.groups.length > 0 ? demo.groups : [
-    { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
-    { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
-    { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
-    { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 0, fill: '#f97316' },
-    { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e' }
-  ];
-  const jumlahKK = dashboardData?.metrics?.jumlahKK || 0;
-  const loading = dashboardLoading && !dashboardData;
+  const [groups, setGroups] = useState<
+    Array<{ key: string; name: string; range: string; count: number; fill: string }>
+  >(
+    cachedDemographicsWidget?.groups || [
+      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
+      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
+      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
+      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 0, fill: '#f97316' },
+      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e' }
+    ]
+  );
+  const [jumlahKK, setJumlahKK] = useState<number>(cachedDemographicsWidget?.jumlahKK || 0);
+  const [loading, setLoading] = useState(!cachedDemographicsWidget);
+
+  const loadDemographics = async () => {
+    try {
+      const res = await apiFetch('/api/dashboard');
+      const json = await res.json();
+      const demo = json?.metrics?.demographics;
+      if (demo && Array.isArray(demo.groups) && demo.totalWithAge > 0) {
+        setGroups(demo.groups);
+        setJumlahKK(json.metrics.jumlahKK || 0);
+        cachedDemographicsWidget = {
+          groups: demo.groups,
+          jumlahKK: json.metrics.jumlahKK || 0
+        };
+        setLoading(false);
+        return;
+      }
+
+      // Fallback computation from /api/warga?limit=0&summary=1
+      const wRes = await apiFetch('/api/warga?limit=0&summary=1');
+      if (wRes.ok) {
+        const wJson = await wRes.json();
+        const users = (wJson.users || []).filter((u: any) => u.role !== 'developer');
+        const resolveAge = (rawAge: any, rawDob?: string): number => {
+          if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+            const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+            if (!isNaN(diff) && diff > 0) {
+              return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
+            }
+          }
+          const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+          return isNaN(parsed) ? -1 : parsed;
+        };
+
+        let balita = 0,
+          anak = 0,
+          remaja = 0,
+          dewasa = 0,
+          lansia = 0;
+        const addAge = (age: number) => {
+          if (age < 0) return;
+          if (age <= 4) balita++;
+          else if (age <= 12) anak++;
+          else if (age <= 20) remaja++;
+          else if (age <= 70) dewasa++;
+          else lansia++;
+        };
+
+        users.forEach((u: any) => {
+          addAge(resolveAge(u.umur, u.tglLahir));
+          if (Array.isArray(u.members)) {
+            u.members.forEach((m: any) => addAge(resolveAge(m.age, m.tglLahir)));
+          }
+        });
+
+        const nextGroups = [
+          { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balita, fill: '#3b82f6' },
+          { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anak, fill: '#10b981' },
+          { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remaja, fill: '#8b5cf6' },
+          { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasa, fill: '#f97316' },
+          { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansia, fill: '#f43f5e' }
+        ];
+        setGroups(nextGroups);
+        setJumlahKK(users.length);
+        cachedDemographicsWidget = { groups: nextGroups, jumlahKK: users.length };
+      }
+    } catch (e) {
+      console.error('Gagal memuat demografi usia warga:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDemographics();
+    const handleUpdate = () => loadDemographics();
+    window.addEventListener('app_data_update', handleUpdate);
+    return () => window.removeEventListener('app_data_update', handleUpdate);
+  }, []);
 
   const totalPersons = groups.reduce((acc, g) => acc + (Number(g.count) || 0), 0);
   const isAdminRole = ['admin', 'developer', 'bendahara', 'sekretaris', 'pengurus'].includes(
@@ -2595,21 +2746,6 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const parsedNoMatch = (user?.alamat || '').match(/No\.\s+([a-zA-Z0-9]+)/i);
   const [profileBlok, setProfileBlok] = useState(parsedBlokMatch ? parsedBlokMatch[1] : '');
   const [profileNomor, setProfileNomor] = useState(parsedNoMatch ? parsedNoMatch[1] : '');
-  const [cardGlare, setCardGlare] = useState({ rotateX: 0, rotateY: 0, glareX: 50, glareY: 50, active: false });
-
-  const handleCardPointerMove = (clientX: number, clientY: number, rect: DOMRect) => {
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const pctX = Math.max(0, Math.min(100, (x / rect.width) * 100));
-    const pctY = Math.max(0, Math.min(100, (y / rect.height) * 100));
-    const rotateY = ((pctX - 50) / 50) * 7;
-    const rotateX = ((50 - pctY) / 50) * 7;
-    setCardGlare({ rotateX, rotateY, glareX: pctX, glareY: pctY, active: true });
-  };
-
-  const resetCardGlare = () => {
-    setCardGlare({ rotateX: 0, rotateY: 0, glareX: 50, glareY: 50, active: false });
-  };
 
   useEffect(() => {
     if (profileBlok || profileNomor) {
@@ -3143,77 +3279,25 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
       {/* Konten Data Profil (Kartu Melayang) */}
       <div className="relative z-10 px-5 w-full mt-8">
         
-        {/* KARTU WARGA DIGITAL PREMIUM WITH QR CODE, HOVER TILT & GLARE EFFECT */}
-        <motion.div
-          onMouseMove={(e) => handleCardPointerMove(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect())}
-          onMouseEnter={(e) => handleCardPointerMove(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect())}
-          onMouseLeave={resetCardGlare}
-          onTouchMove={(e) => {
-            if (e.touches[0]) {
-              handleCardPointerMove(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget.getBoundingClientRect());
-            }
-          }}
-          onTouchEnd={resetCardGlare}
-          animate={{
-            rotateX: cardGlare.rotateX,
-            rotateY: cardGlare.rotateY,
-            scale: cardGlare.active ? 1.02 : 1,
-            y: cardGlare.active ? -4 : 0
-          }}
-          transition={{ type: 'spring', stiffness: 260, damping: 20, mass: 0.6 }}
-          style={{ transformPerspective: 1000, transformStyle: 'preserve-3d' }}
-          className={`group mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 p-6 rounded-3xl relative overflow-hidden text-white border transition-shadow duration-300 select-none ${
-            cardGlare.active
-              ? 'shadow-[0_20px_50px_-12px_rgba(20,184,166,0.35)] border-teal-400/50'
-              : 'shadow-xl border-slate-700/50 hover:border-teal-500/40'
-          }`}
-        >
+        {/* KARTU WARGA DIGITAL PREMIUM WITH QR CODE & SHARE SHORTCUT */}
+        <div className="mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 p-6 rounded-3xl shadow-xl relative overflow-hidden text-white border border-slate-700/50">
           {/* Subtle design shapes */}
-          <div className="absolute top-0 right-0 w-40 h-40 bg-teal-500/10 rounded-full translate-x-12 -translate-y-12 blur-2xl pointer-events-none"></div>
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-x-12 translate-y-12 blur-2xl pointer-events-none"></div>
-
-          {/* Interactive Pointer-Tracking Radial Glare (Kilau Kursor/Sentuhan) */}
-          <div
-            className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-300 rounded-3xl"
-            style={{
-              opacity: cardGlare.active ? 1 : 0,
-              background: `radial-gradient(circle 220px at ${cardGlare.glareX}% ${cardGlare.glareY}%, rgba(255, 255, 255, 0.24) 0%, rgba(45, 212, 191, 0.14) 35%, rgba(255, 255, 255, 0) 75%)`,
-              mixBlendMode: 'screen'
-            }}
-          />
-
-          {/* Diagonal Sweep Shimmer Glare on Hover */}
-          <div
-            className={`pointer-events-none absolute -inset-full z-20 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-25deg] transition-transform duration-1000 ease-out ${
-              cardGlare.active ? 'translate-x-full' : '-translate-x-full'
-            }`}
-          />
-
-          {/* Holographic Top Edge Highlight */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-px z-20 transition-opacity duration-300"
-            style={{
-              opacity: cardGlare.active ? 0.9 : 0.3,
-              background: `linear-gradient(90deg, transparent, rgba(45, 212, 191, 0.8) ${cardGlare.glareX}%, transparent)`
-            }}
-          />
+          <div className="absolute top-0 right-0 w-40 h-40 bg-teal-500/10 rounded-full translate-x-12 -translate-y-12 blur-2xl"></div>
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-x-12 translate-y-12 blur-2xl"></div>
           
-          <div className="relative z-10 flex justify-between items-start">
+          <div className="flex justify-between items-start">
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></span>
-                <span className="text-[9px] font-extrabold tracking-widest text-teal-400 uppercase">KARTU WARGA DIGITAL</span>
-              </div>
+              <span className="text-[9px] font-extrabold tracking-widest text-teal-400 uppercase">KARTU WARGA DIGITAL</span>
               <h3 className="text-lg font-black tracking-tight mt-1 truncate max-w-[180px]">{profile.name}</h3>
               <p className="text-[10px] font-bold text-slate-400 mt-0.5">ID: {(user?.id || 'RT01-WARGA').substring(0, 12).toUpperCase()}</p>
             </div>
             {/* RT Logo */}
-            <div className="bg-white/10 p-2 rounded-xl border border-white/10 shrink-0 group-hover:border-teal-400/40 group-hover:bg-teal-500/15 transition-colors">
+            <div className="bg-white/10 p-2 rounded-xl border border-white/10 shrink-0">
               <LogoCommunityIcon size="16" colorAccent="#2dd4bf" colorPrimary="#ffffff" />
             </div>
           </div>
 
-          <div className="relative z-10 mt-6 flex gap-4 items-center bg-white/5 border border-white/10 group-hover:border-white/20 p-3.5 rounded-2xl backdrop-blur-xs transition-colors">
+          <div className="mt-6 flex gap-4 items-center bg-white/5 border border-white/10 p-3.5 rounded-2xl">
             {/* QR Code Container */}
             <button 
               onClick={() => setShowQrZoom(true)}
@@ -3253,7 +3337,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
                   }
                   setTimeout(() => setSuccessMsg(''), 3000);
                 }}
-                className="mt-2.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 text-[10px] font-black rounded-lg transition-colors flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                className="mt-2.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 text-[10px] font-black rounded-lg transition-colors flex items-center gap-1 shadow-sm active:scale-95"
               >
                 <svg className="w-3 h-3 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M8.684 10.742l4.135-2.068m0 0a3 3 0 10-4.135-2.068m4.135 2.068v4.135M15.316 13.258l-4.135-2.068m0 0a3 3 0 114.135-2.068" />
@@ -3262,7 +3346,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
               </button>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Tombol Aksi Cepat */}
         <div className="flex gap-3 mb-6">
@@ -3553,7 +3637,7 @@ const MobileSedekah = ({ onBack, user }: { onBack: () => void; user?: any }) => 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-rt-id': localStorage.getItem('rtId') || 'rt01'
+          'x-rt-id': localStorage.getItem('selected_rt') || user?.rtId || 'rt01'
         },
         body: JSON.stringify({
           name: isAnonymous ? 'Hamba Allah' : (user?.nama || 'Warga'),
@@ -4730,6 +4814,10 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
   );
 }
 
+const Login = React.lazy(() => import('./Auth').then(m => ({ default: m.Login })));
+const Register = React.lazy(() => import('./Auth').then(m => ({ default: m.Register })));
+const CuteMascot = React.lazy(() => import('./Auth').then(m => ({ default: m.CuteMascot })));
+
 const RtSelection = ({ onSelectRt }: { onSelectRt: (rt: string) => void }) => {
   const [rts, setRts] = useState<{ id: string; label: string }[]>([
     { id: 'rt01', label: 'RT 01' },
@@ -4869,6 +4957,8 @@ const SplashScreen = ({ onFinish }: { onFinish: () => void, key?: string }) => {
   );
 };
 
+const InstallPrompt = React.lazy(() => import('./components/InstallPrompt').then(m => ({ default: m.InstallPrompt })));
+
 export default function App() {
   const [user, setUser] = useState<any>(() => {
     try {
@@ -4904,6 +4994,10 @@ export default function App() {
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('auth_user', JSON.stringify(userData));
+    if (userData?.rtId) {
+      setSelectedRt(userData.rtId);
+      localStorage.setItem('selected_rt', userData.rtId);
+    }
   };
 
   const handleSelectRt = (rt: string) => {
@@ -4934,17 +5028,14 @@ export default function App() {
     if (!user?.id) return;
 
     const fetchGlobalEvents = () => {
-      apiFetch('/api/dashboard/summary')
+      apiFetch('/api/dashboard')
         .then(res => {
           if (!res || !res.ok) return null;
           return res.json();
         })
         .then(json => {
-          if (json) {
-            const list = json.agendaUpcoming || json.acara;
-            if (Array.isArray(list)) {
-              setGlobalEvents(list);
-            }
+          if (json && Array.isArray(json.acara)) {
+            setGlobalEvents(json.acara);
           }
         })
         .catch(() => {});
@@ -5155,9 +5246,7 @@ export default function App() {
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="w-full min-h-screen"
           >
-            <DashboardProvider>
-              <MainApp user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
-            </DashboardProvider>
+            <MainApp user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
           </motion.div>
         )
       )}
