@@ -268,7 +268,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
   const fetchArsipDokumen = async () => {
     setLoadingArsip(true);
     try {
-      const res = await apiFetch('/api/data/dokumen?page=1&limit=20');
+      const res = await apiFetch('/api/data/dokumen');
       if (res.ok) {
         const json = await res.json();
         setArsipList(Array.isArray(json.data) ? json.data : []);
@@ -313,8 +313,8 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 2000;
-            const MAX_HEIGHT = 2000;
+            const MAX_WIDTH = 1200;
+            const MAX_HEIGHT = 1200;
             let width = img.width;
             let height = img.height;
 
@@ -337,7 +337,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
               ctx.fillStyle = '#FFFFFF';
               ctx.fillRect(0, 0, width, height);
               ctx.drawImage(img, 0, 0, width, height);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
               resolve(dataUrl);
             } else {
               resolve(result);
@@ -479,11 +479,9 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
           `Kartu Keluarga (KK) milik ${targetUser.nama} (${getRoleLabel(targetUser.role)}) berhasil diunggah!`
         );
       } else {
-        const uploadedKtps: string[] = [];
-        for (let i = 0; i < files.length; i++) {
-          const dataUrl = await processFileToDataUrl(files[i]);
-          uploadedKtps.push(dataUrl);
-        }
+        const uploadedKtps = await Promise.all(
+          Array.from(files).map(f => processFileToDataUrl(f))
+        );
         const mergedKtp = [...existingKtp, ...uploadedKtps];
         await updateWargaOrPengurusDocuments(
           targetUser,
@@ -510,11 +508,9 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         setQuickKkData(dataUrl);
         setQuickKkName(files[0].name);
       } else {
-        const urls: string[] = [];
-        for (let i = 0; i < files.length; i++) {
-          const dataUrl = await processFileToDataUrl(files[i]);
-          urls.push(dataUrl);
-        }
+        const urls = await Promise.all(
+          Array.from(files).map(f => processFileToDataUrl(f))
+        );
         setQuickKtpList(prev => [...prev, ...urls]);
       }
     } catch (err: any) {
@@ -581,11 +577,9 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         setDokumenKk(dataUrl);
         await saveDocumentsToServer(dataUrl, dokumenKtp, 'Kartu Keluarga (KK) berhasil diunggah & disimpan!');
       } else {
-        const uploadedUrls: string[] = [];
-        for (let i = 0; i < files.length; i++) {
-          const dataUrl = await processFileToDataUrl(files[i]);
-          uploadedUrls.push(dataUrl);
-        }
+        const uploadedUrls = await Promise.all(
+          Array.from(files).map(f => processFileToDataUrl(f))
+        );
         const updatedKtp = [...dokumenKtp, ...uploadedUrls];
         setDokumenKtp(updatedKtp);
         await saveDocumentsToServer(dokumenKk, updatedKtp, 'Dokumen KTP berhasil diunggah & disimpan!');

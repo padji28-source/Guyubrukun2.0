@@ -344,7 +344,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const MAX_DIM = 2000;
+            const MAX_DIM = 1200;
             let width = img.width;
             let height = img.height;
             if (width > height && width > MAX_DIM) {
@@ -361,7 +361,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               ctx.fillStyle = '#FFFFFF';
               ctx.fillRect(0, 0, width, height);
               ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL('image/jpeg', 0.9));
+              resolve(canvas.toDataURL('image/jpeg', 0.75));
             } else {
               resolve(result);
             }
@@ -404,10 +404,9 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         uploadedKkDataUrl = await processFileToBase64(files[0]);
         payload = { dokumenKk: uploadedKkDataUrl };
       } else {
-        const newKtps: string[] = [];
-        for (let i = 0; i < files.length; i++) {
-          newKtps.push(await processFileToBase64(files[i]));
-        }
+        const newKtps = await Promise.all(
+          Array.from(files).map(f => processFileToBase64(f))
+        );
         payload = { dokumenKtp: [...existingKtp, ...newKtps] };
       }
 

@@ -1929,9 +1929,20 @@ app.put("/api/profile", async (req, res) => {
       user.dokumenKk = dokumenKk;
       user.markModified('dokumenKk');
       if (dokumenKk && String(dokumenKk).trim() !== '') {
-        const extractedNo = await extractNoKkViaOcrAsync(String(dokumenKk), user.username, user.nama);
-        if (extractedNo) {
-          user.noKk = extractedNo;
+        const fastKk = extractNoKkFromDocument(String(dokumenKk), user.username, user.nama);
+        if (fastKk) {
+          user.noKk = fastKk;
+        } else {
+          const uId = user._id;
+          const uUsername = user.username;
+          const uNama = user.nama;
+          const uRt = user.rtId || rtId;
+          extractNoKkViaOcrAsync(String(dokumenKk), uUsername, uNama).then(async (extractedNo) => {
+            if (extractedNo) {
+              await UserModel.updateOne({ _id: uId }, { noKk: extractedNo });
+              broadcastEvent('update', { type: 'users', rtId: uRt });
+            }
+          }).catch(() => {});
         }
       } else {
         user.noKk = '';
@@ -1984,9 +1995,20 @@ app.put("/api/warga/:id/dokumen", async (req, res) => {
     user.dokumenKk = dokumenKk;
     user.markModified('dokumenKk');
     if (dokumenKk && String(dokumenKk).trim() !== '') {
-      const extractedNo = await extractNoKkViaOcrAsync(String(dokumenKk), user.username, user.nama);
-      if (extractedNo) {
-        user.noKk = extractedNo;
+      const fastKk = extractNoKkFromDocument(String(dokumenKk), user.username, user.nama);
+      if (fastKk) {
+        user.noKk = fastKk;
+      } else {
+        const uId = user._id;
+        const uUsername = user.username;
+        const uNama = user.nama;
+        const uRt = user.rtId || rtId;
+        extractNoKkViaOcrAsync(String(dokumenKk), uUsername, uNama).then(async (extractedNo) => {
+          if (extractedNo) {
+            await UserModel.updateOne({ _id: uId }, { noKk: extractedNo });
+            broadcastEvent('update', { type: 'users', rtId: uRt });
+          }
+        }).catch(() => {});
       }
     } else {
       user.noKk = '';
