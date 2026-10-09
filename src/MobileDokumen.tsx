@@ -480,7 +480,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         );
       } else {
         const uploadedKtps = await Promise.all(
-          Array.from(files).map(f => processFileToDataUrl(f))
+          Array.from(files).map((f: File) => processFileToDataUrl(f))
         );
         const mergedKtp = [...existingKtp, ...uploadedKtps];
         await updateWargaOrPengurusDocuments(
@@ -509,7 +509,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         setQuickKkName(files[0].name);
       } else {
         const urls = await Promise.all(
-          Array.from(files).map(f => processFileToDataUrl(f))
+          Array.from(files).map((f: File) => processFileToDataUrl(f))
         );
         setQuickKtpList(prev => [...prev, ...urls]);
       }
@@ -578,7 +578,7 @@ export const MobileDokumen = ({ onBack, currentUser, onUpdateUser }: { onBack: (
         await saveDocumentsToServer(dataUrl, dokumenKtp, 'Kartu Keluarga (KK) berhasil diunggah & disimpan!');
       } else {
         const uploadedUrls = await Promise.all(
-          Array.from(files).map(f => processFileToDataUrl(f))
+          Array.from(files).map((f: File) => processFileToDataUrl(f))
         );
         const updatedKtp = [...dokumenKtp, ...uploadedUrls];
         setDokumenKtp(updatedKtp);

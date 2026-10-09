@@ -68,7 +68,7 @@ async function run() {
   await mongoose.connect(MONGODB_URI);
   console.log("Connected to MongoDB.");
 
-  const allUsers = await UserModel.find({ role: { $ne: 'developer' } }).lean();
+  const allUsers = await (UserModel as any).find({ role: { $ne: 'developer' } }).lean();
   console.log(`Total non-developer users found: ${allUsers.length}`);
 
   // Group by parsed Block-Number key across system

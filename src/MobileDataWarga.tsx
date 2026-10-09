@@ -405,7 +405,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         payload = { dokumenKk: uploadedKkDataUrl };
       } else {
         const newKtps = await Promise.all(
-          Array.from(files).map(f => processFileToBase64(f))
+          Array.from(files).map((f: File) => processFileToBase64(f))
         );
         payload = { dokumenKtp: [...existingKtp, ...newKtps] };
       }

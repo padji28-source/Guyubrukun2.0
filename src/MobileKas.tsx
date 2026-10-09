@@ -24,6 +24,9 @@ const Icons = {
   trendUp: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
   trendDown: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" /></svg>,
   transfer: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>,
+  swap: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>,
+  check: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>,
+  close: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
   edit: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
   delete: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
   chart: (props: any) => <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
@@ -46,6 +49,13 @@ const CATEGORY_COLORS: { [key: string]: string } = {
   'Lainnya': '#6366f1'        // Indigo-500
 };
 
+// Definisi Opsi Pos Dana Kas
+export const KAS_POS_OPTIONS = [
+  { id: 'Dana Sosial', label: 'Dana Sosial (Dansos)', shortLabel: 'Dansos', icon: '🤝', color: 'amber' },
+  { id: 'Kas RT', label: 'Kas Utama RT', shortLabel: 'Kas RT', icon: '🏛️', color: 'teal' },
+  { id: 'Dana Kematian', label: 'Dana Kematian', shortLabel: 'Dana Kematian', icon: '🕊️', color: 'rose' }
+];
+
 export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, currentUser?: any }) => {
   const [data, setData] = useState<any[]>(cachedKasData || []);
   const [allKasData, setAllKasData] = useState<any[]>(cachedAllKasData || []);
@@ -54,8 +64,29 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
   const [category, setCategory] = useState('Kas RT');
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
+
+  // Transfer State (Fleksibel: Dansos ke Kas RT, Dana Kematian ke Dansos, dll.)
+  const [transferFrom, setTransferFrom] = useState<string>('Dana Sosial');
+  const [transferTo, setTransferTo] = useState<string>('Kas RT');
   const [transferAmount, setTransferAmount] = useState('');
+  const [transferNote, setTransferNote] = useState('');
   const [showTransfer, setShowTransfer] = useState(false);
+
+  // Notifikasi / Keterangan Feedback Instan
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Edit / Koreksi Transaksi Modal State
+  const [editItem, setEditItem] = useState<any | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+  const [editCategory, setEditCategory] = useState('Kas RT');
+
+  const showNotification = (msg: string, notifType: 'success' | 'error' | 'info' = 'success') => {
+    setNotification({ message: msg, type: notifType });
+    setTimeout(() => {
+      setNotification(prev => prev?.message === msg ? null : prev);
+    }, 4500);
+  };
 
   // Pagination and search states
   const [page, setPage] = useState(1);
@@ -137,21 +168,37 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
     
     // Optimistic Update
     const nominal = parseInt(amount.replace(/\D/g, '') || '0');
+    if (!nominal || nominal <= 0) {
+      showNotification('Nominal transaksi harus lebih dari Rp 0.', 'error');
+      return;
+    }
+
     const tempId = 'temp-' + Date.now();
     const newEntry = {
       id: tempId,
       type,
       category,
       amount: nominal,
-      message,
-      name: currentUser?.nama,
+      message: message.trim() || `Transaksi ${type} ${category}`,
+      name: currentUser?.nama || 'Pengurus RT',
+      status: 'selesai',
       createdAt: new Date().toISOString()
     };
     
     setData(prev => [newEntry, ...prev]);
     setAllKasData(prev => [newEntry, ...prev]);
+    setBalances(prev => ({
+      ...prev,
+      [category]: (prev[category] || 0) + (type === 'Masuk' ? nominal : -nominal)
+    }));
     setAmount('');
     setMessage('');
+
+    showNotification(
+      `Transaksi ${type === 'Masuk' ? 'pemasukan (+)' : 'pengeluaran (-)'} sebesar ${formatter.format(nominal)} pada ${category} berhasil dicatat!`,
+      'success'
+    );
+    window.dispatchEvent(new CustomEvent('app_data_update'));
 
     try {
       await apiFetch('/api/data/kas', {
@@ -161,8 +208,9 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
           type, 
           category,
           amount: nominal, 
-          message,
-          name: currentUser?.nama
+          message: newEntry.message,
+          name: currentUser?.nama || 'Pengurus RT',
+          status: 'selesai'
         })
       });
       fetchData();
@@ -173,6 +221,7 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
       setAllKasData(prev => prev.filter(item => item.id !== tempId));
       fetchData();
       fetchAllKasHistory();
+      showNotification('Gagal menyimpan transaksi kas ke server.', 'error');
     }
   };
 
@@ -184,11 +233,23 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
   const confirmDelete = async () => {
     if (!showConfirmDelete) return;
     const deletedId = showConfirmDelete;
+    const targetItem = data.find(item => item.id === deletedId) || allKasData.find(item => item.id === deletedId);
     
     // Optimistic delete
     setData(prev => prev.filter(item => item.id !== deletedId));
     setAllKasData(prev => prev.filter(item => item.id !== deletedId));
+    if (targetItem) {
+      const cat = targetItem.category || 'Kas RT';
+      const delta = targetItem.type === 'Masuk' ? -targetItem.amount : targetItem.amount;
+      setBalances(prev => ({
+        ...prev,
+        [cat]: (prev[cat] || 0) + delta
+      }));
+    }
     setShowConfirmDelete(null);
+
+    showNotification('Catatan transaksi kas berhasil dihapus!', 'success');
+    window.dispatchEvent(new CustomEvent('app_data_update'));
 
     try {
       await apiFetch(`/api/data/kas/${deletedId}`, { method: 'DELETE' });
@@ -198,6 +259,7 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
       console.error(e); 
       fetchData(); 
       fetchAllKasHistory();
+      showNotification('Gagal menghapus transaksi dari server.', 'error');
     }
   };
 
@@ -205,40 +267,150 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
     return balances[cat] || 0;
   };
 
+  // Handler Koreksi / Edit Transaksi Kas
+  const handleOpenEdit = (item: any) => {
+    setEditItem(item);
+    setEditAmount(String(item.amount || ''));
+    setEditMessage(item.message || '');
+    setEditCategory(item.category || 'Kas RT');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editItem) return;
+    const newAmount = parseInt(editAmount.replace(/\D/g, '') || '0', 10);
+    if (isNaN(newAmount) || newAmount <= 0) {
+      showNotification('Nominal koreksi harus lebih dari Rp 0.', 'error');
+      return;
+    }
+    const oldAmount = editItem.amount || 0;
+    const itemCat = editCategory || editItem.category || 'Kas RT';
+    const itemType = editItem.type || 'Masuk';
+    const amountDiff = newAmount - oldAmount;
+
+    setData(prev => prev.map(item => item.id === editItem.id ? { ...item, amount: newAmount, message: editMessage, category: itemCat } : item));
+    setAllKasData(prev => prev.map(item => item.id === editItem.id ? { ...item, amount: newAmount, message: editMessage, category: itemCat } : item));
+    setBalances(prev => ({
+      ...prev,
+      [itemCat]: (prev[itemCat] || 0) + (itemType === 'Masuk' ? amountDiff : -amountDiff)
+    }));
+
+    const editedId = editItem.id;
+    setEditItem(null);
+    showNotification(`Transaksi kas berhasil dikoreksi menjadi ${formatter.format(newAmount)}!`, 'success');
+    window.dispatchEvent(new CustomEvent('app_data_update'));
+
+    try {
+      const newStatus = currentUser?.role === 'admin' ? 'selesai' : 'butuh_konfirmasi';
+      await apiFetch(`/api/data/kas/${editedId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: newAmount, message: editMessage, category: itemCat, status: newStatus })
+      });
+      fetchData();
+      fetchAllKasHistory();
+    } catch (e) {
+      console.error(e);
+      fetchData();
+      fetchAllKasHistory();
+    }
+  };
+
+  // Handler Transfer Antar Pos Kas (Dansos ke Kas, Dana Kematian ke Dansos, dll.)
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const nominal = parseInt(transferAmount.replace(/\D/g, '') || '0');
-    if (nominal <= 0) {
-      return;
-    }
-    if (nominal > getSaldo('Kas RT')) {
+    if (transferFrom === transferTo) {
+      showNotification('Pos asal dan pos tujuan transfer tidak boleh sama.', 'error');
       return;
     }
     
-    // Optimistic Update
+    const nominal = parseInt(transferAmount.replace(/\D/g, '') || '0', 10);
+    if (!nominal || nominal <= 0) {
+      showNotification('Nominal transfer harus lebih besar dari Rp 0.', 'error');
+      return;
+    }
+    
+    const sourceSaldo = getSaldo(transferFrom);
+    if (nominal > sourceSaldo) {
+      showNotification(`Saldo ${transferFrom} tidak mencukupi (Tersedia: ${formatter.format(sourceSaldo)}).`, 'error');
+      return;
+    }
+    
+    // Keterangan transfer
+    const customNote = transferNote.trim();
+    const ketOut = customNote ? `Transfer ke ${transferTo}: ${customNote}` : `Transfer ke ${transferTo}`;
+    const ketIn = customNote ? `Transfer dari ${transferFrom}: ${customNote}` : `Transfer dari ${transferFrom}`;
+
+    // Optimistic Update tanpa delay
     const tempId1 = 'temp-out-' + Date.now();
-    const tempId2 = 'temp-in-' + Date.now();
+    const tempId2 = 'temp-in-' + (Date.now() + 1);
     
-    const entryOut = { id: tempId1, type: 'Keluar', category: 'Kas RT', amount: nominal, message: 'Transfer ke Dana Sosial', name: currentUser?.nama, createdAt: new Date().toISOString() };
-    const entryIn = { id: tempId2, type: 'Masuk', category: 'Dana Sosial', amount: nominal, message: 'Transfer dari Kas RT', name: currentUser?.nama, createdAt: new Date().toISOString() };
+    const entryOut = { 
+      id: tempId1, 
+      type: 'Keluar', 
+      category: transferFrom, 
+      amount: nominal, 
+      message: ketOut, 
+      name: currentUser?.nama || 'Bendahara RT', 
+      status: 'selesai',
+      createdAt: new Date().toISOString() 
+    };
+    const entryIn = { 
+      id: tempId2, 
+      type: 'Masuk', 
+      category: transferTo, 
+      amount: nominal, 
+      message: ketIn, 
+      name: currentUser?.nama || 'Bendahara RT', 
+      status: 'selesai',
+      createdAt: new Date().toISOString() 
+    };
     
     setData(prev => [entryOut, entryIn, ...prev]);
     setAllKasData(prev => [entryOut, entryIn, ...prev]);
+    setBalances(prev => ({
+      ...prev,
+      [transferFrom]: (prev[transferFrom] || 0) - nominal,
+      [transferTo]: (prev[transferTo] || 0) + nominal
+    }));
     setTransferAmount('');
+    setTransferNote('');
     setShowTransfer(false);
 
+    showNotification(
+      `Transfer berhasil! ${formatter.format(nominal)} dipindahkan dari ${transferFrom} ke ${transferTo}.`,
+      'success'
+    );
+    window.dispatchEvent(new CustomEvent('app_data_update'));
+
     try {
-      await apiFetch('/api/data/kas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'Keluar', category: 'Kas RT', amount: nominal, message: 'Transfer ke Dana Sosial', name: currentUser?.nama })
-      });
-      await apiFetch('/api/data/kas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'Masuk', category: 'Dana Sosial', amount: nominal, message: 'Transfer dari Kas RT', name: currentUser?.nama })
-      });
+      await Promise.all([
+        apiFetch('/api/data/kas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: 'Keluar', 
+            category: transferFrom, 
+            amount: nominal, 
+            message: ketOut, 
+            name: currentUser?.nama || 'Bendahara RT',
+            status: 'selesai'
+          })
+        }),
+        apiFetch('/api/data/kas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: 'Masuk', 
+            category: transferTo, 
+            amount: nominal, 
+            message: ketIn, 
+            name: currentUser?.nama || 'Bendahara RT',
+            status: 'selesai'
+          })
+        })
+      ]);
       fetchData();
       fetchAllKasHistory();
     } catch(e) { 
@@ -247,6 +419,7 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
       setAllKasData(prev => prev.filter(item => item.id !== tempId1 && item.id !== tempId2));
       fetchData();
       fetchAllKasHistory();
+      showNotification('Gagal memproses transfer kas ke server.', 'error');
     }
   };
 
@@ -534,6 +707,34 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
         </button>
       </div>
       
+      {/* NOTIFIKASI KETERANGAN AKSI INSTAN */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: -15, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -15, scale: 0.98 }}
+            className={`mb-5 p-4 rounded-2xl flex items-center justify-between gap-3 shadow-md border ${
+              notification.type === 'error'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xl flex-shrink-0">{notification.type === 'error' ? '⚠️' : '✅'}</span>
+              <p className="text-xs md:text-sm font-bold leading-relaxed">{notification.message}</p>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="text-xs font-bold px-2.5 py-1 rounded-lg bg-black/5 hover:bg-black/10 transition-colors flex-shrink-0 cursor-pointer"
+              aria-label="Tutup notifikasi"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* SALDO UTAMA CARD (Modern Wallet Style) */}
       <motion.div 
         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -573,7 +774,7 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
           <div className="w-9 h-9 rounded-2xl bg-amber-50 flex items-center justify-center mb-1">
              <span className="text-amber-500 font-bold text-sm">🤝</span>
           </div>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Dana Sosial</p>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Dana Sosial (Dansos)</p>
           <h4 className="text-base md:text-lg font-extrabold text-slate-800">{formatter.format(getSaldo('Dana Sosial'))}</h4>
         </motion.div>
       </div>
@@ -978,25 +1179,225 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
                 key="transfer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }}
                 onSubmit={handleTransfer} className="bg-white p-5 md:p-6 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-100 space-y-4"
               >
-                <div className="flex items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                   <div className="flex-1 text-center">
-                     <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Dari</p>
-                     <p className="font-extrabold text-slate-800 text-sm mt-1">Kas RT</p>
-                   </div>
-                   <div className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-600 shrink-0">
-                     <Icons.transfer className="w-4 h-4"/>
-                   </div>
-                   <div className="flex-1 text-center">
-                     <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Ke</p>
-                     <p className="font-extrabold text-teal-600 text-sm mt-1">Dana Sosial</p>
-                   </div>
-                </div>
+                {/* PRESET TOMBOL TRANSFER CEPAT */}
                 <div>
-                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide ml-1">Nominal Transfer (Rp)</label>
-                  <input type="number" placeholder="Maks. sesuai saldo Kas RT" value={transferAmount} onChange={e => setTransferAmount(e.target.value)} required className="w-full mt-1 p-3 text-sm font-bold bg-slate-50 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-none transition-all" min="1" max={getSaldo('Kas RT')} />
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide ml-1 block mb-1.5">
+                    Pilihan Cepat Transfer Antar Pos Dana
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setTransferFrom('Dana Sosial'); setTransferTo('Kas RT'); }}
+                      className={`p-2.5 rounded-2xl text-left border text-xs font-extrabold transition-all cursor-pointer flex items-center justify-between ${
+                        transferFrom === 'Dana Sosial' && transferTo === 'Kas RT'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-sm ring-2 ring-amber-300'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>🤝 Dansos ➔ 🏛️ Kas RT</span>
+                      {transferFrom === 'Dana Sosial' && transferTo === 'Kas RT' && <span className="text-[10px]">✓</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setTransferFrom('Dana Kematian'); setTransferTo('Dana Sosial'); }}
+                      className={`p-2.5 rounded-2xl text-left border text-xs font-extrabold transition-all cursor-pointer flex items-center justify-between ${
+                        transferFrom === 'Dana Kematian' && transferTo === 'Dana Sosial'
+                          ? 'bg-rose-500 text-white border-rose-600 shadow-sm ring-2 ring-rose-300'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>🕊️ Kematian ➔ 🤝 Dansos</span>
+                      {transferFrom === 'Dana Kematian' && transferTo === 'Dana Sosial' && <span className="text-[10px]">✓</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setTransferFrom('Kas RT'); setTransferTo('Dana Sosial'); }}
+                      className={`p-2.5 rounded-2xl text-left border text-xs font-extrabold transition-all cursor-pointer flex items-center justify-between ${
+                        transferFrom === 'Kas RT' && transferTo === 'Dana Sosial'
+                          ? 'bg-teal-600 text-white border-teal-700 shadow-sm ring-2 ring-teal-300'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>🏛️ Kas RT ➔ 🤝 Dansos</span>
+                      {transferFrom === 'Kas RT' && transferTo === 'Dana Sosial' && <span className="text-[10px]">✓</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setTransferFrom('Dana Kematian'); setTransferTo('Kas RT'); }}
+                      className={`p-2.5 rounded-2xl text-left border text-xs font-extrabold transition-all cursor-pointer flex items-center justify-between ${
+                        transferFrom === 'Dana Kematian' && transferTo === 'Kas RT'
+                          ? 'bg-rose-600 text-white border-rose-700 shadow-sm ring-2 ring-rose-300'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>🕊️ Kematian ➔ 🏛️ Kas RT</span>
+                      {transferFrom === 'Dana Kematian' && transferTo === 'Kas RT' && <span className="text-[10px]">✓</span>}
+                    </button>
+                  </div>
                 </div>
-                <button type="submit" disabled={loading} className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-extrabold shadow-md hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer">
-                  {loading ? 'Memproses...' : 'Transfer Dana Sekarang'}
+
+                {/* PILIH POS SUMBER & TUJUAN DENGAN TOMBOL TUKAR */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    {/* DARI POS */}
+                    <div className="flex-1 w-full">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                        Dari Pos Dana (Sumber)
+                      </label>
+                      <select
+                        value={transferFrom}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTransferFrom(val);
+                          if (val === transferTo) {
+                            const other = KAS_POS_OPTIONS.find(p => p.id !== val)?.id || 'Kas RT';
+                            setTransferTo(other);
+                          }
+                        }}
+                        className="w-full p-3 text-xs md:text-sm font-bold bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 cursor-pointer"
+                      >
+                        {KAS_POS_OPTIONS.map(pos => (
+                          <option key={`from_${pos.id}`} value={pos.id}>
+                            {pos.icon} {pos.label} ({formatter.format(getSaldo(pos.id))})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* TOMBOL TUKAR ARAH (SWAP) */}
+                    <div className="pt-2 sm:pt-4 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tmp = transferFrom;
+                          setTransferFrom(transferTo);
+                          setTransferTo(tmp);
+                        }}
+                        className="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 hover:text-teal-600 hover:border-teal-300 transition-all cursor-pointer active:scale-95"
+                        title="Tukar Arah Transfer"
+                        aria-label="Tukar Arah Transfer"
+                      >
+                        <Icons.swap className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* KE POS */}
+                    <div className="flex-1 w-full">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                        Ke Pos Dana (Tujuan)
+                      </label>
+                      <select
+                        value={transferTo}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTransferTo(val);
+                          if (val === transferFrom) {
+                            const other = KAS_POS_OPTIONS.find(p => p.id !== val)?.id || 'Kas RT';
+                            setTransferFrom(other);
+                          }
+                        }}
+                        className="w-full p-3 text-xs md:text-sm font-bold bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 cursor-pointer"
+                      >
+                        {KAS_POS_OPTIONS.map(pos => (
+                          <option key={`to_${pos.id}`} value={pos.id}>
+                            {pos.icon} {pos.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* INFO SALDO SUMBER & TUJUAN */}
+                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-semibold">
+                      Saldo Tersedia <strong className="text-slate-800">{transferFrom}:</strong>
+                    </span>
+                    <span className={`font-extrabold ${getSaldo(transferFrom) <= 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      {formatter.format(getSaldo(transferFrom))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* NOMINAL TRANSFER */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide ml-1">
+                      Nominal Transfer (Rp)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setTransferAmount(String(Math.max(0, getSaldo(transferFrom))))}
+                      className="text-[10px] font-bold text-teal-600 hover:text-teal-700 hover:underline cursor-pointer"
+                    >
+                      Gunakan Semua Saldo
+                    </button>
+                  </div>
+                  <input 
+                    type="number" 
+                    placeholder={`Maks. ${formatter.format(getSaldo(transferFrom))}`} 
+                    value={transferAmount} 
+                    onChange={e => setTransferAmount(e.target.value)} 
+                    required 
+                    min="1" 
+                    max={getSaldo(transferFrom)}
+                    className="w-full p-3 text-sm font-bold bg-slate-50 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-none transition-all" 
+                  />
+
+                  {/* CHIP PRESET NOMINAL */}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {[25000, 50000, 100000, 250000].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setTransferAmount(String(amt))}
+                        disabled={amt > getSaldo(transferFrom)}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                          transferAmount === String(amt)
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-slate-50'
+                        }`}
+                      >
+                        +{compactFormatter.format(amt)}
+                      </button>
+                    ))}
+                    {getSaldo(transferFrom) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferAmount(String(getSaldo(transferFrom)))}
+                        className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition-all cursor-pointer"
+                      >
+                        Maksimal
+                      </button>
+                    )}
+                  </div>
+
+                  {parseInt(transferAmount || '0', 10) > getSaldo(transferFrom) && (
+                    <p className="text-xs text-rose-600 font-bold mt-1.5">
+                      ⚠️ Nominal transfer melebihi saldo tersedia di {transferFrom}.
+                    </p>
+                  )}
+                </div>
+
+                {/* KETERANGAN TRANSFER */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide ml-1">
+                    Keterangan / Keperluan Transfer (Opsional)
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder={`Contoh: Pengalihan ${transferFrom} untuk kebutuhan ${transferTo}`} 
+                    value={transferNote} 
+                    onChange={e => setTransferNote(e.target.value)} 
+                    className="w-full mt-1 p-3 text-sm font-medium bg-slate-50 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-none transition-all" 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={loading || parseInt(transferAmount || '0', 10) <= 0 || parseInt(transferAmount || '0', 10) > getSaldo(transferFrom)} 
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-sm font-extrabold shadow-md hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  {loading ? 'Memproses...' : `Transfer ${transferAmount ? formatter.format(parseInt(transferAmount) || 0) : ''} dari ${transferFrom} ke ${transferTo}`}
                 </button>
               </motion.form>
             )}
@@ -1063,19 +1464,7 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
                       }} className="text-[10px] text-white bg-teal-500 hover:bg-teal-600 px-3 py-1 rounded-full font-bold transition-colors cursor-pointer">Setujui</button>
                     )}
                     {isAdminOrBendahara && (
-                      <button onClick={() => {
-                        const newNominalStr = prompt('Masukkan nominal koreksi (angka saja):', item.amount);
-                        if (newNominalStr) {
-                          const newAmount = parseInt(newNominalStr.replace(/\D/g, ''), 10);
-                          if (!isNaN(newAmount) && newAmount !== item.amount) {
-                             const newStatus = currentUser?.role === 'admin' ? 'selesai' : 'butuh_konfirmasi';
-                             apiFetch(`/api/data/kas/${item.id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ amount: newAmount, status: newStatus }) }).then(() => {
-                               fetchData();
-                               fetchAllKasHistory();
-                             });
-                          }
-                        }
-                      }} className="text-[10px] text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg flex items-center gap-1 font-bold hover:bg-blue-100 transition-colors cursor-pointer">
+                      <button onClick={() => handleOpenEdit(item)} className="text-[10px] text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg flex items-center gap-1 font-bold hover:bg-blue-100 transition-colors cursor-pointer">
                         <Icons.edit className="w-3 h-3"/> Koreksi
                       </button>
                     )}
@@ -1123,6 +1512,99 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
           </div>
         )}
       </div>
+
+      {/* MODAL KOREKSI TRANSAKSI */}
+      <AnimatePresence>
+        {editItem && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white p-6 rounded-3xl w-full max-w-md shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Icons.edit className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-base">Koreksi Transaksi Kas</h3>
+                    <p className="text-[11px] text-slate-500">Edit nominal atau keterangan transaksi</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setEditItem(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="space-y-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                    Pos Dana
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full p-3 text-xs md:text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                  >
+                    {KAS_POS_OPTIONS.map(pos => (
+                      <option key={`edit_${pos.id}`} value={pos.id}>{pos.icon} {pos.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                    Nominal Transaksi (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    required
+                    min="1"
+                    className="w-full p-3 text-sm font-bold bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                    Keterangan / Catatan
+                  </label>
+                  <input
+                    type="text"
+                    value={editMessage}
+                    onChange={(e) => setEditMessage(e.target.value)}
+                    required
+                    className="w-full p-3 text-sm font-medium bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-xl outline-none transition-all"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditItem(null)}
+                    className="px-4 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs flex-1 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex-1 hover:bg-blue-700 transition-colors shadow-md shadow-blue-200 cursor-pointer"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* CONFIRM DELETE MODAL */}
       <AnimatePresence>

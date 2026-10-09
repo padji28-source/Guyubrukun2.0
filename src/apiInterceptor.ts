@@ -192,3 +192,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
   return fetchPromise;
 };
+
+export function getCompositeCacheKey(url: string): string {
+  const selectedRt = typeof localStorage !== 'undefined' ? (localStorage.getItem('selected_rt') || localStorage.getItem('rtId') || 'rt01') : 'rt01';
+  return `${selectedRt}:${url}`;
+}

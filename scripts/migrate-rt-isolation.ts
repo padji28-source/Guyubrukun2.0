@@ -59,7 +59,7 @@ async function runMigration() {
     connectTimeoutMS: 5000
   });
 
-  const users = await UserModel.find({ role: { $ne: 'developer' } }).lean();
+  const users = await (UserModel as any).find({ role: { $ne: 'developer' } }).lean();
 
   const stats = {
     blockA: 0,
