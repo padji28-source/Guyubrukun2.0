@@ -153,6 +153,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const isPrivilegedKkViewer = isKetuaRT || isSekretaris;
   const isAdmin = isKetuaRT;
 
+  // Khusus role warga, pengurus, dan bendahara jangan munculkan demografi usia
+  const userRole = String(currentUser?.role || '').toLowerCase();
+  const canViewDemografiUsia = !['warga', 'pengurus', 'bendahara'].includes(userRole);
+
   // Sub-menu state inside Data Warga: 'direktori' vs 'dokumen_kk' (Hanya Ketua RT & Sekretaris yang dapat mengakses 'dokumen_kk')
   const [activeSubMenu, setActiveSubMenu] = useState<'direktori' | 'dokumen_kk'>('direktori');
 
@@ -302,11 +306,13 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   }, [page, limit, debouncedSearchQuery]);
 
   useEffect(() => {
-    fetchAllWargaFull();
+    if (canViewDemografiUsia) {
+      fetchAllWargaFull();
+    }
     if (isPrivilegedKkViewer) {
       fetchAllKkWargaForKetuaRT();
     }
-  }, [isPrivilegedKkViewer, activeSubMenu]);
+  }, [isPrivilegedKkViewer, activeSubMenu, canViewDemografiUsia]);
 
   useEffect(() => {
     setPage(1);
@@ -1919,8 +1925,10 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
         <>
           <h2 className="text-xl font-extrabold text-gray-800 mb-4 tracking-tight">Direktori Warga & Pengurus</h2>
 
-          {/* STATS CARDS & BAR CHART (KLIK UNTUK LIHAT DAFTAR WARGA PER KATEGORI USIA) */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs mb-6">
+          {/* STATS CARDS & BAR CHART (KHUSUS ROLE SELAIN WARGA, PENGURUS, DAN BENDAHARA) */}
+          {canViewDemografiUsia && (
+            <>
+              <div className="bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-5 shadow-xs mb-6">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
@@ -2354,6 +2362,8 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               </motion.div>
             )}
           </AnimatePresence>
+            </>
+          )}
 
           {isAdmin && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">

@@ -1,21 +1,6 @@
 import { apiFetch } from './apiInterceptor';
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid
-} from 'recharts';
 
 // --- Ikon Lengkap & Modern ---
 const Icons = {
@@ -100,12 +85,6 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
     "Dana Kematian": 0,
     "Dana Sosial": 0
   });
-
-  // Chart UI Controls
-  const [showChartSection, setShowChartSection] = useState<boolean>(true);
-  const [chartViewMode, setChartViewMode] = useState<'tren' | 'perbandingan' | 'pos'>('tren');
-  const [chartPeriod, setChartPeriod] = useState<'all' | 'month' | '3months' | '6months' | 'year'>('all');
-  const [chartCategoryFilter, setChartCategoryFilter] = useState<string>('all');
 
   const isAdminOrBendahara = ['admin', 'developer', 'bendahara'].includes(currentUser?.role);
 
@@ -427,251 +406,104 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
   const compactFormatter = new Intl.NumberFormat('id-ID', { notation: 'compact', compactDisplay: 'short' });
 
   // ==========================================
-  // PENGOLAHAN DATA GRAFIK RIWAYAT TRANSAKSI
+  // PENGOLAHAN KOMPOSISI POS KAS (TANPA GRAFIK)
   // ==========================================
-  const chartAnalytics = useMemo(() => {
+  const komposisiPosKas = useMemo(() => {
     const rawList = allKasData.length > 0 ? allKasData : data;
-    if (!rawList || rawList.length === 0) {
-      return {
-        timeSeriesData: [],
-        categoryData: [],
-        totalMasuk: 0,
-        totalKeluar: 0,
-        netCashflow: 0,
-        totalTransaksi: 0,
-        rataRataMasuk: 0,
-        rataRataKeluar: 0
-      };
-    }
+    const saldoKasRT = Math.max(0, balances['Kas RT'] || 0);
+    const saldoDansos = Math.max(0, balances['Dana Sosial'] || 0);
+    const saldoKematian = Math.max(0, balances['Dana Kematian'] || 0);
+    const totalSaldo = saldoKasRT + saldoDansos + saldoKematian;
 
-    const now = new Date();
-    
-    // 1. Filter rentang waktu & kategori
-    const filtered = rawList.filter(item => {
-      // Filter Kategori Pos
-      if (chartCategoryFilter !== 'all') {
-        const itemCat = item.category || 'Kas RT';
-        if (itemCat !== chartCategoryFilter) return false;
-      }
-
-      // Filter Waktu
-      if (chartPeriod === 'all') return true;
-
-      const itemDate = new Date(item.createdAt || item.date || Date.now());
-      if (isNaN(itemDate.getTime())) return true;
-
-      if (chartPeriod === 'month') {
-        return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
-      } else if (chartPeriod === '3months') {
-        const past = new Date();
-        past.setDate(now.getDate() - 90);
-        return itemDate >= past;
-      } else if (chartPeriod === '6months') {
-        const past = new Date();
-        past.setDate(now.getDate() - 180);
-        return itemDate >= past;
-      } else if (chartPeriod === 'year') {
-        const past = new Date();
-        past.setFullYear(now.getFullYear() - 1);
-        return itemDate >= past;
-      }
-      return true;
-    });
-
-    // 2. Metrik Ringkasan (KPIs)
     let totalMasuk = 0;
     let totalKeluar = 0;
-    let countMasuk = 0;
-    let countKeluar = 0;
+    const activityMap: { [key: string]: { masuk: number; keluar: number; count: number } } = {
+      'Kas RT': { masuk: 0, keluar: 0, count: 0 },
+      'Dana Sosial': { masuk: 0, keluar: 0, count: 0 },
+      'Dana Kematian': { masuk: 0, keluar: 0, count: 0 }
+    };
 
-    filtered.forEach(item => {
+    rawList.forEach((item: any) => {
+      const cat = item.category || 'Kas RT';
       const amt = Number(item.amount) || 0;
+      if (!activityMap[cat]) {
+        activityMap[cat] = { masuk: 0, keluar: 0, count: 0 };
+      }
+      activityMap[cat].count++;
       if (item.type === 'Masuk') {
         totalMasuk += amt;
-        countMasuk++;
-      } else if (item.type === 'Keluar') {
+        activityMap[cat].masuk += amt;
+      } else {
         totalKeluar += amt;
-        countKeluar++;
+        activityMap[cat].keluar += amt;
       }
     });
 
-    const netCashflow = totalMasuk - totalKeluar;
-    const totalTransaksi = filtered.length;
-    const rataRataMasuk = countMasuk > 0 ? Math.round(totalMasuk / countMasuk) : 0;
-    const rataRataKeluar = countKeluar > 0 ? Math.round(totalKeluar / countKeluar) : 0;
-
-    // 3. Pengelompokan Time Series Chronological
-    // Urutkan transaksi dari terlama ke terbaru
-    const sortedChronological = [...filtered].sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.date || 0).getTime();
-      const dateB = new Date(b.createdAt || b.date || 0).getTime();
-      return dateA - dateB;
-    });
-
-    // Tentukan apakah pengelompokan berdasarkan Hari atau Bulan
-    const isDaily = chartPeriod === 'month' || (filtered.length <= 15 && chartPeriod !== 'all' && chartPeriod !== 'year');
-
-    const groupedMap = new Map<string, { label: string, sortKey: number, Masuk: number, Keluar: number, Net: number, SaldoKumulatif: number }>();
-    
-    let runningBalance = 0;
-
-    sortedChronological.forEach(item => {
-      const d = new Date(item.createdAt || item.date || Date.now());
-      let groupKey = '';
-      let displayLabel = '';
-      let sortKey = d.getTime();
-
-      if (isDaily) {
-        groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        displayLabel = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-      } else {
-        groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        displayLabel = d.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
-      }
-
-      const amt = Number(item.amount) || 0;
-      if (item.type === 'Masuk') {
-        runningBalance += amt;
-      } else if (item.type === 'Keluar') {
-        runningBalance -= amt;
-      }
-
-      if (!groupedMap.has(groupKey)) {
-        groupedMap.set(groupKey, {
-          label: displayLabel,
-          sortKey,
-          Masuk: 0,
-          Keluar: 0,
-          Net: 0,
-          SaldoKumulatif: runningBalance
-        });
-      }
-
-      const group = groupedMap.get(groupKey)!;
-      if (item.type === 'Masuk') {
-        group.Masuk += amt;
-      } else if (item.type === 'Keluar') {
-        group.Keluar += amt;
-      }
-      group.Net = group.Masuk - group.Keluar;
-      group.SaldoKumulatif = runningBalance;
-    });
-
-    const timeSeriesData = Array.from(groupedMap.values());
-
-    // 4. Pengelompokan Kategori Pos Kas (untuk Pie/Donut Chart)
-    const categoryTotals: { [key: string]: { total: number, masuk: number, keluar: number } } = {
-      'Kas RT': { total: 0, masuk: 0, keluar: 0 },
-      'Dana Kematian': { total: 0, masuk: 0, keluar: 0 },
-      'Dana Sosial': { total: 0, masuk: 0, keluar: 0 }
-    };
-
-    filtered.forEach(item => {
-      const cat = item.category || 'Kas RT';
-      if (!categoryTotals[cat]) {
-        categoryTotals[cat] = { total: 0, masuk: 0, keluar: 0 };
-      }
-      const amt = Number(item.amount) || 0;
-      categoryTotals[cat].total += amt;
-      if (item.type === 'Masuk') {
-        categoryTotals[cat].masuk += amt;
-      } else {
-        categoryTotals[cat].keluar += amt;
-      }
-    });
-
-    const grandTotalVolume = Object.values(categoryTotals).reduce((sum, item) => sum + item.total, 0);
-
-    const categoryData = Object.keys(categoryTotals).map(catKey => {
-      const info = categoryTotals[catKey];
-      return {
-        name: catKey,
-        value: info.total,
-        masuk: info.masuk,
-        keluar: info.keluar,
-        percentage: grandTotalVolume > 0 ? ((info.total / grandTotalVolume) * 100).toFixed(1) : '0',
-        color: CATEGORY_COLORS[catKey] || '#6366f1'
-      };
-    }).filter(cat => cat.value > 0);
+    const calcPct = (val: number) => (totalSaldo > 0 ? Math.round((val / totalSaldo) * 100) : 0);
+    const pctKasRT = calcPct(saldoKasRT);
+    const pctDansos = calcPct(saldoDansos);
+    const pctKematian = totalSaldo > 0 ? Math.max(0, 100 - pctKasRT - pctDansos) : 0;
 
     return {
-      timeSeriesData,
-      categoryData,
+      totalSaldo,
       totalMasuk,
       totalKeluar,
-      netCashflow,
-      totalTransaksi,
-      rataRataMasuk,
-      rataRataKeluar
+      totalTransaksi: rawList.length,
+      items: [
+        {
+          id: 'Kas RT',
+          name: 'Kas Utama RT',
+          shortName: 'Kas RT',
+          icon: '🏛️',
+          color: '#0d9488',
+          bgClass: 'bg-teal-50/70',
+          borderClass: 'border-teal-200/80',
+          textClass: 'text-teal-700',
+          barClass: 'bg-teal-600',
+          saldo: balances['Kas RT'] || 0,
+          percentage: pctKasRT,
+          desc: 'Operasional rutin, kebersihan, pemeliharaan & kegiatan RT',
+          masuk: activityMap['Kas RT']?.masuk || 0,
+          keluar: activityMap['Kas RT']?.keluar || 0,
+          count: activityMap['Kas RT']?.count || 0
+        },
+        {
+          id: 'Dana Sosial',
+          name: 'Dana Sosial (Dansos)',
+          shortName: 'Dansos',
+          icon: '🤝',
+          color: '#f59e0b',
+          bgClass: 'bg-amber-50/70',
+          borderClass: 'border-amber-200/80',
+          textClass: 'text-amber-700',
+          barClass: 'bg-amber-500',
+          saldo: balances['Dana Sosial'] || 0,
+          percentage: pctDansos,
+          desc: 'Santunan warga, bantuan bencana/musibah & aksi kepedulian',
+          masuk: activityMap['Dana Sosial']?.masuk || 0,
+          keluar: activityMap['Dana Sosial']?.keluar || 0,
+          count: activityMap['Dana Sosial']?.count || 0
+        },
+        {
+          id: 'Dana Kematian',
+          name: 'Dana Kematian',
+          shortName: 'Dana Kematian',
+          icon: '🕊️',
+          color: '#f43f5e',
+          bgClass: 'bg-rose-50/70',
+          borderClass: 'border-rose-200/80',
+          textClass: 'text-rose-700',
+          barClass: 'bg-rose-500',
+          saldo: balances['Dana Kematian'] || 0,
+          percentage: pctKematian,
+          desc: 'Uang duka cita, perlengkapan jenazah & pemakaman warga',
+          masuk: activityMap['Dana Kematian']?.masuk || 0,
+          keluar: activityMap['Dana Kematian']?.keluar || 0,
+          count: activityMap['Dana Kematian']?.count || 0
+        }
+      ]
     };
-  }, [allKasData, data, chartPeriod, chartCategoryFilter]);
-
-  // Custom Recharts Tooltip
-  const CustomChartTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-xl border border-slate-700/60 text-xs min-w-[170px] z-50">
-          <p className="font-extrabold text-slate-200 text-xs mb-2 border-b border-slate-800 pb-1 flex items-center justify-between">
-            <span>{label}</span>
-            <span className="text-[10px] text-slate-400 font-normal">Riwayat Kas</span>
-          </p>
-          <div className="space-y-1.5">
-            {payload.map((entry: any, index: number) => {
-              const color = entry.color || entry.stroke || entry.fill;
-              const isPemasukan = entry.name === 'Masuk' || entry.name === 'Pemasukan';
-              const isPengeluaran = entry.name === 'Keluar' || entry.name === 'Pengeluaran';
-              return (
-                <div key={`tooltip-item-${index}`} className="flex items-center justify-between gap-3 text-xs">
-                  <span className="flex items-center gap-1.5 font-semibold text-slate-300">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }}></span>
-                    {entry.name}:
-                  </span>
-                  <span className={`font-bold ${isPemasukan ? 'text-emerald-400' : isPengeluaran ? 'text-rose-400' : 'text-cyan-300'}`}>
-                    {formatter.format(entry.value)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // Custom Pie Tooltip
-  const CustomPieTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const dataItem = payload[0].payload;
-      return (
-        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-xl border border-slate-700/60 text-xs min-w-[190px] z-50">
-          <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-slate-800">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: dataItem.color }}></span>
-            <p className="font-extrabold text-slate-100">{dataItem.name}</p>
-          </div>
-          <div className="space-y-1">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Total Transaksi:</span>
-              <span className="font-bold text-slate-100">{formatter.format(dataItem.value)}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-emerald-400">Pemasukan:</span>
-              <span className="font-semibold text-emerald-300">+{formatter.format(dataItem.masuk)}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-rose-400">Pengeluaran:</span>
-              <span className="font-semibold text-rose-300">-{formatter.format(dataItem.keluar)}</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-slate-800 text-[10px] text-slate-400">
-              <span>Porsi Kas:</span>
-              <span className="font-bold text-amber-300">{dataItem.percentage}%</span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+  }, [balances, allKasData, data]);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 pb-28">
@@ -680,30 +512,25 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
         <div className="flex items-center">
           <button 
             onClick={onBack} 
-            className="w-11 h-11 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+            className="w-11 h-11 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-700 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
             aria-label="Kembali ke menu"
           >
             <Icons.back className="w-5 h-5" />
           </button>
           <div className="ml-3.5">
-            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Buku & Grafik Kas RT</h2>
-            <p className="text-xs text-slate-500 font-medium">Transparansi arus kas, analitik, & mutasi keuangan</p>
+            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Buku & Kas RT</h2>
+            <p className="text-xs text-slate-500 font-medium">Komposisi pos kas, transparansi keuangan, & mutasi kas</p>
           </div>
         </div>
 
-        {/* Tombol Refresh / Toggle Grafik */}
+        {/* Tombol Refresh Data */}
         <button
-          onClick={() => setShowChartSection(prev => !prev)}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-            showChartSection 
-              ? 'bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100' 
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
+          onClick={() => { fetchData(); fetchAllKasHistory(); }}
+          className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 cursor-pointer"
+          title="Muat ulang data kas"
         >
-          <Icons.chart className="w-4 h-4 text-teal-600" />
-          <span className="hidden sm:inline">{showChartSection ? 'Sembunyikan Grafik' : 'Tampilkan Grafik'}</span>
-          <span className="sm:hidden">Grafik</span>
-          {showChartSection ? <Icons.chevronUp className="w-3.5 h-3.5" /> : <Icons.chevronDown className="w-3.5 h-3.5" />}
+          <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          <span className="hidden sm:inline">Perbarui</span>
         </button>
       </div>
       
@@ -780,345 +607,124 @@ export const MobileKas = ({ onBack, currentUser }: { onBack: () => void, current
       </div>
 
       {/* ========================================================= */}
-      {/* SEKSI GRAFIK RIWAYAT TRANSAKSI KAS (INTERAKTIF & RESPONSIF) */}
+      {/* SEKSI KOMPOSISI POS KAS (TANPA GRAFIK - BERSIH & INFORMATIF) */}
       {/* ========================================================= */}
-      <AnimatePresence>
-        {showChartSection && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mb-8 overflow-hidden"
-          >
-            <div className="bg-white rounded-[2rem] p-5 md:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.04)] border border-slate-100">
-              {/* Header Grafik & Filter */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="bg-white rounded-[2rem] p-5 md:p-6 shadow-[0_4px_25px_rgba(0,0,0,0.03)] border border-slate-100 mb-8"
+      >
+        {/* Header Komposisi Pos Kas */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-teal-50 border border-teal-100 text-teal-600 flex items-center justify-center font-bold text-lg shadow-sm">
+              📊
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900 tracking-tight">Komposisi Pos Kas</h3>
+              <p className="text-xs text-slate-500">Distribusi saldo & proporsi keuangan RT berdasarkan pos dana</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
+              Total Pos: <strong className="text-teal-700 font-extrabold">{formatter.format(komposisiPosKas.totalSaldo)}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Visual Multi-segment Distribution Bar */}
+        <div className="mt-5 mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Proporsi Saldo Antar Pos
+            </span>
+            <span className="text-[11px] font-bold text-slate-400">
+              100% Saldo Kas
+            </span>
+          </div>
+
+          <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner p-0.5 gap-0.5">
+            {komposisiPosKas.items.map((item) => (
+              <div
+                key={`bar_${item.id}`}
+                style={{ width: `${Math.max(item.percentage > 0 ? item.percentage : 0, item.saldo > 0 ? 3 : 0)}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${item.barClass}`}
+                title={`${item.name}: ${item.percentage}% (${formatter.format(item.saldo)})`}
+              />
+            ))}
+          </div>
+
+          {/* Legend Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5 text-xs">
+            {komposisiPosKas.items.map((item) => (
+              <div key={`legend_${item.id}`} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                <span className="font-semibold text-slate-600 text-[11px]">{item.shortName}:</span>
+                <span className="font-extrabold text-slate-800 text-[11px]">{item.percentage}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Grid 3 Kartu Rincian Tiap Pos Kas */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          {komposisiPosKas.items.map((item) => (
+            <div
+              key={`card_${item.id}`}
+              className={`p-4 rounded-2xl border transition-all ${item.bgClass} ${item.borderClass} flex flex-col justify-between`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
-                      <Icons.chart className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-slate-900">Grafik Riwayat Transaksi Kas</h3>
-                      <p className="text-[11px] text-slate-500">Visualisasi tren pemasukan, pengeluaran, dan komposisi dana</p>
-                    </div>
+                    <span className="text-xl">{item.icon}</span>
+                    <span className="font-extrabold text-slate-800 text-xs md:text-sm">{item.name}</span>
                   </div>
+                  <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-white shadow-xs border ${item.borderClass} ${item.textClass}`}>
+                    {item.percentage}%
+                  </span>
                 </div>
 
-                {/* Filter Periode & Pos Kas */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Pilihan Periode Waktu */}
-                  <div className="flex items-center bg-slate-100/80 p-1 rounded-xl">
-                    <button
-                      onClick={() => setChartPeriod('all')}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${chartPeriod === 'all' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                      Semua
-                    </button>
-                    <button
-                      onClick={() => setChartPeriod('month')}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${chartPeriod === 'month' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                      Bulan Ini
-                    </button>
-                    <button
-                      onClick={() => setChartPeriod('3months')}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${chartPeriod === '3months' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                      3 Bulan
-                    </button>
-                    <button
-                      onClick={() => setChartPeriod('6months')}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${chartPeriod === '6months' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                      6 Bulan
-                    </button>
-                  </div>
-
-                  {/* Filter Pos Kas Dropdown */}
-                  <select
-                    value={chartCategoryFilter}
-                    onChange={(e) => setChartCategoryFilter(e.target.value)}
-                    aria-label="Filter Pos Kas untuk Grafik"
-                    className="text-[11px] font-bold bg-slate-100/80 text-slate-700 px-3 py-1.5 rounded-xl outline-none border-transparent focus:border-teal-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    <option value="all">Semua Pos Kas</option>
-                    <option value="Kas RT">Kas Utama RT</option>
-                    <option value="Dana Kematian">Dana Kematian</option>
-                    <option value="Dana Sosial">Dana Sosial</option>
-                  </select>
+                <div className="my-2">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Saldo Saat Ini</p>
+                  <p className="text-lg font-extrabold text-slate-900 mt-0.5">
+                    {formatter.format(item.saldo)}
+                  </p>
                 </div>
+
+                <p className="text-[11px] text-slate-600 font-medium leading-relaxed mt-1">
+                  {item.desc}
+                </p>
               </div>
 
-              {/* Quick Summary Cards (Statistik Periode Terpilih) */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-4">
-                <div className="bg-emerald-50/70 border border-emerald-100/80 p-3 rounded-2xl">
-                  <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Pemasukan
-                  </p>
-                  <p className="text-sm md:text-base font-extrabold text-emerald-800 mt-1">
-                    +{formatter.format(chartAnalytics.totalMasuk)}
-                  </p>
-                  <p className="text-[9px] text-emerald-600 font-medium mt-0.5">
-                    Rata-rata: {compactFormatter.format(chartAnalytics.rataRataMasuk)}
-                  </p>
-                </div>
-
-                <div className="bg-rose-50/70 border border-rose-100/80 p-3 rounded-2xl">
-                  <p className="text-[10px] font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    Pengeluaran
-                  </p>
-                  <p className="text-sm md:text-base font-extrabold text-rose-800 mt-1">
-                    -{formatter.format(chartAnalytics.totalKeluar)}
-                  </p>
-                  <p className="text-[9px] text-rose-600 font-medium mt-0.5">
-                    Rata-rata: {compactFormatter.format(chartAnalytics.rataRataKeluar)}
-                  </p>
-                </div>
-
-                <div className="bg-blue-50/70 border border-blue-100/80 p-3 rounded-2xl">
-                  <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    Arus Kas Bersih
-                  </p>
-                  <p className={`text-sm md:text-base font-extrabold mt-1 ${chartAnalytics.netCashflow >= 0 ? 'text-blue-800' : 'text-rose-700'}`}>
-                    {chartAnalytics.netCashflow >= 0 ? '+' : ''}{formatter.format(chartAnalytics.netCashflow)}
-                  </p>
-                  <p className="text-[9px] text-blue-600 font-medium mt-0.5">
-                    {chartAnalytics.netCashflow >= 0 ? 'Surplus Finansial' : 'Defisit Periode'}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200/70 p-3 rounded-2xl">
-                  <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    Total Transaksi
-                  </p>
-                  <p className="text-sm md:text-base font-extrabold text-slate-800 mt-1">
-                    {chartAnalytics.totalTransaksi} Mutasi
-                  </p>
-                  <p className="text-[9px] text-slate-500 font-medium mt-0.5">
-                    Tercatat di sistem
-                  </p>
-                </div>
-              </div>
-
-              {/* Tipe Mode Grafik Tabs */}
-              <div className="flex items-center justify-between mb-4 mt-2">
-                <div className="bg-slate-100 p-1 rounded-2xl flex gap-1 w-full sm:w-auto">
-                  <button
-                    onClick={() => setChartViewMode('tren')}
-                    className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                      chartViewMode === 'tren' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Icons.line className="w-3.5 h-3.5" />
-                    <span>Tren Arus Kas</span>
-                  </button>
-
-                  <button
-                    onClick={() => setChartViewMode('perbandingan')}
-                    className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                      chartViewMode === 'perbandingan' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Icons.chart className="w-3.5 h-3.5" />
-                    <span>Perbandingan Bulanan</span>
-                  </button>
-
-                  <button
-                    onClick={() => setChartViewMode('pos')}
-                    className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                      chartViewMode === 'pos' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Icons.pie className="w-3.5 h-3.5" />
-                    <span>Komposisi Pos Kas</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* CONTAINER GRAFIK RECHARTS */}
-              <div className="w-full h-72 md:h-80 pt-2">
-                {chartAnalytics.timeSeriesData.length === 0 && chartAnalytics.categoryData.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-200 rounded-2xl">
-                    <Icons.chart className="w-10 h-10 text-slate-300 mb-2" />
-                    <p className="text-sm font-bold text-slate-700">Belum Ada Data Transaksi untuk Periode Ini</p>
-                    <p className="text-xs text-slate-400 mt-1 max-w-xs">Ubah filter periode atau catat transaksi kas baru untuk melihat visualisasi grafik.</p>
-                  </div>
-                ) : (
-                  <>
-                    {/* MODE 1: TREN ARUS KAS (AREA / LINE CHART) */}
-                    {chartViewMode === 'tren' && (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartAnalytics.timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="colorMasuk" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                              <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
-                            </linearGradient>
-                            <linearGradient id="colorKeluar" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4}/>
-                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.0}/>
-                            </linearGradient>
-                            <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#0284c7" stopOpacity={0.25}/>
-                              <stop offset="95%" stopColor="#0284c7" stopOpacity={0.0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis 
-                            dataKey="label" 
-                            tick={{ fontSize: 11, fill: '#64748b' }} 
-                            axisLine={{ stroke: '#e2e8f0' }}
-                            tickLine={false}
-                          />
-                          <YAxis 
-                            tick={{ fontSize: 10, fill: '#64748b' }} 
-                            axisLine={false} 
-                            tickLine={false}
-                            tickFormatter={(val) => compactFormatter.format(val)}
-                          />
-                          <Tooltip content={<CustomChartTooltip />} />
-                          <Legend 
-                            wrapperStyle={{ paddingTop: 10, fontSize: 12, fontWeight: 600 }}
-                            formatter={(value) => (
-                              <span className="text-slate-700 text-xs">
-                                {value === 'Masuk' ? 'Pemasukan (+)' : value === 'Keluar' ? 'Pengeluaran (-)' : 'Saldo Kumulatif'}
-                              </span>
-                            )}
-                          />
-                          <Area 
-                            type="monotone" 
-                            dataKey="Masuk" 
-                            name="Masuk" 
-                            stroke="#10b981" 
-                            strokeWidth={2.5} 
-                            fillOpacity={1} 
-                            fill="url(#colorMasuk)" 
-                          />
-                          <Area 
-                            type="monotone" 
-                            dataKey="Keluar" 
-                            name="Keluar" 
-                            stroke="#f43f5e" 
-                            strokeWidth={2.5} 
-                            fillOpacity={1} 
-                            fill="url(#colorKeluar)" 
-                          />
-                          <Area 
-                            type="monotone" 
-                            dataKey="SaldoKumulatif" 
-                            name="Saldo Kumulatif" 
-                            stroke="#0284c7" 
-                            strokeWidth={2} 
-                            strokeDasharray="4 4"
-                            fillOpacity={1} 
-                            fill="url(#colorSaldo)" 
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
-
-                    {/* MODE 2: PERBANDINGAN PEMASUKAN VS PENGELUARAN (BAR CHART) */}
-                    {chartViewMode === 'perbandingan' && (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartAnalytics.timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barGap={6}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis 
-                            dataKey="label" 
-                            tick={{ fontSize: 11, fill: '#64748b' }} 
-                            axisLine={{ stroke: '#e2e8f0' }}
-                            tickLine={false}
-                          />
-                          <YAxis 
-                            tick={{ fontSize: 10, fill: '#64748b' }} 
-                            axisLine={false} 
-                            tickLine={false}
-                            tickFormatter={(val) => compactFormatter.format(val)}
-                          />
-                          <Tooltip content={<CustomChartTooltip />} />
-                          <Legend 
-                            wrapperStyle={{ paddingTop: 10, fontSize: 12, fontWeight: 600 }}
-                            formatter={(value) => (
-                              <span className="text-slate-700 text-xs">
-                                {value === 'Masuk' ? 'Pemasukan' : 'Pengeluaran'}
-                              </span>
-                            )}
-                          />
-                          <Bar 
-                            dataKey="Masuk" 
-                            name="Masuk" 
-                            fill="#10b981" 
-                            radius={[6, 6, 0, 0]} 
-                            maxBarSize={32}
-                          />
-                          <Bar 
-                            dataKey="Keluar" 
-                            name="Keluar" 
-                            fill="#f43f5e" 
-                            radius={[6, 6, 0, 0]} 
-                            maxBarSize={32}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-
-                    {/* MODE 3: KOMPOSISI POS KAS (DONUT / PIE CHART) */}
-                    {chartViewMode === 'pos' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 h-full items-center">
-                        <div className="h-56 md:h-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Tooltip content={<CustomPieTooltip />} />
-                              <Pie
-                                data={chartAnalytics.categoryData}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={55}
-                                outerRadius={85}
-                                paddingAngle={4}
-                                dataKey="value"
-                              >
-                                {chartAnalytics.categoryData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))}
-                              </Pie>
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        {/* Rincian Tabel Komposisi */}
-                        <div className="space-y-2.5 px-2">
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Rincian Volume per Pos</p>
-                          {chartAnalytics.categoryData.map((cat, idx) => (
-                            <div key={idx} className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }}></span>
-                                <div>
-                                  <p className="text-xs font-bold text-slate-800">{cat.name}</p>
-                                  <p className="text-[10px] text-slate-500">{cat.percentage}% dari total perputaran</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-xs font-extrabold text-slate-800 block">{formatter.format(cat.value)}</span>
-                                <span className="text-[9px] text-emerald-600 font-semibold">Masuk: {compactFormatter.format(cat.masuk)}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+              {/* Mutasi Singkat */}
+              <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
+                <span className="text-emerald-700 font-bold">
+                  Masuk: +{compactFormatter.format(item.masuk)}
+                </span>
+                <span className="text-rose-700 font-bold">
+                  Keluar: -{compactFormatter.format(item.keluar)}
+                </span>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          ))}
+        </div>
+
+        {/* Ringkasan Finansial Singkat di Bagian Bawah Komposisi */}
+        <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-slate-500">
+            <span>📋 Tercatat <strong className="text-slate-800">{komposisiPosKas.totalTransaksi} transaksi</strong> di buku kas</span>
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-emerald-600 font-bold">
+              Total Masuk: +{compactFormatter.format(komposisiPosKas.totalMasuk)}
+            </span>
+            <span className="text-rose-600 font-bold">
+              Total Keluar: -{compactFormatter.format(komposisiPosKas.totalKeluar)}
+            </span>
+          </div>
+        </div>
+      </motion.div>
 
       {/* FORM INPUT TRANSAKSI / TRANSFER (ADMIN & BENDAHARA ONLY) */}
       {isAdminOrBendahara && (
