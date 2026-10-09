@@ -90,6 +90,21 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
   const isGet = !init || !init.method || init.method.toUpperCase() === 'GET';
   const url = typeof input === 'string' ? input : input.toString();
 
+  // Resolve current RT for scoping cache key
+  const selectedRt = localStorage.getItem('selected_rt') || localStorage.getItem('rtId') || 'rt01';
+  let authRt = '';
+  const authUser = localStorage.getItem('auth_user');
+  if (authUser) {
+    try {
+      const userObj = JSON.parse(authUser);
+      if (userObj.rtId && userObj.role !== 'developer') {
+        authRt = userObj.rtId;
+      }
+    } catch {}
+  }
+  const effectiveRt = authRt || selectedRt;
+  const cacheKey = `${url}::${effectiveRt}`;
+
   // Clear cache on mutations (POST, PUT, DELETE) unless it's a non-mutating action
   if (!isGet) {
     const isNonMutating =
@@ -108,7 +123,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     }
   } else {
     // 1. Check cache
-    const cached = cache.get(url);
+    const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       const mockRes = new Response(cached.data, {
         status: 200,
@@ -118,8 +133,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     }
 
     // 2. Check inflight requests
-    if (inflight.has(url)) {
-      const res = await inflight.get(url)!;
+    if (inflight.has(cacheKey)) {
+      const res = await inflight.get(cacheKey)!;
       const finalRes = res.clone();
       return attachSafeJsonParser(finalRes, url);
     }
@@ -127,12 +142,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
 
   const modifiedInit: RequestInit = { ...init };
   modifiedInit.headers = new Headers(init?.headers);
-  const selectedRt = localStorage.getItem('selected_rt') || localStorage.getItem('rtId');
   if (selectedRt) {
     modifiedInit.headers.set('x-rt-id', selectedRt);
   }
 
-  const authUser = localStorage.getItem('auth_user');
   if (authUser) {
     try {
       const userObj = JSON.parse(authUser);
@@ -173,7 +186,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
         try {
           const text = await clonedForCache.text();
           if (tryParseJson(text) !== null) {
-            cache.set(url, { data: text, timestamp: Date.now() });
+            cache.set(cacheKey, { data: text, timestamp: Date.now() });
           }
         } catch {}
       }
@@ -182,12 +195,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     })
     .finally(() => {
       if (isGet) {
-        inflight.delete(url);
+        inflight.delete(cacheKey);
       }
     });
 
   if (isGet) {
-    inflight.set(url, fetchPromise);
+    inflight.set(cacheKey, fetchPromise);
   }
 
   return fetchPromise;

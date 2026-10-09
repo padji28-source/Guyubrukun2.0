@@ -106,15 +106,17 @@ export const WebDashboardRtView = ({
     };
   };
 
+  const activeRt = (user?.rtId || localStorage.getItem('selected_rt') || 'rt01').toLowerCase();
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await apiFetch('/api/dashboard');
+      const res = await apiFetch(`/api/dashboard?rtId=${activeRt}`);
       const data = await res.json();
 
       let nextDemographics = data?.metrics?.demographics;
       if (!nextDemographics || !Array.isArray(nextDemographics.groups) || nextDemographics.totalWithAge === 0) {
-        const wargaRes = await apiFetch('/api/warga?limit=0&summary=1');
+        const wargaRes = await apiFetch(`/api/warga?limit=0&summary=1&rtId=${activeRt}`);
         if (wargaRes.ok) {
           const wargaJson = await wargaRes.json();
           nextDemographics = computeDemographicsFromUsers(wargaJson.users || []);
@@ -150,9 +152,10 @@ export const WebDashboardRtView = ({
 
   useEffect(() => {
     fetchData();
-    window.addEventListener('app_data_update', fetchData);
-    return () => window.removeEventListener('app_data_update', fetchData);
-  }, []);
+    const handleUpdate = () => fetchData();
+    window.addEventListener('app_data_update', handleUpdate);
+    return () => window.removeEventListener('app_data_update', handleUpdate);
+  }, [activeRt, user?.id]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('id-ID', {

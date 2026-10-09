@@ -188,6 +188,8 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     "/api/register",
     "/api/health",
     "/api/public/rt-list",
+    "/api/public/beranda-summary",
+    "/api/dashboard/summary",
   ];
   
   const pathName = req.path;
@@ -954,17 +956,19 @@ async function initDb(rtId: string = '') {
       await DaruratModel.insertMany(initialDarurat);
     }
 
-    // Seed default media for interactive showcase
-    const mediaCount = await MediaModel.countDocuments({ rtId });
-    if (mediaCount === 0) {
-      await MediaModel.create({
-        id: `${rtId}_media1`,
-        imageUrl: 'https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=300&q=80',
-        title: 'Kerja Bakti 2024',
-        uploaderName: 'Admin',
-        rtId: rtId || 'rt01',
-        createdAt: new Date().toISOString()
-      });
+    // Seed default media for interactive showcase (RT01 only)
+    if ((rtId || 'rt01') === 'rt01') {
+      const mediaCount = await MediaModel.countDocuments({ rtId: 'rt01' });
+      if (mediaCount === 0) {
+        await MediaModel.create({
+          id: `rt01_media1`,
+          imageUrl: 'https://images.unsplash.com/photo-1593113511332-15f5ea6c4dcd?auto=format&fit=crop&w=300&q=80',
+          title: 'Kerja Bakti 2024',
+          uploaderName: 'Admin',
+          rtId: 'rt01',
+          createdAt: new Date().toISOString()
+        });
+      }
     }
 
     // Remove any previously seeded dummy voting records
@@ -975,87 +979,89 @@ async function initDb(rtId: string = '') {
       ]
     });
 
-    // Seed initial verified UMKM Warga with banner images if none exist
-    const umkmCount = await UmkmModel.countDocuments({ rtId: rtId || 'rt01' });
-    if (umkmCount === 0) {
-      const initialUmkm = [
-        {
-          id: `${rtId || 'rt01'}_umkm1`,
-          nama: 'Dapur Nusantara Bu Siti',
-          name: 'Dapur Nusantara Bu Siti',
-          bannerUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80',
-          owner: 'Warga Blok A No. 03',
-          ownerId: '',
-          alamat: 'Blok A No. 03',
-          category: 'Kuliner',
-          products: [
-            { id: 'p1', namaProduk: 'Nasi Uduk Ayam Bakar', harga: 18000, satuan: 'porsi' },
-            { id: 'p2', namaProduk: 'Soto Betawi Spesial', harga: 22000, satuan: 'porsi' },
-            { id: 'p3', namaProduk: 'Tumpeng Mini Syukuran', harga: 30000, satuan: 'box' }
-          ],
-          sosmed: '@dapurbusiti_rt01',
-          kontak: '081288997766',
-          phone: '081288997766',
-          desc: 'Menerima pesanan sarapan pagi & katering acara warga RT. Gratis antar dalam blok.',
-          status: 'disetujui',
-          verifiedBy: 'Ketua RT 01 (Ketua RT)',
-          verifiedByRole: 'admin',
-          verifiedAt: new Date().toISOString(),
-          rtId: rtId || 'rt01',
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: `${rtId || 'rt01'}_umkm2`,
-          nama: 'Kedai Kopi & Roti Bakar Guyub',
-          name: 'Kedai Kopi & Roti Bakar Guyub',
-          bannerUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80',
-          owner: 'Warga Blok A No. 07',
-          ownerId: '',
-          alamat: 'Blok A No. 07',
-          category: 'Minuman',
-          products: [
-            { id: 'p1', namaProduk: 'Es Kopi Susu Gula Aren', harga: 15000, satuan: 'cup' },
-            { id: 'p2', namaProduk: 'Roti Bakar Coklat Keju', harga: 14000, satuan: 'porsi' },
-            { id: 'p3', namaProduk: 'pisang Bakar Lumer', harga: 12000, satuan: 'porsi' }
-          ],
-          sosmed: '@kopiguyub.rt01',
-          kontak: '081377665544',
-          phone: '081377665544',
-          desc: 'Buka setiap sore pukul 15.00 - 22.00 WIB. Bisa pesan via WA.',
-          status: 'disetujui',
-          verifiedBy: 'Bendahara RT (Bendahara)',
-          verifiedByRole: 'bendahara',
-          verifiedAt: new Date().toISOString(),
-          rtId: rtId || 'rt01',
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: `${rtId || 'rt01'}_umkm3`,
-          nama: 'Toko Sembako & Galon Berkah',
-          name: 'Toko Sembako & Galon Berkah',
-          bannerUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80',
-          owner: 'Warga Blok A No. 11',
-          ownerId: '',
-          alamat: 'Blok A No. 11',
-          category: 'Sembako',
-          products: [
-            { id: 'p1', namaProduk: 'Air Mineral Galon + Antar', harga: 20000, satuan: 'galon' },
-            { id: 'p2', namaProduk: 'Gas LPG 3 Kg', harga: 22000, satuan: 'tabung' },
-            { id: 'p3', namaProduk: 'Beras Pulen Super 5 Kg', harga: 72000, satuan: 'karung' }
-          ],
-          sosmed: '@tokoberkah_a11',
-          kontak: '081299881122',
-          phone: '081299881122',
-          desc: 'Siap antar galon, gas, dan kebutuhan sembako langsung ke rumah warga.',
-          status: 'disetujui',
-          verifiedBy: 'Pengurus RT (Pengurus)',
-          verifiedByRole: 'pengurus',
-          verifiedAt: new Date().toISOString(),
-          rtId: rtId || 'rt01',
-          createdAt: new Date().toISOString()
-        }
-      ];
-      await UmkmModel.insertMany(initialUmkm);
+    // Seed initial verified UMKM Warga with banner images if none exist (RT01 only)
+    if ((rtId || 'rt01') === 'rt01') {
+      const umkmCount = await UmkmModel.countDocuments({ rtId: 'rt01' });
+      if (umkmCount === 0) {
+        const initialUmkm = [
+          {
+            id: 'rt01_umkm1',
+            nama: 'Dapur Nusantara Bu Siti',
+            name: 'Dapur Nusantara Bu Siti',
+            bannerUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80',
+            owner: 'Warga Blok A No. 03',
+            ownerId: '',
+            alamat: 'Blok A No. 03',
+            category: 'Kuliner',
+            products: [
+              { id: 'p1', namaProduk: 'Nasi Uduk Ayam Bakar', harga: 18000, satuan: 'porsi' },
+              { id: 'p2', namaProduk: 'Soto Betawi Spesial', harga: 22000, satuan: 'porsi' },
+              { id: 'p3', namaProduk: 'Tumpeng Mini Syukuran', harga: 30000, satuan: 'box' }
+            ],
+            sosmed: '@dapurbusiti_rt01',
+            kontak: '081288997766',
+            phone: '081288997766',
+            desc: 'Menerima pesanan sarapan pagi & katering acara warga RT. Gratis antar dalam blok.',
+            status: 'disetujui',
+            verifiedBy: 'Ketua RT 01 (Ketua RT)',
+            verifiedByRole: 'admin',
+            verifiedAt: new Date().toISOString(),
+            rtId: 'rt01',
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 'rt01_umkm2',
+            nama: 'Kedai Kopi & Roti Bakar Guyub',
+            name: 'Kedai Kopi & Roti Bakar Guyub',
+            bannerUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80',
+            owner: 'Warga Blok A No. 07',
+            ownerId: '',
+            alamat: 'Blok A No. 07',
+            category: 'Minuman',
+            products: [
+              { id: 'p1', namaProduk: 'Es Kopi Susu Gula Aren', harga: 15000, satuan: 'cup' },
+              { id: 'p2', namaProduk: 'Roti Bakar Coklat Keju', harga: 14000, satuan: 'porsi' },
+              { id: 'p3', namaProduk: 'pisang Bakar Lumer', harga: 12000, satuan: 'porsi' }
+            ],
+            sosmed: '@kopiguyub.rt01',
+            kontak: '081377665544',
+            phone: '081377665544',
+            desc: 'Buka setiap sore pukul 15.00 - 22.00 WIB. Bisa pesan via WA.',
+            status: 'disetujui',
+            verifiedBy: 'Bendahara RT (Bendahara)',
+            verifiedByRole: 'bendahara',
+            verifiedAt: new Date().toISOString(),
+            rtId: 'rt01',
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 'rt01_umkm3',
+            nama: 'Toko Sembako & Galon Berkah',
+            name: 'Toko Sembako & Galon Berkah',
+            bannerUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80',
+            owner: 'Warga Blok A No. 11',
+            ownerId: '',
+            alamat: 'Blok A No. 11',
+            category: 'Sembako',
+            products: [
+              { id: 'p1', namaProduk: 'Air Mineral Galon + Antar', harga: 20000, satuan: 'galon' },
+              { id: 'p2', namaProduk: 'Gas LPG 3 Kg', harga: 22000, satuan: 'tabung' },
+              { id: 'p3', namaProduk: 'Beras Pulen Super 5 Kg', harga: 72000, satuan: 'karung' }
+            ],
+            sosmed: '@tokoberkah_a11',
+            kontak: '081299881122',
+            phone: '081299881122',
+            desc: 'Siap antar galon, gas, dan kebutuhan sembako langsung ke rumah warga.',
+            status: 'disetujui',
+            verifiedBy: 'Pengurus RT (Pengurus)',
+            verifiedByRole: 'pengurus',
+            verifiedAt: new Date().toISOString(),
+            rtId: 'rt01',
+            createdAt: new Date().toISOString()
+          }
+        ];
+        await UmkmModel.insertMany(initialUmkm);
+      }
     }
 
     // Seed Blok A, C, D, E, dan F accounts
@@ -4374,199 +4380,221 @@ app.post("/api/gemini/action", async (req, res) => {
 });
 
 
-app.get("/api/dashboard", async (req, res) => {
-  const rtId = getAuthorizedRtId(req);
-  try {
-    const [users, kas, iuran, laporan, acara, media] = await Promise.all([
-      UserModel.find({ rtId, role: { $ne: 'developer' } }).select('id nama role status alamat noHp photo umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
-      KasModel.find({ rtId }).select('type amount status category createdAt').lean(),
-      IuranModel.find({ rtId }).select('bulan status nominal').lean(),
-      LaporanModel.find({ rtId }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
-      AcaraModel.find({ rtId }).select('id title date time location rtId createdAt').lean(),
-      MediaModel.find({ rtId }).select('id imageUrl title uploaderName rtId createdAt').lean()
-    ]);
+export async function getDashboardDataForRt(rawRtId?: string) {
+  const normRt = (rawRtId || 'rt01').toLowerCase().trim();
+  const rtNum = normRt.replace('rt', '').padStart(2, '0');
+  const rtLabel = `RT ${rtNum}`;
 
-    const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
-      if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
-        const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
-        if (!isNaN(diff) && diff > 0) {
-          return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
-        }
+  await connectDB();
+  const [users, kas, iuran, laporan, acara, media] = await Promise.all([
+    UserModel.find({ rtId: normRt, role: { $ne: 'developer' } }).select('id nama role status alamat noHp photo umur tglLahir jenisKelamin members dokumenKk dokumenKtp').lean(),
+    KasModel.find({ rtId: normRt }).select('type amount status category createdAt').lean(),
+    IuranModel.find({ rtId: normRt }).select('bulan status nominal').lean(),
+    LaporanModel.find({ rtId: normRt }).select('id judul deskripsi status nama userName kategori createdAt').lean(),
+    AcaraModel.find({ rtId: normRt }).select('id title date time location rtId createdAt').lean(),
+    MediaModel.find({ rtId: normRt }).select('id imageUrl title uploaderName rtId createdAt').lean()
+  ]);
+
+  const resolvePersonAge = (rawAge: any, rawDob?: string): number => {
+    if (rawDob && /^\d{4}-\d{2}-\d{2}$/.test(String(rawDob).trim())) {
+      const diff = Date.now() - new Date(String(rawDob).trim()).getTime();
+      if (!isNaN(diff) && diff > 0) {
+        return Math.max(0, Math.abs(new Date(diff).getUTCFullYear() - 1970));
       }
-      const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
-      return isNaN(parsed) ? -1 : parsed;
-    };
-
-    let balitaCount = 0;
-    let anakCount = 0;
-    let remajaCount = 0;
-    let dewasaCount = 0;
-    let lansiaCount = 0;
-    let lakiLakiCount = 0;
-    let perempuanCount = 0;
-
-    const getAgeCategoryKey = (age: number): 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia' | 'unknown' => {
-      if (age < 0) return 'unknown';
-      if (age <= 4) return 'balita';
-      if (age <= 12) return 'anak';
-      if (age <= 20) return 'remaja';
-      if (age <= 70) return 'dewasa';
-      return 'lansia';
-    };
-
-    const categorizeAge = (age: number) => {
-      if (age < 0) return;
-      if (age <= 4) balitaCount++;
-      else if (age <= 12) anakCount++;
-      else if (age <= 20) remajaCount++;
-      else if (age <= 70) dewasaCount++;
-      else lansiaCount++;
-    };
-
-    const countGender = (g?: string) => {
-      const norm = String(g || '').trim().toLowerCase();
-      if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
-        perempuanCount++;
-      } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
-        lakiLakiCount++;
-      }
-    };
-
-    const jumlahKK = users.length;
-    let totalWarga = jumlahKK;
-    let docUploaded = 0;
-    users.forEach((u: any) => {
-      totalWarga += (u.members?.length || 0);
-      categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
-      countGender(u.jenisKelamin);
-
-      if (Array.isArray(u.members)) {
-        u.members.forEach((m: any) => {
-          categorizeAge(resolvePersonAge(m.age, m.tglLahir));
-          countGender(m.jenisKelamin);
-        });
-      }
-      const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
-      const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
-      if (hasKk || hasKtp) {
-        docUploaded++;
-      }
-    });
-    const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
-    const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
-    const demographics = {
-      balita: balitaCount,
-      anak: anakCount,
-      remaja: remajaCount,
-      dewasa: dewasaCount,
-      lansia: lansiaCount,
-      lakiLaki: lakiLakiCount,
-      perempuan: perempuanCount,
-      totalWithAge,
-      groups: [
-        { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6' },
-        { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981' },
-        { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6' },
-        { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316' },
-        { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e' }
-      ]
-    };
-
-    const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
-    const pengurusRaw = users
-      .filter((u: any) => ['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
-      .sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
-
-    const rtNum = (rtId || 'rt01').replace('rt', '').padStart(2, '0');
-    let sekIdx = 0;
-    let benIdx = 0;
-    let pengIdx = 0;
-    const pengurusList = pengurusRaw.map((u: any) => {
-      let jabatan = `Pengurus RT ${rtNum}`;
-      if (u.role === 'admin') {
-        jabatan = `Ketua RT ${rtNum} / RW 21`;
-      } else if (u.role === 'sekretaris') {
-        sekIdx++;
-        jabatan = pengurusRaw.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : `Sekretaris RT ${rtNum}`;
-      } else if (u.role === 'bendahara') {
-        benIdx++;
-        jabatan = pengurusRaw.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : `Bendahara RT ${rtNum}`;
-      } else if (u.role === 'pengurus') {
-        pengIdx++;
-        jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
-      }
-      return {
-        id: u.id,
-        nama: u.nama,
-        role: u.role,
-        jabatan,
-        alamat: u.alamat || `Lingkungan RT ${rtNum}`,
-        noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
-        photo: u.photo || ''
-      };
-    });
-
-    const getSaldo = (cat: string) => {
-      const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
-      const catM = catItems.filter((d: any) => d.type === 'Masuk').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-      const catK = catItems.filter((d: any) => d.type === 'Keluar').reduce((a: number, b: any) => a + (b.amount || 0), 0);
-      return catM - catK;
-    };
-    const kasRT = getSaldo('Kas RT');
-    const danaKematian = getSaldo('Dana Kematian');
-    const danaSosial = getSaldo('Dana Sosial');
-    const saldoKas = kasRT + danaKematian + danaSosial;
-
-    const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
-    const currentIuran = iuran.filter((i: any) => i.bulan === currentMonth);
-    let lunasCount = 0;
-    let totalIuranCount = currentIuran.length;
-    let totalAmount = 0;
-    
-    if (totalIuranCount > 0) {
-      lunasCount = currentIuran.filter((i: any) => i.status === 'verifikasi').length;
-      totalAmount = currentIuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
-    } else {
-      totalIuranCount = iuran.length;
-      lunasCount = iuran.filter((i: any) => i.status === 'verifikasi').length;
-      totalAmount = iuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
     }
-    const lunasPct = totalIuranCount > 0 ? Math.round((lunasCount / totalIuranCount) * 100) : 0;
+    const parsed = parseInt(String(rawAge ?? '').replace(/\D/g, '') || '-1', 10);
+    return isNaN(parsed) ? -1 : parsed;
+  };
 
-    const pengaduanAktif = laporan.filter((l: any) => l.status === 'menunggu' || l.status === 'diproses');
+  let balitaCount = 0;
+  let anakCount = 0;
+  let remajaCount = 0;
+  let dewasaCount = 0;
+  let lansiaCount = 0;
+  let lakiLakiCount = 0;
+  let perempuanCount = 0;
 
-    const now = new Date();
-    const agendaUpcoming = acara.filter((ac: any) => {
-        const acDate = new Date(ac.time || ac.date);
-        return acDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime()).slice(0, 5);
+  const categorizeAge = (age: number) => {
+    if (age < 0) return;
+    if (age <= 4) balitaCount++;
+    else if (age <= 12) anakCount++;
+    else if (age <= 20) remajaCount++;
+    else if (age <= 70) dewasaCount++;
+    else lansiaCount++;
+  };
 
-    // Limit returned unused data
-    const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
+  const countGender = (g?: string) => {
+    const norm = String(g || '').trim().toLowerCase();
+    if (norm.startsWith('p') || norm.includes('perempuan') || norm.includes('wanita')) {
+      perempuanCount++;
+    } else if (norm.startsWith('l') || norm.includes('laki') || norm.includes('pria')) {
+      lakiLakiCount++;
+    }
+  };
 
-    res.json({
-      metrics: {
-        jumlahKK,
-        jumlahWarga: totalWarga,
-        docUploaded,
-        docNotUploaded,
-        demographics,
-        pengurusList,
-        saldoKas,
-        kasDetail: { kasRT, danaKematian, danaSosial },
-        iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
-        pengaduanAktif,
-        agendaUpcoming,
-        wargaList: limitedUsers
-      },
-      kas: kas,
-      laporan: laporan,
-      acara: acara,
-      media: media
-    });
+  // Exclude standalone system administrative accounts from citizen counts if RT has no registered citizens
+  const residentUsers = users.filter((u: any) => u.role !== 'admin' || (u.alamat && !u.alamat.includes('Kompleks') && u.alamat.toLowerCase().includes('blok')));
+  const jumlahKK = residentUsers.length;
+  let totalWarga = jumlahKK;
+  let docUploaded = 0;
+  residentUsers.forEach((u: any) => {
+    totalWarga += (u.members?.length || 0);
+    categorizeAge(resolvePersonAge(u.umur, u.tglLahir));
+    countGender(u.jenisKelamin);
+
+    if (Array.isArray(u.members)) {
+      u.members.forEach((m: any) => {
+        categorizeAge(resolvePersonAge(m.age, m.tglLahir));
+        countGender(m.jenisKelamin);
+      });
+    }
+    const hasKk = Boolean(u.dokumenKk && String(u.dokumenKk).trim() !== '');
+    const hasKtp = Array.isArray(u.dokumenKtp) ? u.dokumenKtp.length > 0 : Boolean(u.dokumenKtp && String(u.dokumenKtp).trim() !== '');
+    if (hasKk || hasKtp) {
+      docUploaded++;
+    }
+  });
+  const docNotUploaded = Math.max(0, jumlahKK - docUploaded);
+  const totalWithAge = balitaCount + anakCount + remajaCount + dewasaCount + lansiaCount;
+  const demographics = {
+    balita: balitaCount,
+    anak: anakCount,
+    remaja: remajaCount,
+    dewasa: dewasaCount,
+    lansia: lansiaCount,
+    lakiLaki: lakiLakiCount,
+    perempuan: perempuanCount,
+    totalWithAge,
+    groups: [
+      { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: balitaCount, fill: '#3b82f6', desc: 'Usia dini & pemantauan tumbuh kembang Posyandu' },
+      { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: anakCount, fill: '#10b981', desc: 'Usia sekolah dasar & pendidikan karakter anak' },
+      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: remajaCount, fill: '#8b5cf6', desc: `Generasi muda & kepemudaan Karang Taruna ${rtLabel}` },
+      { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: dewasaCount, fill: '#f97316', desc: 'Usia produktif, kepala keluarga & penggerak warga' },
+      { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: lansiaCount, fill: '#f43f5e', desc: 'Warga senior & prioritas layanan kesehatan lansia' }
+    ]
+  };
+
+  const roleOrder: Record<string, number> = { admin: 1, sekretaris: 2, bendahara: 3, pengurus: 4 };
+  const pengurusRaw = users
+    .filter((u: any) => ['admin', 'sekretaris', 'bendahara', 'pengurus'].includes(u.role))
+    .sort((a: any, b: any) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
+
+  let sekIdx = 0;
+  let benIdx = 0;
+  let pengIdx = 0;
+  const pengurusList = pengurusRaw.map((u: any) => {
+    let jabatan = `Pengurus ${rtLabel}`;
+    if (u.role === 'admin') {
+      jabatan = `Ketua ${rtLabel} / RW 21`;
+    } else if (u.role === 'sekretaris') {
+      sekIdx++;
+      jabatan = pengurusRaw.filter((p: any) => p.role === 'sekretaris').length > 1 ? `Sekretaris ${sekIdx === 1 ? 'I' : 'II'}` : `Sekretaris ${rtLabel}`;
+    } else if (u.role === 'bendahara') {
+      benIdx++;
+      jabatan = pengurusRaw.filter((p: any) => p.role === 'bendahara').length > 1 ? `Bendahara ${benIdx === 1 ? 'I' : 'II'}` : `Bendahara ${rtLabel}`;
+    } else if (u.role === 'pengurus') {
+      pengIdx++;
+      jabatan = pengIdx === 1 ? 'Koordinator Keamanan & Ketertiban' : 'Koordinator Humas & Sosial Lingkungan';
+    }
+    return {
+      id: u.id,
+      nama: u.nama,
+      role: u.role,
+      jabatan,
+      alamat: u.alamat || `Lingkungan ${rtLabel}`,
+      noHp: u.noHp && String(u.noHp).length >= 8 ? u.noHp : '',
+      photo: u.photo || ''
+    };
+  });
+
+  const getSaldo = (cat: string) => {
+    const catItems = kas.filter((d: any) => (d.category || 'Kas RT') === cat);
+    const catM = catItems.filter((d: any) => d.type === 'Masuk').reduce((a: number, b: any) => a + (b.amount || 0), 0);
+    const catK = catItems.filter((d: any) => d.type === 'Keluar').reduce((a: number, b: any) => a + (b.amount || 0), 0);
+    return catM - catK;
+  };
+  const kasRT = getSaldo('Kas RT');
+  const danaKematian = getSaldo('Dana Kematian');
+  const danaSosial = getSaldo('Dana Sosial');
+  const saldoKas = kasRT + danaKematian + danaSosial;
+
+  const currentMonth = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+  const currentIuran = iuran.filter((i: any) => i.bulan === currentMonth);
+  let lunasCount = 0;
+  let totalIuranCount = currentIuran.length;
+  let totalAmount = 0;
+  
+  if (totalIuranCount > 0) {
+    lunasCount = currentIuran.filter((i: any) => i.status === 'verifikasi').length;
+    totalAmount = currentIuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
+  } else {
+    totalIuranCount = iuran.length;
+    lunasCount = iuran.filter((i: any) => i.status === 'verifikasi').length;
+    totalAmount = iuran.reduce((acc: number, curr: any) => acc + (Number(curr.nominal) || 0), 0);
+  }
+  const lunasPct = totalIuranCount > 0 ? Math.round((lunasCount / totalIuranCount) * 100) : 0;
+
+  const pengaduanAktif = laporan.filter((l: any) => l.status === 'menunggu' || l.status === 'diproses');
+
+  const now = new Date();
+  const agendaUpcoming = acara.filter((ac: any) => {
+      const acDate = new Date(ac.time || ac.date);
+      return acDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime()).slice(0, 5);
+
+  const limitedUsers = users.map(u => ({_id: u._id, members: u.members?.map((m: any) => ({_id: m._id}))}));
+
+  return {
+    rtId: normRt,
+    rtLabel,
+    metrics: {
+      jumlahKK,
+      jumlahWarga: totalWarga,
+      docUploaded,
+      docNotUploaded,
+      demographics,
+      pengurusList,
+      saldoKas,
+      kasDetail: { kasRT, danaKematian, danaSosial },
+      iuranBulanIni: { lunasPct, totalIuranCount, lunasCount, totalAmount },
+      pengaduanAktif,
+      agendaUpcoming,
+      wargaList: limitedUsers
+    },
+    kas,
+    laporan,
+    acara,
+    media
+  };
+}
+
+app.get("/api/dashboard", async (req, res) => {
+  try {
+    const rtId = getAuthorizedRtId(req);
+    const result = await getDashboardDataForRt(rtId);
+    res.json(result);
   } catch (error) {
     console.error("Dashboard fetch error:", error);
     res.status(500).json({ error: "Failed to fetch dashboard data" });
+  }
+});
+
+// Endpoint publik untuk data beranda sesuai RT masing-masing
+app.get(["/api/public/beranda-summary", "/api/dashboard/summary"], async (req, res) => {
+  try {
+    const rtId = (req.query.rtId as string) || (req.headers['x-rt-id'] as string) || 'rt01';
+    const result = await getDashboardDataForRt(rtId);
+    res.json({
+      success: true,
+      rtId: result.rtId,
+      rtLabel: result.rtLabel,
+      metrics: result.metrics,
+      acara: result.acara,
+      pengurusList: result.metrics.pengurusList
+    });
+  } catch (error) {
+    console.error("Beranda summary fetch error:", error);
+    res.status(500).json({ error: "Failed to fetch beranda summary data" });
   }
 });
 

@@ -60,6 +60,15 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
   const [contactLoading, setContactLoading] = useState(false);
   const [guideTab, setGuideTab] = useState<'warga' | 'pengurus'>('warga');
 
+  const [rtList, setRtList] = useState<{ id: string; label: string }[]>([
+    { id: 'rt01', label: 'RT 01' },
+    { id: 'rt02', label: 'RT 02' },
+    { id: 'rt03', label: 'RT 03' }
+  ]);
+  const [selectedRt, setSelectedRt] = useState<string>(() => localStorage.getItem('selected_rt') || 'rt01');
+  const rtNum = (selectedRt.replace('rt', '') || '01').padStart(2, '0');
+  const rtLabel = `RT ${rtNum}`;
+
   const [rtData, setRtData] = useState<{
     jumlahKK: number;
     jumlahWarga: number;
@@ -68,6 +77,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
     perempuan: number;
     groups: { key: 'balita' | 'anak' | 'remaja' | 'dewasa' | 'lansia'; name: string; range: string; count: number; fill: string; desc: string }[];
     pengurusList: { id: string; nama: string; role: string; jabatan: string; alamat: string; noHp: string; photo?: string }[];
+    acaraList?: any[];
   }>({
     jumlahKK: 62,
     jumlahWarga: 157,
@@ -77,7 +87,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
     groups: [
       { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 23, fill: '#3b82f6', desc: 'Usia dini & pemantauan tumbuh kembang Posyandu' },
       { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 20, fill: '#10b981', desc: 'Usia sekolah dasar & pendidikan karakter anak' },
-      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 11, fill: '#8b5cf6', desc: 'Generasi muda & kepemudaan Karang Taruna RT 01' },
+      { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 11, fill: '#8b5cf6', desc: `Generasi muda & kepemudaan Karang Taruna RT ${rtNum}` },
       { key: 'dewasa', name: 'Dewasa', range: '21 - 70 Thn', count: 103, fill: '#f97316', desc: 'Usia produktif, kepala keluarga & penggerak warga' },
       { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e', desc: 'Warga senior & prioritas layanan kesehatan lansia' }
     ],
@@ -93,46 +103,66 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
   });
 
   useEffect(() => {
+    fetch('/api/public/rt-list')
+      .then(r => r.json())
+      .then(json => {
+        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+          setRtList(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSelectRt = (newRt: string) => {
+    setSelectedRt(newRt);
+    localStorage.setItem('selected_rt', newRt);
+  };
+
+  useEffect(() => {
     let mounted = true;
-    fetch('/api/dashboard/summary', { headers: { 'x-rt-id': 'rt01' } })
+    fetch(`/api/public/beranda-summary?rtId=${selectedRt}`)
       .then(r => r.json())
       .then(data => {
         if (!mounted || !data?.metrics) return;
         const m = data.metrics;
         const d = m.demographics || {};
+        const curRtNum = (selectedRt.replace('rt', '') || '01').padStart(2, '0');
         const descMap: Record<string, string> = {
           balita: 'Usia dini & pemantauan tumbuh kembang Posyandu',
           anak: 'Usia sekolah dasar & pendidikan karakter anak',
-          remaja: 'Generasi muda & kepemudaan Karang Taruna RT 01',
+          remaja: `Generasi muda & kepemudaan Karang Taruna RT ${curRtNum}`,
           dewasa: 'Usia produktif, kepala keluarga & penggerak warga',
           lansia: 'Warga senior & prioritas layanan kesehatan lansia'
         };
         const updatedGroups = [
-          { key: 'balita' as const, name: 'Balita', range: '0 - 4 Thn', count: d.balita ?? 23, fill: '#3b82f6', desc: descMap.balita },
-          { key: 'anak' as const, name: 'Anak', range: '5 - 12 Thn', count: d.anak ?? 20, fill: '#10b981', desc: descMap.anak },
-          { key: 'remaja' as const, name: 'Remaja', range: '13 - 20 Thn', count: d.remaja ?? 11, fill: '#8b5cf6', desc: descMap.remaja },
-          { key: 'dewasa' as const, name: 'Dewasa', range: '21 - 70 Thn', count: d.dewasa ?? 103, fill: '#f97316', desc: descMap.dewasa },
+          { key: 'balita' as const, name: 'Balita', range: '0 - 4 Thn', count: d.balita ?? 0, fill: '#3b82f6', desc: descMap.balita },
+          { key: 'anak' as const, name: 'Anak', range: '5 - 12 Thn', count: d.anak ?? 0, fill: '#10b981', desc: descMap.anak },
+          { key: 'remaja' as const, name: 'Remaja', range: '13 - 20 Thn', count: d.remaja ?? 0, fill: '#8b5cf6', desc: descMap.remaja },
+          { key: 'dewasa' as const, name: 'Dewasa', range: '21 - 70 Thn', count: d.dewasa ?? 0, fill: '#f97316', desc: descMap.dewasa },
           { key: 'lansia' as const, name: 'Lansia', range: '> 70 Thn', count: d.lansia ?? 0, fill: '#f43f5e', desc: descMap.lansia }
         ];
         setRtData(prev => ({
           jumlahKK: m.jumlahKK ?? prev.jumlahKK,
           jumlahWarga: m.jumlahWarga ?? prev.jumlahWarga,
           saldoKas: m.saldoKas ?? prev.saldoKas,
-          lakiLaki: d.lakiLaki || prev.lakiLaki,
-          perempuan: d.perempuan || prev.perempuan,
+          lakiLaki: d.lakiLaki ?? prev.lakiLaki,
+          perempuan: d.perempuan ?? prev.perempuan,
           groups: updatedGroups,
-          pengurusList: Array.isArray(data.pengurusList) && data.pengurusList.length > 0 ? data.pengurusList : (Array.isArray(m.pengurusList) && m.pengurusList.length > 0 ? m.pengurusList : prev.pengurusList)
+          pengurusList: Array.isArray(m.pengurusList) && m.pengurusList.length > 0 
+            ? m.pengurusList 
+            : (Array.isArray(data.pengurusList) && data.pengurusList.length > 0 ? data.pengurusList : prev.pengurusList),
+          acaraList: Array.isArray(data.acara) ? data.acara : []
         }));
       })
       .catch(() => {});
     return () => { mounted = false; };
-  }, []);
+  }, [selectedRt]);
 
   const stats = [
-    { label: 'Total Warga RT 01', value: `${rtData.jumlahWarga} Jiwa`, sub: `${rtData.jumlahKK} Kepala Keluarga (KK)`, icon: Users, color: 'text-teal-600 bg-teal-50' },
-    { label: 'Kepala Keluarga', value: `${rtData.jumlahKK} KK`, sub: 'Warga Terverifikasi Aktif', icon: UserCheck, color: 'text-indigo-600 bg-indigo-50' },
-    { label: 'Transparansi Kas', value: `Rp ${(rtData.saldoKas / 1000000).toFixed(1).replace('.', ',')} Jt`, sub: 'Saldo Kas Tercatat Real-time', icon: TrendingUp, color: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Pengurus & Koordinator', value: '26 Orang', sub: 'Pengurus Inti, Seksi & Blok', icon: ShieldCheck, color: 'text-amber-600 bg-amber-50' },
+    { label: `Total Warga ${rtLabel}`, value: `${rtData.jumlahWarga} Jiwa`, sub: `${rtData.jumlahKK} Kepala Keluarga (KK)`, icon: Users, color: 'text-teal-600 bg-teal-50' },
+    { label: `Kepala Keluarga ${rtLabel}`, value: `${rtData.jumlahKK} KK`, sub: 'Warga Terverifikasi Aktif', icon: UserCheck, color: 'text-indigo-600 bg-indigo-50' },
+    { label: `Transparansi Kas ${rtLabel}`, value: rtData.saldoKas > 0 ? `Rp ${(rtData.saldoKas / 1000000).toFixed(1).replace('.', ',')} Jt` : 'Rp 0', sub: 'Saldo Kas Tercatat Real-time', icon: TrendingUp, color: 'text-emerald-600 bg-emerald-50' },
+    { label: `Pengurus & Koordinator`, value: `${rtData.pengurusList?.length || (selectedRt === 'rt01' ? 7 : 0)} Orang`, sub: `Pengurus Inti & Seksi ${rtLabel}`, icon: ShieldCheck, color: 'text-amber-600 bg-amber-50' },
   ];
 
   const features = [
@@ -187,49 +217,58 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
     { step: '04', title: 'Komunitas Terintegrasi', desc: 'Dukung lingkungan RT yang rukun, transparan, aman, dan berdaya saing tinggi.' }
   ];
 
-  const events = [
-    {
-      title: 'Rapat Evaluasi Triwulan & Silaturahmi',
-      date: 'Minggu, 19 Juli 2026',
-      time: '19:30 WIB - Selesai',
-      loc: 'Balai Warga RT 01',
-      tag: 'Musyawarah',
-      desc: 'Membahas evaluasi kas RT, program kerja siskamling, dan ramah tamah antar warga.'
-    },
-    {
-      title: 'Kerja Bakti Akbar Bersih Lingkungan',
-      date: 'Minggu, 26 Juli 2026',
-      time: '07:00 - 11:00 WIB',
-      loc: 'Wilayah Lingkungan RT 01',
-      tag: 'Sosial',
-      desc: 'Gotong royong membersihkan saluran air, merapikan tanaman liar, dan pengecatan gapura.'
-    },
-    {
-      title: 'Pemeriksaan Kesehatan Gratis Posyandu',
-      date: 'Rabu, 05 Agustus 2026',
-      time: '08:30 - 12:00 WIB',
-      loc: 'Pos Ronda RT 01',
-      tag: 'Kesehatan',
-      desc: 'Layanan imunisasi balita, pemeriksaan tensi lansia, dan pembagian makanan tambahan bergizi.'
-    }
-  ];
+  const events = (rtData.acaraList && rtData.acaraList.length > 0)
+    ? rtData.acaraList.map((ac: any, idx: number) => ({
+        title: ac.title || 'Agenda Warga',
+        date: ac.date || 'Jadwal Rutin',
+        time: ac.time ? `${ac.time} WIB` : '19:30 WIB - Selesai',
+        loc: ac.location || `Wilayah ${rtLabel}`,
+        tag: idx === 0 ? 'Musyawarah' : idx === 1 ? 'Sosial' : 'Kegiatan',
+        desc: `Agenda kegiatan warga lingkungan ${rtLabel} untuk mempererat kebersamaan dan kerukunan warga.`
+      }))
+    : (selectedRt === 'rt01' ? [
+        {
+          title: `Rapat Evaluasi Triwulan & Silaturahmi RT 01`,
+          date: 'Minggu, 19 Juli 2026',
+          time: '19:30 WIB - Selesai',
+          loc: `Balai Warga RT 01`,
+          tag: 'Musyawarah',
+          desc: `Membahas evaluasi kas RT, program kerja siskamling, dan ramah tamah antar warga RT 01.`
+        },
+        {
+          title: `Kerja Bakti Akbar Bersih Lingkungan RT 01`,
+          date: 'Minggu, 26 Juli 2026',
+          time: '07:00 - 11:00 WIB',
+          loc: `Wilayah Lingkungan RT 01`,
+          tag: 'Sosial',
+          desc: 'Gotong royong membersihkan saluran air, merapikan tanaman liar, dan pengecatan gapura.'
+        },
+        {
+          title: `Pemeriksaan Kesehatan Gratis Posyandu RT 01`,
+          date: 'Rabu, 05 Agustus 2026',
+          time: '08:30 - 12:00 WIB',
+          loc: `Pos Ronda RT 01`,
+          tag: 'Kesehatan',
+          desc: 'Layanan imunisasi balita, pemeriksaan tensi lansia, dan pembagian makanan tambahan bergizi.'
+        }
+      ] : []);
 
   const faqs = [
     {
       q: 'Bagaimana cara mendaftar akun di portal warga?',
-      a: 'Sangat mudah! Anda hanya perlu mengeklik tombol "Daftar Warga" di bagian atas halaman ini, memilih RT tempat tinggal Anda, lalu mengisi formulir registrasi dengan menyertakan NIK, No. KK, alamat lengkap, dan membuat password pribadi Anda.'
+      a: `Sangat mudah! Anda hanya perlu mengeklik tombol "Daftar Warga" di bagian atas halaman ini, memilih ${rtLabel} sebagai tempat tinggal Anda, lalu mengisi formulir registrasi dengan menyertakan NIK, No. KK, alamat lengkap, dan membuat password pribadi Anda.`
     },
     {
       q: 'Apakah pengajuan surat pengantar dikenakan biaya?',
-      a: 'Tidak sama sekali. Seluruh proses pelayanan administrasi surat-menyurat di portal warga Guyub Rukun RT 01 ini 100% gratis dan transparan untuk seluruh warga terdaftar.'
+      a: `Tidak sama sekali. Seluruh proses pelayanan administrasi surat-menyurat di portal warga Guyub Rukun ${rtLabel} ini 100% gratis dan transparan untuk seluruh warga terdaftar.`
     },
     {
       q: 'Bagaimana keamanan data pribadi yang saya unggah?',
-      a: 'Data pribadi Anda, termasuk NIK, No. KK, dan informasi lainnya disimpan di server database cloud yang aman dengan enkripsi tingkat tinggi. Pengurus RT berkomitmen menjaga kerahasiaan data warga sesuai undang-undang perlindungan data pribadi.'
+      a: `Data pribadi Anda, termasuk NIK, No. KK, dan informasi lainnya disimpan di server database cloud yang aman dengan enkripsi tingkat tinggi. Pengurus ${rtLabel} berkomitmen menjaga kerahasiaan data warga sesuai undang-undang perlindungan data pribadi.`
     },
     {
       q: 'Apakah warga non-permanen (kost/kontrak) boleh mendaftar?',
-      a: 'Tentu saja boleh. Portal ini dibuat untuk merangkul seluruh warga di lingkungan RT 01. Saat registrasi, Anda dapat memilih status tempat tinggal sebagai "Warga Kontrak" atau "Warga Kost" agar pengurus dapat mengelompokkan data dengan akurat.'
+      a: `Tentu saja boleh. Portal ini dibuat untuk merangkul seluruh warga di lingkungan ${rtLabel}. Saat registrasi, Anda dapat memilih status tempat tinggal sebagai "Warga Kontrak" atau "Warga Kost" agar pengurus dapat mengelompokkan data dengan akurat.`
     }
   ];
 
@@ -273,37 +312,65 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center gap-5 text-sm font-semibold text-slate-600">
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-teal-600 transition-colors cursor-pointer">Beranda</button>
-            <button onClick={() => scrollToId('data-warga')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-700 font-bold">Data Warga RT 01</button>
-            <button onClick={() => scrollToId('struktur-organisasi')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-700 font-bold">Struktur Organisasi</button>
+            <button onClick={() => scrollToId('data-warga')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-700 font-bold">Data Warga {rtLabel}</button>
+            <button onClick={() => scrollToId('struktur-organisasi')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-700 font-bold">Struktur {rtLabel}</button>
             <button onClick={() => scrollToId('fitur')} className="hover:text-teal-600 transition-colors cursor-pointer">Layanan & Fitur</button>
             <button onClick={() => scrollToId('panduan')} className="hover:text-teal-600 transition-colors cursor-pointer text-teal-600 font-extrabold bg-teal-50 px-2.5 py-1 rounded-lg">Cara Pakai 💡</button>
             <button onClick={() => scrollToId('faq')} className="hover:text-teal-600 transition-colors cursor-pointer">FAQ</button>
             <button onClick={() => scrollToId('hubungi')} className="hover:text-teal-600 transition-colors cursor-pointer">Hubungi Kami</button>
           </nav>
 
-          {/* Action CTA Buttons */}
+          {/* Action CTA Buttons & RT Switcher */}
           <div className="hidden md:flex items-center gap-3">
+            {/* Quick RT Selector in Navbar */}
+            <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-200/80 px-2.5 py-1.5 rounded-xl">
+              <span className="text-xs">🏛️</span>
+              <select
+                value={selectedRt}
+                onChange={(e) => handleSelectRt(e.target.value)}
+                className="bg-transparent text-xs font-black text-teal-800 outline-none cursor-pointer"
+                title="Pilih Lingkungan RT"
+              >
+                {rtList.map(r => (
+                  <option key={`nav_rt_${r.id}`} value={r.id}>Lingkungan {r.label}</option>
+                ))}
+              </select>
+            </div>
+
             <button 
               onClick={() => onEnterPortal('login')}
-              className="px-5 py-2.5 text-slate-700 hover:text-teal-600 font-bold text-xs transition-colors rounded-xl hover:bg-slate-50 cursor-pointer"
+              className="px-4 py-2 text-slate-700 hover:text-teal-600 font-bold text-xs transition-colors rounded-xl hover:bg-slate-50 cursor-pointer"
             >
               Masuk Portal
             </button>
             <button 
               onClick={() => onEnterPortal('register')}
-              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md shadow-teal-500/15 hover:shadow-lg hover:shadow-teal-500/20 active:scale-95 transition-all cursor-pointer"
+              className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md shadow-teal-500/15 hover:shadow-lg hover:shadow-teal-500/20 active:scale-95 transition-all cursor-pointer"
             >
               Daftar Warga
             </button>
           </div>
 
           {/* Mobile Menu Trigger Button */}
-          <button 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-            className="md:hidden p-2 text-slate-600 hover:text-teal-600 transition-colors cursor-pointer"
-          >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          <div className="md:hidden flex items-center gap-2">
+            <div className="flex items-center bg-teal-50 border border-teal-200 px-2 py-1 rounded-lg text-xs font-extrabold text-teal-800">
+              <select
+                value={selectedRt}
+                onChange={(e) => handleSelectRt(e.target.value)}
+                className="bg-transparent outline-none text-xs font-black"
+              >
+                {rtList.map(r => (
+                  <option key={`mob_hdr_rt_${r.id}`} value={r.id}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <button 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+              className="p-2 text-slate-600 hover:text-teal-600 transition-colors cursor-pointer"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Navigation Drawer */}
@@ -316,17 +383,35 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               transition={{ duration: 0.25 }}
               className="md:hidden bg-white border-t border-slate-100 overflow-hidden shadow-inner"
             >
-              <div className="flex flex-col gap-4 px-6 py-6 font-semibold text-slate-600 text-sm">
-                <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Beranda</button>
-                <button onClick={() => { scrollToId('data-warga'); setMobileMenuOpen(false); }} className="text-left py-1 text-teal-700 font-bold hover:text-teal-600 cursor-pointer">Data Warga RT 01 (Kategori Usia)</button>
-                <button onClick={() => { scrollToId('struktur-organisasi'); setMobileMenuOpen(false); }} className="text-left py-1 text-teal-700 font-bold hover:text-teal-600 cursor-pointer">Struktur Organisasi RT 01</button>
+              <div className="flex flex-col gap-3 px-6 py-5 font-semibold text-slate-600 text-sm">
+                {/* RT Switcher Pills in Mobile Drawer */}
+                <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 mb-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Pilih Lingkungan RT:</div>
+                  <div className="flex gap-1.5">
+                    {rtList.map(r => (
+                      <button
+                        key={`mob_nav_drawer_${r.id}`}
+                        onClick={() => handleSelectRt(r.id)}
+                        className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all ${
+                          selectedRt === r.id ? 'bg-teal-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Beranda Utama</button>
+                <button onClick={() => { scrollToId('data-warga'); setMobileMenuOpen(false); }} className="text-left py-1 text-teal-700 font-bold hover:text-teal-600 cursor-pointer">Data Warga {rtLabel} (Kategori Usia)</button>
+                <button onClick={() => { scrollToId('struktur-organisasi'); setMobileMenuOpen(false); }} className="text-left py-1 text-teal-700 font-bold hover:text-teal-600 cursor-pointer">Struktur Organisasi {rtLabel}</button>
                 <button onClick={() => { scrollToId('fitur'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Layanan & Fitur</button>
                 <button onClick={() => { scrollToId('panduan'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer text-teal-600 font-extrabold bg-teal-50 px-2.5 py-1 rounded-lg">Cara Pakai 💡</button>
                 <button onClick={() => { scrollToId('alur'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Alur Pelayanan</button>
                 <button onClick={() => { scrollToId('faq'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">FAQ</button>
                 <button onClick={() => { scrollToId('hubungi'); setMobileMenuOpen(false); }} className="text-left py-1 hover:text-teal-600 cursor-pointer">Hubungi Kami</button>
-                <div className="h-px bg-slate-100 my-2"></div>
-                <div className="flex gap-4">
+                <div className="h-px bg-slate-100 my-1"></div>
+                <div className="flex gap-3">
                   <button 
                     onClick={() => { setMobileMenuOpen(false); onEnterPortal('login'); }}
                     className="flex-1 py-3 text-center text-slate-700 hover:text-teal-600 bg-slate-50 rounded-xl font-bold text-xs"
@@ -359,10 +444,37 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-50 border border-teal-100 text-teal-700 font-extrabold text-[10px] uppercase tracking-wider rounded-full mb-6"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-50 border border-teal-100 text-teal-700 font-extrabold text-[10px] uppercase tracking-wider rounded-full mb-4"
             >
               <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping"></span>
-              Sistem Informasi Digital Rukun Tetangga (RT)
+              Sistem Informasi Digital Rukun Tetangga ({rtLabel})
+            </motion.div>
+
+            {/* RT SELECTOR TABS DI HERO */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex flex-wrap items-center gap-2 p-1.5 bg-white/90 backdrop-blur-md rounded-2xl border border-teal-100/80 shadow-sm mb-5"
+            >
+              <span className="text-xs font-bold text-slate-500 pl-2">Pilih Lingkungan RT:</span>
+              <div className="flex items-center gap-1.5">
+                {rtList.map(rt => (
+                  <button
+                    key={`hero_rt_${rt.id}`}
+                    onClick={() => handleSelectRt(rt.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                      selectedRt === rt.id
+                        ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-600/20 scale-105'
+                        : 'text-slate-600 hover:text-teal-700 hover:bg-teal-50/70 bg-slate-50'
+                    }`}
+                  >
+                    <span>🏛️</span>
+                    <span>{rt.label}</span>
+                    {selectedRt === rt.id && <span className="text-[10px]">✓</span>}
+                  </button>
+                ))}
+              </div>
             </motion.div>
 
             {/* Title */}
@@ -372,7 +484,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               transition={{ delay: 0.1 }}
               className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-[1.1]"
             >
-              Kelola Layanan RT Lebih <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Transparan</span>, Cepat, & <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">Guyub Rukun</span>
+              Kelola Layanan {rtLabel} Lebih <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Transparan</span>, Cepat, & <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">Guyub Rukun</span>
             </motion.h1>
 
             {/* Subtext */}
@@ -382,7 +494,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               transition={{ delay: 0.2 }}
               className="text-slate-500 mt-6 text-sm md:text-base lg:text-lg font-medium leading-relaxed max-w-xl"
             >
-              Satu portal terintegrasi untuk mempermudah permohonan surat pengantar, pemantauan kas transparan, aduan warga, e-voting musyawarah, ronda siskamling, promosi UMKM lokal, hingga asisten AI warga 24 jam.
+              Satu portal terintegrasi untuk mempermudah permohonan surat pengantar, pemantauan kas transparan, aduan warga, e-voting musyawarah, ronda siskamling, promosi UMKM lokal, hingga asisten AI warga lingkungan {rtLabel} / RW 21.
             </motion.p>
 
             {/* CTA Actions */}
@@ -396,14 +508,14 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 onClick={() => onEnterPortal('login')}
                 className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white font-extrabold text-sm rounded-2xl shadow-xl shadow-teal-500/20 active:scale-98 hover:shadow-2xl hover:shadow-teal-500/25 transition-all flex items-center justify-center gap-2 group cursor-pointer"
               >
-                <span>Masuk Portal Warga</span>
+                <span>Masuk Portal {rtLabel}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
               <button 
                 onClick={() => scrollToId('data-warga')}
                 className="w-full sm:w-auto px-7 py-4 bg-white border-2 border-slate-200 hover:border-teal-400 text-slate-700 font-extrabold text-sm rounded-2xl hover:bg-slate-50 active:scale-98 transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Data Warga & Struktur RT 01</span>
+                <span>Data Warga & Struktur {rtLabel}</span>
               </button>
               {deferredPrompt && (
                 <button 
@@ -479,8 +591,8 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 {/* Profile Greeting Area */}
                 <div className="px-4 py-3 bg-gradient-to-r from-teal-50/70 to-emerald-50/20 flex items-center justify-between text-left">
                   <div>
-                    <h4 className="text-[14px] font-black text-slate-800 leading-tight">Halo, M Adji!</h4>
-                    <p className="text-[9px] font-bold text-slate-400 mt-1">Warga RT 01, Blok F No. 22</p>
+                    <h4 className="text-[14px] font-black text-slate-800 leading-tight">Halo, Warga {rtLabel}!</h4>
+                    <p className="text-[9px] font-bold text-slate-400 mt-1">Wilayah {rtLabel} / RW 21</p>
                   </div>
                   {/* Red jersey avatar */}
                   <div className="relative shrink-0">
@@ -507,7 +619,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                     <div className="absolute right-0 bottom-0 w-28 h-28 bg-white/5 rounded-full translate-x-10 translate-y-10 blur-sm"></div>
 
                     <div className="flex justify-between items-center relative z-10">
-                      <span className="text-[8px] font-extrabold tracking-widest text-emerald-100 uppercase">SALDO KAS RT 01</span>
+                      <span className="text-[8px] font-extrabold tracking-widest text-emerald-100 uppercase">SALDO KAS {rtLabel}</span>
                       <div className="flex gap-2 items-center text-white/80">
                         <span className="text-[10px]">👁️</span>
                         <span className="text-[10px]">💳</span>
@@ -515,7 +627,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                     </div>
 
                     <div className="text-[19px] font-black text-white tracking-tight mt-1.5 relative z-10">
-                      Rp 8.818.500
+                      Rp {rtData.saldoKas.toLocaleString('id-ID')}
                     </div>
 
                     <div className="flex gap-1.5 mt-3 relative z-10">
@@ -730,19 +842,19 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
         </div>
       </section>
 
-      {/* 3.5 STATISTIK WARGA RT 01 SESUAI KATEGORI USIA */}
+      {/* 3.5 STATISTIK WARGA SESUAI KATEGORI USIA */}
       <section id="data-warga" className="py-20 bg-slate-50 border-b border-slate-100 relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           {/* Header */}
           <div className="max-w-3xl mx-auto text-center flex flex-col items-center">
             <span className="text-xs font-bold tracking-wider text-teal-700">
-              Demografi Kependudukan · RT 01 / RW 21 Wisma Garden
+              Demografi Kependudukan · {rtLabel} / RW 21 Wisma Garden
             </span>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mt-2 leading-tight">
-              Statistik Warga RT 01 Berdasarkan Kategori Usia
+              Statistik Warga {rtLabel} Berdasarkan Kategori Usia
             </h2>
             <p className="text-slate-500 mt-3 text-sm md:text-base font-medium leading-relaxed">
-              Rekapitulasi jumlah warga lingkungan RT 01 secara real-time yang dikelompokkan ke dalam 5 kategori usia mulai dari Balita hingga Lansia (&gt; 70 Tahun) tanpa menampilkan data pribadi warga.
+              Rekapitulasi jumlah warga lingkungan {rtLabel} secara real-time yang dikelompokkan ke dalam 5 kategori usia mulai dari Balita hingga Lansia (&gt; 70 Tahun) tanpa menampilkan data pribadi warga.
             </p>
           </div>
 
@@ -750,7 +862,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-12">
             {rtData.groups.map((grp, idx) => {
               const total = Math.max(1, rtData.jumlahWarga);
-              const pct = Math.round((grp.count / total) * 100);
+              const pct = rtData.jumlahWarga > 0 ? Math.round((grp.count / total) * 100) : 0;
               return (
                 <motion.div
                   key={grp.key}
@@ -807,14 +919,14 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-black text-slate-900">
-                  Grafik & Komposisi Demografi Warga RT 01 ({rtData.jumlahWarga} Jiwa · {rtData.jumlahKK} KK)
+                  Grafik & Komposisi Demografi Warga {rtLabel} ({rtData.jumlahWarga} Jiwa · {rtData.jumlahKK} KK)
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Laki-laki: <strong className="text-slate-800 tabular-nums">{rtData.lakiLaki} Jiwa</strong> · Perempuan: <strong className="text-slate-800 tabular-nums">{rtData.perempuan} Jiwa</strong>
                 </p>
               </div>
               <span className="text-xs font-semibold text-teal-700">
-                Data Statistik Terverifikasi Pengurus RT 01
+                Data Statistik Terverifikasi Pengurus {rtLabel}
               </span>
             </div>
 
@@ -909,7 +1021,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
         </div>
       </section>
 
-      {/* 3.8 STRUKTUR ORGANISASI PENGURUS RT 01 */}
+      {/* 3.8 STRUKTUR ORGANISASI PENGURUS */}
       <section id="struktur-organisasi" className="py-20 bg-white border-b border-slate-100 relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           {/* Header */}
@@ -918,10 +1030,10 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               Tata Kelola Lingkungan · Masa Bakti Aktif
             </span>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mt-2 leading-tight">
-              Struktur Organisasi Pengurus RT 01 / RW 21
+              Struktur Organisasi Pengurus {rtLabel} / RW 21
             </h2>
             <p className="text-slate-500 mt-3 text-sm md:text-base font-medium leading-relaxed">
-              Susunan kepengurusan Rukun Tetangga 01 / RW 21 Wisma Garden, Kelurahan Kutajaya, Kecamatan Pasarkemis, Kabupaten Tangerang yang bertugas melayani administrasi dan kerukunan warga.
+              Susunan kepengurusan Rukun Tetangga {rtNum} / RW 21 Wisma Garden, Kelurahan Kutajaya, Kecamatan Pasarkemis, Kabupaten Tangerang yang bertugas melayani administrasi dan kerukunan warga.
             </p>
           </div>
 
@@ -929,16 +1041,32 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
           {(() => {
             const ketua = rtData.pengurusList.find(p => p.role === 'admin') || {
               id: 'admin',
-              nama: 'M Adji Prasetyo',
+              nama: selectedRt === 'rt01' ? 'M Adji Prasetyo' : `Ketua ${rtLabel} (Belum Ditetapkan)`,
               role: 'admin',
-              jabatan: 'Ketua RT 01 / RW 21',
-              alamat: 'Blok F No. 22',
-              noHp: '081214007871'
+              jabatan: `Ketua ${rtLabel} / RW 21`,
+              alamat: selectedRt === 'rt01' ? 'Blok F No. 22' : '',
+              noHp: selectedRt === 'rt01' ? '081214007871' : ''
             };
-            const sekretarisList = rtData.pengurusList.filter(p => p.role === 'sekretaris');
-            const bendaharaList = rtData.pengurusList.filter(p => p.role === 'bendahara');
+            const sekretarisListRaw = rtData.pengurusList.filter(p => p.role === 'sekretaris');
+            const bendaharaListRaw = rtData.pengurusList.filter(p => p.role === 'bendahara');
+            const sekretarisList = sekretarisListRaw.length > 0 ? sekretarisListRaw : (selectedRt === 'rt01' ? [
+              {
+                id: 'sekretaris_def',
+                nama: 'Sugiarto',
+                role: 'sekretaris',
+                jabatan: `Sekretaris ${rtLabel}`
+              }
+            ] : []);
+            const bendaharaList = bendaharaListRaw.length > 0 ? bendaharaListRaw : (selectedRt === 'rt01' ? [
+              {
+                id: 'bendahara_def',
+                nama: 'Syarifudin Hidayatullah',
+                role: 'bendahara',
+                jabatan: `Bendahara ${rtLabel}`
+              }
+            ] : []);
 
-            const seksiBidang = [
+            const seksiBidang = selectedRt === 'rt01' ? [
               {
                 bidang: 'Seksi Humas',
                 desc: 'Hubungan masyarakat, komunikasi informasi & publikasi warga',
@@ -951,46 +1079,89 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 desc: 'Kegiatan keagamaan, pengajian & kerukunan umat beragama',
                 accent: 'bg-emerald-600 text-white',
                 badgeBg: 'bg-emerald-50 text-emerald-700',
-                anggota: ['Hafiz', 'Fauzi', 'Wahyu Widodo']
+                anggota: ['Hafiz']
               },
               {
                 bidang: 'Seksi Sosial, Pemuda & Olahraga',
                 desc: 'Kegiatan kepemudaan, olahraga warga & kepedulian sosial',
                 accent: 'bg-indigo-600 text-white',
                 badgeBg: 'bg-indigo-50 text-indigo-700',
-                anggota: ['Ilham', 'Hendra', 'Fajri']
+                anggota: ['Ilham']
               },
               {
                 bidang: 'Seksi Ketertiban & Keamanan',
                 desc: 'Koordinasi siskamling, ronda malam & ketertiban lingkungan',
                 accent: 'bg-rose-600 text-white',
                 badgeBg: 'bg-rose-50 text-rose-700',
-                anggota: ['Fredy', 'Andi', 'Edi Prasetyo']
+                anggota: ['Fredy']
               },
               {
-                bidang: 'Seksi Pembangunan, Lingkungan & Kebersihan',
-                desc: 'Kerja bakti, pemeliharaan fasilitas & penghijauan RT 01',
+                bidang: 'Seksi Pembangunan & Lingkungan',
+                desc: `Kerja bakti, pemeliharaan fasilitas & kebersihan ${rtLabel}`,
                 accent: 'bg-teal-600 text-white',
                 badgeBg: 'bg-teal-50 text-teal-700',
-                anggota: ['Dwi', 'Wahid', 'Akhmad']
+                anggota: ['Dwi']
               },
               {
                 bidang: 'Seksi Konsumsi & Perlengkapan',
                 desc: 'Pengelolaan inventaris warga, logistik & konsumsi kegiatan',
                 accent: 'bg-amber-500 text-white',
                 badgeBg: 'bg-amber-50 text-amber-700',
-                anggota: ['Suharja', 'Didik']
+                anggota: ['Suharja']
+              }
+            ] : [
+              {
+                bidang: 'Seksi Humas',
+                desc: 'Hubungan masyarakat, komunikasi informasi & publikasi warga',
+                accent: 'bg-sky-600 text-white',
+                badgeBg: 'bg-sky-50 text-sky-700',
+                anggota: ['(Belum Ada Petugas)']
+              },
+              {
+                bidang: 'Seksi Kerohanian',
+                desc: 'Kegiatan keagamaan, pengajian & kerukunan umat beragama',
+                accent: 'bg-emerald-600 text-white',
+                badgeBg: 'bg-emerald-50 text-emerald-700',
+                anggota: ['(Belum Ada Petugas)']
+              },
+              {
+                bidang: 'Seksi Sosial, Pemuda & Olahraga',
+                desc: 'Kegiatan kepemudaan, olahraga warga & kepedulian sosial',
+                accent: 'bg-indigo-600 text-white',
+                badgeBg: 'bg-indigo-50 text-indigo-700',
+                anggota: ['(Belum Ada Petugas)']
+              },
+              {
+                bidang: 'Seksi Ketertiban & Keamanan',
+                desc: 'Koordinasi siskamling, ronda malam & ketertiban lingkungan',
+                accent: 'bg-rose-600 text-white',
+                badgeBg: 'bg-rose-50 text-rose-700',
+                anggota: ['(Belum Ada Petugas)']
+              },
+              {
+                bidang: 'Seksi Pembangunan & Lingkungan',
+                desc: `Kerja bakti, pemeliharaan fasilitas & kebersihan ${rtLabel}`,
+                accent: 'bg-teal-600 text-white',
+                badgeBg: 'bg-teal-50 text-teal-700',
+                anggota: ['(Belum Ada Petugas)']
+              },
+              {
+                bidang: 'Seksi Konsumsi & Perlengkapan',
+                desc: 'Pengelolaan inventaris warga, logistik & konsumsi kegiatan',
+                accent: 'bg-amber-500 text-white',
+                badgeBg: 'bg-amber-50 text-amber-700',
+                anggota: ['(Belum Ada Petugas)']
               }
             ];
 
-            const koordinatorBlok = [
+            const koordinatorBlok = selectedRt === 'rt01' ? [
               { blok: 'Blok A', nama: 'Rizal' },
               { blok: 'Blok C', nama: 'Ikhsan' },
               { blok: 'Blok D (Genap)', nama: 'Ari Hartoyo' },
               { blok: 'Blok D (Ganjil)', nama: 'Priyanto' },
               { blok: 'Blok E', nama: 'Nurman' },
               { blok: 'Blok F', nama: 'Azirwan' }
-            ];
+            ] : [];
 
             const getInitials = (name: string) =>
               String(name || 'RT')
@@ -1043,26 +1214,32 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                           <FileText className="w-4 h-4" />
                         </div>
                         <div className="text-left">
-                          <h4 className="text-sm font-black text-slate-900">Sekretaris RT 01</h4>
+                          <h4 className="text-sm font-black text-slate-900">Sekretaris {rtLabel}</h4>
                           <p className="text-xs text-slate-500">Administrasi Surat, Kependudukan & Arsip</p>
                         </div>
                       </div>
                     </div>
                     <div className="space-y-3">
-                      {sekretarisList.map((sek, idx) => (
-                        <div
-                          key={`sek_${sek.id}_${idx}`}
-                          className="bg-white p-4 rounded-2xl border border-slate-200/70 flex items-center gap-3.5"
-                        >
-                          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 font-black text-sm flex items-center justify-center shrink-0">
-                            {getInitials(sek.nama)}
-                          </div>
-                          <div className="min-w-0 text-left">
-                            <h5 className="text-sm font-bold text-slate-900 truncate">{sek.nama}</h5>
-                            <p className="text-xs font-semibold text-blue-600">{sek.jabatan}</p>
-                          </div>
+                      {sekretarisList.length === 0 ? (
+                        <div className="bg-white p-4 rounded-2xl border border-dashed border-slate-200 text-center text-xs font-semibold text-slate-400">
+                          Belum ada data sekretaris untuk {rtLabel}
                         </div>
-                      ))}
+                      ) : (
+                        sekretarisList.map((sek, idx) => (
+                          <div
+                            key={`sek_${sek.id}_${idx}`}
+                            className="bg-white p-4 rounded-2xl border border-slate-200/70 flex items-center gap-3.5"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 font-black text-sm flex items-center justify-center shrink-0">
+                              {getInitials(sek.nama)}
+                            </div>
+                            <div className="min-w-0 text-left">
+                              <h5 className="text-sm font-bold text-slate-900 truncate">{sek.nama}</h5>
+                              <p className="text-xs font-semibold text-blue-600">{sek.jabatan}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -1074,26 +1251,32 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                           <TrendingUp className="w-4 h-4" />
                         </div>
                         <div className="text-left">
-                          <h4 className="text-sm font-black text-slate-900">Bendahara RT 01</h4>
+                          <h4 className="text-sm font-black text-slate-900">Bendahara {rtLabel}</h4>
                           <p className="text-xs text-slate-500">Pengelolaan Kas RT, Dana Sosial & Iuran Warga</p>
                         </div>
                       </div>
                     </div>
                     <div className="space-y-3">
-                      {bendaharaList.map((ben, idx) => (
-                        <div
-                          key={`ben_${ben.id}_${idx}`}
-                          className="bg-white p-4 rounded-2xl border border-slate-200/70 flex items-center gap-3.5"
-                        >
-                          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 font-black text-sm flex items-center justify-center shrink-0">
-                            {getInitials(ben.nama)}
-                          </div>
-                          <div className="min-w-0 text-left">
-                            <h5 className="text-sm font-bold text-slate-900 truncate">{ben.nama}</h5>
-                            <p className="text-xs font-semibold text-emerald-600">{ben.jabatan}</p>
-                          </div>
+                      {bendaharaList.length === 0 ? (
+                        <div className="bg-white p-4 rounded-2xl border border-dashed border-slate-200 text-center text-xs font-semibold text-slate-400">
+                          Belum ada data bendahara untuk {rtLabel}
                         </div>
-                      ))}
+                      ) : (
+                        bendaharaList.map((ben, idx) => (
+                          <div
+                            key={`ben_${ben.id}_${idx}`}
+                            className="bg-white p-4 rounded-2xl border border-slate-200/70 flex items-center gap-3.5"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 font-black text-sm flex items-center justify-center shrink-0">
+                              {getInitials(ben.nama)}
+                            </div>
+                            <div className="min-w-0 text-left">
+                              <h5 className="text-sm font-bold text-slate-900 truncate">{ben.nama}</h5>
+                              <p className="text-xs font-semibold text-emerald-600">{ben.jabatan}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1101,7 +1284,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 {/* TIER 3: SEKSI - SEKSI BIDANG KEPENGURUSAN */}
                 <div className="max-w-6xl mx-auto pt-2">
                   <div className="text-center mb-6">
-                    <h3 className="text-lg font-black text-slate-900">Seksi – Seksi Bidang Kepengurusan RT 01</h3>
+                    <h3 className="text-lg font-black text-slate-900">Seksi – Seksi Bidang Kepengurusan {rtLabel}</h3>
                     <p className="text-xs text-slate-500 mt-1">Pembagian tugas pelayanan sosial, keamanan, pembangunan, dan kegiatan warga</p>
                   </div>
 
@@ -1153,7 +1336,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/10">
                     <div className="text-left">
                       <span className="text-xs font-bold text-teal-400">Perwakilan Wilayah</span>
-                      <h3 className="text-lg md:text-xl font-black text-white mt-0.5">Koordinator Blok Lingkungan RT 01</h3>
+                      <h3 className="text-lg md:text-xl font-black text-white mt-0.5">Koordinator Blok Lingkungan {rtLabel}</h3>
                       <p className="text-xs text-slate-300 mt-1">Penghubung komunikasi cepat dan koordinasi warga di setiap blok hunian</p>
                     </div>
                     <span className="text-xs font-semibold text-teal-300 tabular-nums">
@@ -1161,27 +1344,33 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-6">
-                    {koordinatorBlok.map((item, bIdx) => (
-                      <motion.div
-                        key={`blok_${bIdx}`}
-                        initial={{ opacity: 0, y: 10 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ delay: bIdx * 0.05 }}
-                        className="bg-white/10 backdrop-blur-xs border border-white/15 p-4 rounded-2xl text-left flex flex-col justify-between hover:bg-white/15 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-xs font-black text-teal-300">{item.blok}</span>
-                          <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-black text-white leading-snug">{item.nama}</p>
-                          <p className="text-[10px] font-medium text-slate-300 mt-0.5">Koordinator {item.blok}</p>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
+                  {koordinatorBlok.length === 0 ? (
+                    <div className="p-6 text-center text-xs font-semibold text-teal-200/80 bg-white/5 rounded-2xl border border-dashed border-white/10 mt-6">
+                      Koordinator blok untuk {rtLabel} belum ditentukan
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-6">
+                      {koordinatorBlok.map((item, bIdx) => (
+                        <motion.div
+                          key={`blok_${bIdx}`}
+                          initial={{ opacity: 0, y: 10 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          viewport={{ once: true }}
+                          transition={{ delay: bIdx * 0.05 }}
+                          className="bg-white/10 backdrop-blur-xs border border-white/15 p-4 rounded-2xl text-left flex flex-col justify-between hover:bg-white/15 transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <span className="text-xs font-black text-teal-300">{item.blok}</span>
+                            <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-white leading-snug">{item.nama}</p>
+                            <p className="text-[10px] font-medium text-slate-300 mt-0.5">Koordinator {item.blok}</p>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -1284,7 +1473,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <div className="relative z-10 grid md:grid-cols-12 gap-6 items-center">
               <div className="md:col-span-8">
                 <span className="text-[9px] font-extrabold text-teal-400 uppercase tracking-widest">AKSES SEKARANG</span>
-                <h3 className="text-2xl md:text-3xl font-black tracking-tight mt-1">Ingin mendaftarkan keluarga Anda di Portal Digital RT 01?</h3>
+                <h3 className="text-2xl md:text-3xl font-black tracking-tight mt-1">Ingin mendaftarkan keluarga Anda di Portal Digital {rtLabel}?</h3>
                 <p className="text-slate-300 mt-2 text-xs md:text-sm font-medium leading-relaxed max-w-xl">
                   Hubungkan profil keluarga Anda untuk kemudahan akses layanan administrasi surat-menyurat RT, verifikasi iuran, dan pantau kas transparan.
                 </p>
@@ -1361,7 +1550,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                   </p>
                   <ul className="text-[10px] font-bold text-slate-600 space-y-2 border-t border-slate-50 pt-3">
                     <li className="flex items-start gap-1.5"><span className="text-blue-500">✓</span> Klik tombol "Masuk Portal Warga"</li>
-                    <li className="flex items-start gap-1.5"><span className="text-blue-500">✓</span> Pilih RT tempat Anda tinggal (misal: RT 01)</li>
+                    <li className="flex items-start gap-1.5"><span className="text-blue-500">✓</span> Pilih RT tempat Anda tinggal (misal: {rtLabel})</li>
                   </ul>
                 </div>
 
@@ -1515,56 +1704,64 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <span className="text-[10px] font-extrabold tracking-widest text-teal-600 bg-teal-50 border border-teal-100 px-3.5 py-1.5 rounded-full uppercase">AGENDA & KEGIATAN RT</span>
             <h2 className="text-3xl font-black text-slate-900 tracking-tight mt-4">Aktifitas & Kegiatan Mendatang</h2>
             <p className="text-slate-500 mt-3 text-sm font-medium leading-relaxed">
-              Jadwal agenda musyawarah, gotong royong, posyandu, dan ronda malam warga di lingkungan RT 01.
+              Jadwal agenda musyawarah, gotong royong, posyandu, dan ronda malam warga di lingkungan {rtLabel}.
             </p>
           </div>
 
           {/* Event Cards */}
           <div className="grid md:grid-cols-3 gap-6 md:gap-8">
-            {events.map((evt, idx) => (
-              <motion.div 
-                key={idx}
-                initial={{ opacity: 0, y: 15 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.1 }}
-                className="bg-white p-6 rounded-3xl border border-slate-100 shadow-[0_4px_25px_rgba(0,0,0,0.01)] hover:border-teal-200 transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="px-3 py-1 bg-teal-50 text-teal-700 text-[9px] font-extrabold rounded-md uppercase tracking-wider border border-teal-100/50">
-                      {evt.tag}
-                    </span>
-                    <span className="text-slate-400 text-[10px] font-bold flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-teal-600" /> Mendatang
-                    </span>
+            {events.length === 0 ? (
+              <div className="col-span-full py-12 text-center bg-white rounded-3xl border border-dashed border-slate-200">
+                <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm font-bold text-slate-700">Belum Ada Agenda Kegiatan</p>
+                <p className="text-xs text-slate-400 mt-1">Belum ada agenda atau kegiatan yang dijadwalkan untuk {rtLabel}.</p>
+              </div>
+            ) : (
+              events.map((evt, idx) => (
+                <motion.div 
+                  key={idx}
+                  initial={{ opacity: 0, y: 15 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="bg-white p-6 rounded-3xl border border-slate-100 shadow-[0_4px_25px_rgba(0,0,0,0.01)] hover:border-teal-200 transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="px-3 py-1 bg-teal-50 text-teal-700 text-[9px] font-extrabold rounded-md uppercase tracking-wider border border-teal-100/50">
+                        {evt.tag}
+                      </span>
+                      <span className="text-slate-400 text-[10px] font-bold flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-teal-600" /> Mendatang
+                      </span>
+                    </div>
+
+                    <h3 className="font-extrabold text-sm text-slate-800 leading-snug hover:text-teal-600 transition-colors">
+                      {evt.title}
+                    </h3>
+                    
+                    <p className="text-slate-500 text-[11px] font-medium mt-3.5 leading-relaxed">
+                      {evt.desc}
+                    </p>
                   </div>
 
-                  <h3 className="font-extrabold text-sm text-slate-800 leading-snug hover:text-teal-600 transition-colors">
-                    {evt.title}
-                  </h3>
-                  
-                  <p className="text-slate-500 text-[11px] font-medium mt-3.5 leading-relaxed">
-                    {evt.desc}
-                  </p>
-                </div>
-
-                <div className="mt-6 pt-5 border-t border-slate-50 space-y-2 text-[11px] font-extrabold text-slate-700">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                    <span>{evt.date}</span>
+                  <div className="mt-6 pt-5 border-t border-slate-50 space-y-2 text-[11px] font-extrabold text-slate-700">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                      <span>{evt.date}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                      <span>{evt.time}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                      <span className="truncate">{evt.loc}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                    <span className="font-medium text-slate-500">{evt.time}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                    <span className="font-medium text-slate-500 truncate">{evt.loc}</span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              ))
+            )}
           </div>
         </div>
       </section>
@@ -1629,7 +1826,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               <div className="space-y-8">
                 <div>
                   <span className="text-[9px] font-extrabold text-teal-400 uppercase tracking-widest">HUBUNGI PENGURUS</span>
-                  <h3 className="text-2xl font-black tracking-tight mt-1">Saluran Layanan Mandiri Warga RT 01</h3>
+                  <h3 className="text-2xl font-black tracking-tight mt-1">Saluran Layanan Mandiri Warga {rtLabel}</h3>
                   <p className="text-slate-300 mt-2.5 text-[11px] font-bold leading-relaxed">
                     Butuh koordinasi langsung, verifikasi data kependudukan manual, atau ada masukan pembangunan lingkungan?
                   </p>
@@ -1638,21 +1835,21 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
                 <div className="space-y-4 text-[11px] font-extrabold text-slate-200">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><MapPin className="w-4 h-4 text-teal-400" /></div>
-                    <span>Sekretariat RT 01, RW 21, Wisma Garden, Kutajaya, Pasarkemis, Tangerang</span>
+                    <span>Sekretariat {rtLabel}, RW 21, Wisma Garden, Kutajaya, Pasarkemis, Tangerang</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><Phone className="w-4 h-4 text-teal-400" /></div>
-                    <span>+62 812-1400-7871 (Ketua RT)</span>
+                    <span>{rtData.pengurusList.find(p => p.role === 'admin')?.noHp || '+62 812-1400-7871'} (Ketua {rtLabel})</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0"><MessageSquare className="w-4 h-4 text-teal-400" /></div>
-                    <span>muhammad.adjiprasetyo28@gmail.com</span>
+                    <span>layanan.{selectedRt}@guyubrukun.id</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/10 text-[10px] font-extrabold text-slate-400">
-                Layanan Digital dikelola secara mandiri oleh tim pengurus RT 01 Tangerang.
+                Layanan Digital dikelola secara mandiri oleh tim pengurus {rtLabel} Tangerang.
               </div>
             </div>
 
@@ -1752,7 +1949,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
               </span>
             </div>
             <p className="text-slate-400 text-xs font-medium leading-relaxed max-w-sm">
-              Sistem Portal Balai Warga Digital RT 01 / RW 21, Tangerang, Banten. Membawa kemudahan administrasi kependudukan, keterbukaan laporan kas, siskamling, dan perekonomian warga lokal.
+              Sistem Portal Balai Warga Digital {rtLabel} / RW 21, Tangerang, Banten. Membawa kemudahan administrasi kependudukan, keterbukaan laporan kas, siskamling, dan perekonomian warga lokal.
             </p>
           </div>
 
@@ -1761,8 +1958,8 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
             <h4 className="text-xs font-extrabold uppercase tracking-widest text-teal-400">PINTASAN NAVIGASI</h4>
             <div className="flex flex-col gap-2.5 text-xs text-slate-400 font-bold">
               <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition-colors text-left cursor-pointer">Beranda Utama</button>
-              <button onClick={() => scrollToId('data-warga')} className="hover:text-white transition-colors text-left cursor-pointer">Data Warga RT 01 (Usia)</button>
-              <button onClick={() => scrollToId('struktur-organisasi')} className="hover:text-white transition-colors text-left cursor-pointer">Struktur Organisasi RT 01</button>
+              <button onClick={() => scrollToId('data-warga')} className="hover:text-white transition-colors text-left cursor-pointer">Data Warga {rtLabel} (Usia)</button>
+              <button onClick={() => scrollToId('struktur-organisasi')} className="hover:text-white transition-colors text-left cursor-pointer">Struktur Organisasi {rtLabel}</button>
               <button onClick={() => scrollToId('fitur')} className="hover:text-white transition-colors text-left cursor-pointer">Fitur Pelayanan</button>
               <button onClick={() => scrollToId('alur')} className="hover:text-white transition-colors text-left cursor-pointer">Alur Pendaftaran</button>
             </div>
@@ -1782,7 +1979,7 @@ export function LandingPage({ onEnterPortal }: LandingPageProps) {
         {/* Copy / Lower bar */}
         <div className="max-w-7xl mx-auto px-6 pt-8 flex flex-col sm:flex-row justify-between items-center text-[11px] font-bold text-slate-500 gap-4">
           <div>
-            © 2026 Portal Warga Guyub Rukun RT 01. Hak Cipta Dilindungi Undang-Undang.
+            © 2026 Portal Warga Guyub Rukun {rtLabel}. Hak Cipta Dilindungi Undang-Undang.
           </div>
           <div className="flex gap-4">
             <a href="#" className="hover:text-slate-300 transition-colors">Syarat & Ketentuan</a>

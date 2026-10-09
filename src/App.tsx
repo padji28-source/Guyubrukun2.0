@@ -2382,35 +2382,52 @@ const quickActions = [
   { name: 'Smart RT AI', icon: icons.gemini, color: 'from-teal-400 to-cyan-500', shadow: 'shadow-teal-200' },
 ];
 
-let cachedSaldoResult: any = null;
+const cachedSaldoMap: Record<string, { saldo: number; danaKematian: number; danaSosial: number }> = {};
 
 const MobileSaldoCard = ({ user }: { user?: any }) => {
-  const [saldo, setSaldo] = useState(cachedSaldoResult?.saldo || 0);
-  const [danaKematian, setDanaKematian] = useState(cachedSaldoResult?.danaKematian || 0);
-  const [danaSosial, setDanaSosial] = useState(cachedSaldoResult?.danaSosial || 0);
-  const [loading, setLoading] = useState(!cachedSaldoResult);
+  const activeRt = (user?.rtId || localStorage.getItem('selected_rt') || 'rt01').toLowerCase();
+  const cached = cachedSaldoMap[activeRt];
+  const [saldo, setSaldo] = useState(cached?.saldo || 0);
+  const [danaKematian, setDanaKematian] = useState(cached?.danaKematian || 0);
+  const [danaSosial, setDanaSosial] = useState(cached?.danaSosial || 0);
+  const [loading, setLoading] = useState(!cached);
   
   // State untuk menyembunyikan saldo
   const [isMasked, setIsMasked] = useState(true);
-  const rtLabel = ((user?.rtId || localStorage.getItem('selected_rt') || 'rt01').replace('rt', '')).padStart(2, '0');
+  const rtLabel = (activeRt.replace('rt', '') || '01').padStart(2, '0');
 
   useEffect(() => {
-    setLoading(!cachedSaldoResult);
-    apiFetch('/api/dashboard')
+    const curCached = cachedSaldoMap[activeRt];
+    if (curCached) {
+      setSaldo(curCached.saldo);
+      setDanaKematian(curCached.danaKematian);
+      setDanaSosial(curCached.danaSosial);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    let isMounted = true;
+    apiFetch(`/api/dashboard?rtId=${activeRt}`)
       .then(res => res.json())
       .then(json => {
+        if (!isMounted) return;
         if (json.metrics && json.metrics.kasDetail) {
           const detail = json.metrics.kasDetail;
           setSaldo(detail.kasRT);
           setDanaKematian(detail.danaKematian);
           setDanaSosial(detail.danaSosial);
           
-          cachedSaldoResult = { saldo: detail.kasRT, danaKematian: detail.danaKematian, danaSosial: detail.danaSosial };
+          cachedSaldoMap[activeRt] = { saldo: detail.kasRT, danaKematian: detail.danaKematian, danaSosial: detail.danaSosial };
         }
       })
       .catch(e => console.error(e))
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [activeRt, user?.id]);
 
   const formatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 
@@ -2467,7 +2484,7 @@ const MobileSaldoCard = ({ user }: { user?: any }) => {
   );
 };
 
-let cachedDemographicsWidget: any = null;
+const cachedDemoMap: Record<string, any> = {};
 
 const MobileDemographicsWidget = ({
   user,
@@ -2476,10 +2493,12 @@ const MobileDemographicsWidget = ({
   user?: any;
   onActionClick: (tab: string) => void;
 }) => {
+  const activeRt = (user?.rtId || localStorage.getItem('selected_rt') || 'rt01').toLowerCase();
+  const cached = cachedDemoMap[activeRt];
   const [groups, setGroups] = useState<
     Array<{ key: string; name: string; range: string; count: number; fill: string }>
   >(
-    cachedDemographicsWidget?.groups || [
+    cached?.groups || [
       { key: 'balita', name: 'Balita', range: '0 - 4 Thn', count: 0, fill: '#3b82f6' },
       { key: 'anak', name: 'Anak', range: '5 - 12 Thn', count: 0, fill: '#10b981' },
       { key: 'remaja', name: 'Remaja', range: '13 - 20 Thn', count: 0, fill: '#8b5cf6' },
@@ -2487,18 +2506,18 @@ const MobileDemographicsWidget = ({
       { key: 'lansia', name: 'Lansia', range: '> 70 Thn', count: 0, fill: '#f43f5e' }
     ]
   );
-  const [jumlahKK, setJumlahKK] = useState<number>(cachedDemographicsWidget?.jumlahKK || 0);
-  const [loading, setLoading] = useState(!cachedDemographicsWidget);
+  const [jumlahKK, setJumlahKK] = useState<number>(cached?.jumlahKK || 0);
+  const [loading, setLoading] = useState(!cached);
 
   const loadDemographics = async () => {
     try {
-      const res = await apiFetch('/api/dashboard');
+      const res = await apiFetch(`/api/dashboard?rtId=${activeRt}`);
       const json = await res.json();
       const demo = json?.metrics?.demographics;
       if (demo && Array.isArray(demo.groups) && demo.totalWithAge > 0) {
         setGroups(demo.groups);
         setJumlahKK(json.metrics.jumlahKK || 0);
-        cachedDemographicsWidget = {
+        cachedDemoMap[activeRt] = {
           groups: demo.groups,
           jumlahKK: json.metrics.jumlahKK || 0
         };
@@ -2507,7 +2526,7 @@ const MobileDemographicsWidget = ({
       }
 
       // Fallback computation from /api/warga?limit=0&summary=1
-      const wRes = await apiFetch('/api/warga?limit=0&summary=1');
+      const wRes = await apiFetch(`/api/warga?limit=0&summary=1&rtId=${activeRt}`);
       if (wRes.ok) {
         const wJson = await wRes.json();
         const users = (wJson.users || []).filter((u: any) => u.role !== 'developer');
@@ -2552,7 +2571,7 @@ const MobileDemographicsWidget = ({
         ];
         setGroups(nextGroups);
         setJumlahKK(users.length);
-        cachedDemographicsWidget = { groups: nextGroups, jumlahKK: users.length };
+        cachedDemoMap[activeRt] = { groups: nextGroups, jumlahKK: users.length };
       }
     } catch (e) {
       console.error('Gagal memuat demografi usia warga:', e);
@@ -2566,7 +2585,7 @@ const MobileDemographicsWidget = ({
     const handleUpdate = () => loadDemographics();
     window.addEventListener('app_data_update', handleUpdate);
     return () => window.removeEventListener('app_data_update', handleUpdate);
-  }, []);
+  }, [activeRt, user?.id]);
 
   const totalPersons = groups.reduce((acc, g) => acc + (Number(g.count) || 0), 0);
   const isAdminRole = ['admin', 'developer', 'bendahara', 'sekretaris', 'pengurus'].includes(
@@ -4997,6 +5016,10 @@ export default function App() {
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('auth_user', JSON.stringify(userData));
+    if (userData?.rtId) {
+      setSelectedRt(userData.rtId);
+      localStorage.setItem('selected_rt', userData.rtId);
+    }
   };
 
   const handleSelectRt = (rt: string) => {
