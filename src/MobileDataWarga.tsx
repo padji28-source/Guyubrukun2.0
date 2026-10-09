@@ -506,11 +506,17 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
       const displayRt = rtValue.toUpperCase().replace('RT', 'RT ');
       const res = await apiFetch('/api/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-rt-id': rtValue
+        },
         body: JSON.stringify({
           ...newWarga,
           isApproved: true,
           alamat,
+          blok: newWargaBlok,
+          nomorRumah: newWargaNomor,
+          rtId: rtValue,
           rt: displayRt
         })
       });
@@ -623,6 +629,29 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
   const handleSaveWarga = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!wargaEditForm.id) return;
+
+    // Validasi Duplikat Blok & No Rumah saat edit alamat warga
+    if (wargaEditForm.alamat) {
+      const p = parseHouseInfo({ alamat: wargaEditForm.alamat });
+      if (p && p.blok && p.nomor) {
+        const rawNo = p.nomor.trim().toUpperCase();
+        const normNo = /^\d+$/.test(rawNo) ? String(parseInt(rawNo, 10)) : rawNo;
+        const fullList = allWargaFullData.length > 0 ? allWargaFullData : wargaData;
+        const dup = fullList.find((w: any) => {
+          if (w.id === wargaEditForm.id) return false;
+          const info = parseHouseInfo(w);
+          if (!info || !info.blok || !info.nomor) return false;
+          const wRawNo = info.nomor.trim().toUpperCase();
+          const wNormNo = /^\d+$/.test(wRawNo) ? String(parseInt(wRawNo, 10)) : wRawNo;
+          return info.blok === p.blok && wNormNo === normNo;
+        });
+        if (dup) {
+          showStatusBanner(`Blok ${p.blok} No. ${p.nomor} sudah terdaftar atas nama ${dup.nama || dup.username}. Blok dan nomor rumah yang sudah terdaftar tidak dapat digunakan kembali.`, true);
+          return;
+        }
+      }
+    }
+
     setIsSavingMember(true);
     try {
       const token = localStorage.getItem('token');
@@ -1271,6 +1300,36 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
     );
   };
 
+  // Real-time check: validasi blok dan nomor rumah pada form Tambah Warga
+  const addWargaHouseCheck = useMemo(() => {
+    if (!newWargaBlok || !newWargaNomor) return null;
+    const targetBlok = newWargaBlok.trim().toUpperCase();
+    const rawNo = newWargaNomor.trim().toUpperCase();
+    const isPureNum = /^\d+$/.test(rawNo);
+    const normNo = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
+
+    const fullList = allWargaFullData.length > 0 ? allWargaFullData : wargaData;
+    const duplicateWarga = fullList.find((w: any) => {
+      const info = parseHouseInfo(w);
+      if (!info || !info.blok || !info.nomor) return false;
+      const wRawNo = info.nomor.trim().toUpperCase();
+      const wNormNo = /^\d+$/.test(wRawNo) ? String(parseInt(wRawNo, 10)) : wRawNo;
+      return info.blok === targetBlok && wNormNo === normNo;
+    });
+
+    if (duplicateWarga) {
+      return {
+        isTaken: true,
+        display: `Blok ${targetBlok} No. ${rawNo}`,
+        registeredTo: duplicateWarga.nama || duplicateWarga.username
+      };
+    }
+    return {
+      isTaken: false,
+      display: `Blok ${targetBlok} No. ${rawNo}`
+    };
+  }, [newWargaBlok, newWargaNomor, allWargaFullData, wargaData]);
+
   return (
     <div className="p-5 pb-24 bg-gray-50 min-h-screen">
       {/* HEADER & NAV */}
@@ -1814,6 +1873,22 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
               <input type="text" placeholder="No Rumah (Cth: 12)" value={newWargaNomor} onChange={e => setNewWargaNomor(e.target.value)} required className="w-1/2 text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none" />
             </div>
 
+            {addWargaHouseCheck && addWargaHouseCheck.isTaken && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-700 text-xs font-bold leading-relaxed">
+                <span className="text-base leading-none">⛔</span>
+                <div>
+                  <p className="font-extrabold">{addWargaHouseCheck.display} sudah terdaftar{addWargaHouseCheck.registeredTo ? ` atas nama "${addWargaHouseCheck.registeredTo}"` : ''}.</p>
+                  <p className="text-[11px] font-medium text-rose-600 mt-0.5">Blok dan nomor rumah yang sudah terdaftar tidak dapat didaftarkan kembali. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.</p>
+                </div>
+              </div>
+            )}
+            {addWargaHouseCheck && !addWargaHouseCheck.isTaken && (
+              <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-1.5 text-emerald-700 text-[11px] font-bold">
+                <span>✅</span>
+                <span>{addWargaHouseCheck.display} tersedia untuk pendaftaran baru.</span>
+              </div>
+            )}
+
             <input type="tel" placeholder="Nomor HP" value={newWarga.noHp} onChange={e => setNewWarga({ ...newWarga, noHp: e.target.value })} required className="w-full text-sm p-3 bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl transition-all outline-none" />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
@@ -1917,7 +1992,7 @@ export const MobileDataWarga = ({ onBack, currentUser }: { onBack: () => void, c
 
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setShowAddWarga(false)} className="flex-1 py-3 text-sm font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors">Batal</button>
-              <button type="submit" className="flex-1 py-3 text-sm font-bold text-white bg-gradient-to-r from-teal-500 to-emerald-500 rounded-xl shadow-md hover:shadow-lg hover:scale-[1.02] transition-all">Simpan Data</button>
+              <button type="submit" disabled={Boolean(addWargaHouseCheck?.isTaken)} className="flex-1 py-3 text-sm font-bold text-white bg-gradient-to-r from-teal-500 to-emerald-500 rounded-xl shadow-md hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed transition-all">{addWargaHouseCheck?.isTaken ? 'Alamat Sudah Terdaftar' : 'Simpan Data'}</button>
             </div>
           </form>
         </motion.div>

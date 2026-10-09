@@ -1,5 +1,5 @@
 import { apiFetch } from './apiInterceptor';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { icons } from './App';
 
@@ -148,16 +148,60 @@ export function Login({ onLogin, onNavRegister }: any) {
 
 export function Register({ onRegister, onNavLogin }: any) {
   const [formData, setFormData] = useState({ username: '', nama: '', password: '', noHp: '', status: '', umur: '', tglLahir: '' });
+  const [selectedRt, setSelectedRt] = useState<string>(() => localStorage.getItem('selected_rt') || 'rt01');
   const [blok, setBlok] = useState('');
   const [nomorRumah, setNomorRumah] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isFocusedPassword, setIsFocusedPassword] = useState(false);
+  const [registeredHouses, setRegisteredHouses] = useState<{ blok: string; no: string; display: string; nama?: string; username?: string }[]>([]);
 
-  const currentRt = localStorage.getItem('selected_rt') || 'rt01';
-  const isRt01 = currentRt.toLowerCase() === 'rt01';
-  const displayRt = currentRt.toUpperCase().replace('RT', 'RT ');
-  const availableBlocks = isRt01 ? ['A', 'C', 'D', 'E', 'F'] : ['G', 'H', 'I', 'J'];
+  const isRt01 = selectedRt.toLowerCase() === 'rt01';
+  const isRt02 = selectedRt.toLowerCase() === 'rt02';
+  const isRt03 = selectedRt.toLowerCase() === 'rt03';
+  const displayRt = selectedRt.toUpperCase().replace('RT', 'RT ');
+  const availableBlocks = isRt01 ? ['A', 'C', 'D', 'E', 'F'] : (isRt02 ? ['B'] : ['G', 'H', 'I']);
+
+  const handleRtChange = (rt: string) => {
+    setSelectedRt(rt);
+    localStorage.setItem('selected_rt', rt);
+    setBlok('');
+    setNomorRumah('');
+    setError('');
+  };
+
+  useEffect(() => {
+    fetch(`/api/public/registered-houses?rtId=${selectedRt}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data && Array.isArray(data.registeredHouses)) {
+          setRegisteredHouses(data.registeredHouses);
+        }
+      })
+      .catch(() => {});
+  }, [selectedRt]);
+
+  // Real-time check: apakah blok dan nomor rumah ini sudah terdaftar
+  const houseCheck = useMemo(() => {
+    if (!blok || !nomorRumah) return null;
+    const b = blok.trim().toUpperCase();
+    const rawNo = nomorRumah.trim().toUpperCase();
+    const isPureNum = /^\d+$/.test(rawNo);
+    const normNo = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
+
+    const dup = registeredHouses.find(h => h.blok === b && h.no === normNo);
+    if (dup) {
+      return {
+        isTaken: true,
+        display: dup.display || `Blok ${b} No. ${rawNo}`,
+        registeredTo: dup.nama || dup.username || 'Warga lain'
+      };
+    }
+    return {
+      isTaken: false,
+      display: `Blok ${b} No. ${rawNo}`
+    };
+  }, [blok, nomorRumah, registeredHouses]);
 
   const calculateAge = (dob: string) => {
     if (!dob) return '';
@@ -173,13 +217,27 @@ export function Register({ onRegister, onNavLogin }: any) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (houseCheck?.isTaken) {
+      setError(`Alamat ${houseCheck.display} sudah terdaftar atas nama "${houseCheck.registeredTo}". Blok dan nomor rumah yang sudah terdaftar tidak dapat didaftarkan kembali. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.`);
+      return;
+    }
+
     setLoading(true);
     try {
       const alamat = `Blok ${blok} No. ${nomorRumah}`;
       const res = await apiFetch('/api/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({...formData, alamat})
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-rt-id': selectedRt
+        },
+        body: JSON.stringify({
+          ...formData,
+          alamat,
+          blok,
+          nomorRumah,
+          rtId: selectedRt
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -197,14 +255,36 @@ export function Register({ onRegister, onNavLogin }: any) {
   return (
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md">
         <CuteMascot isFocusedPassword={isFocusedPassword} />
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="inline-block bg-teal-50 border border-teal-200 text-teal-700 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full mb-2">
             Pendaftaran {displayRt}
           </div>
           <h1 className="text-2xl font-bold text-teal-600 mb-2">Daftar Akun</h1>
-          <p className="text-xs text-gray-500">
-            {isRt01 ? 'Wilayah RT 01: Blok A, Blok C, Blok D, Blok E, Blok F' : `Wilayah ${displayRt}`}
+          <p className="text-xs text-gray-500 mb-3">
+            {isRt01 ? 'Wilayah RT 01: Blok A, C, D, E, F' : isRt02 ? 'Wilayah RT 02: Blok B' : 'Wilayah RT 03: Blok G, H, I'}
           </p>
+
+          {/* RT Selection Tab */}
+          <div className="flex bg-slate-100 p-1 rounded-xl gap-1 max-w-xs mx-auto">
+            {['rt01', 'rt02', 'rt03'].map(rt => {
+              const label = rt.toUpperCase().replace('RT', 'RT ');
+              const isActive = selectedRt.toLowerCase() === rt;
+              return (
+                <button
+                  key={rt}
+                  type="button"
+                  onClick={() => handleRtChange(rt)}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    isActive
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         {error && (
           <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-start gap-2">
@@ -227,7 +307,7 @@ export function Register({ onRegister, onNavLogin }: any) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Blok Rumah {isRt01 ? '(Wilayah RT 01)' : `(${displayRt})`}
+              Blok Rumah ({displayRt})
             </label>
             <select value={blok} onChange={e => { setError(''); setBlok(e.target.value); }} onFocus={() => setIsFocusedPassword(false)} required className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500">
               <option value="">Pilih Blok</option>
@@ -238,7 +318,33 @@ export function Register({ onRegister, onNavLogin }: any) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Nomor Rumah</label>
-            <input type="text" value={nomorRumah} onChange={e => { setError(''); setNomorRumah(e.target.value); }} required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-teal-500" placeholder="Cth: 12" />
+            <input 
+              type="text" 
+              value={nomorRumah} 
+              onChange={e => { setError(''); setNomorRumah(e.target.value); }} 
+              required 
+              className={`w-full p-3 border rounded-xl text-sm outline-none transition-colors ${
+                houseCheck?.isTaken 
+                  ? 'border-rose-400 bg-rose-50/50 focus:border-rose-500' 
+                  : (houseCheck && !houseCheck.isTaken ? 'border-emerald-400 bg-emerald-50/20 focus:border-emerald-500' : 'bg-gray-50 border-gray-200 focus:border-teal-500')
+              }`} 
+              placeholder="Cth: 12" 
+            />
+            {houseCheck && houseCheck.isTaken && (
+              <div className="mt-1.5 p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-700 text-xs font-bold leading-relaxed">
+                <span className="text-base leading-none">⛔</span>
+                <div>
+                  <p className="font-extrabold">{houseCheck.display} sudah terdaftar{houseCheck.registeredTo ? ` atas nama "${houseCheck.registeredTo}"` : ''}.</p>
+                  <p className="text-[11px] font-medium text-rose-600 mt-0.5">Blok dan nomor rumah yang sudah terdaftar tidak dapat didaftarkan kembali. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.</p>
+                </div>
+              </div>
+            )}
+            {houseCheck && !houseCheck.isTaken && (
+              <div className="mt-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-1.5 text-emerald-700 text-[11px] font-bold">
+                <span>✅</span>
+                <span>{houseCheck.display} tersedia untuk pendaftaran baru di {displayRt}.</span>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">No. HP</label>
@@ -260,14 +366,18 @@ export function Register({ onRegister, onNavLogin }: any) {
             <label className="block text-xs font-semibold text-gray-700 mb-1">Umur</label>
             <input type="number" value={formData.umur} readOnly className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-sm outline-none cursor-not-allowed" placeholder="Otomatis terisi" min="0"/>
           </div>
-          <button type="submit" disabled={loading} className="w-full h-12 flex items-center justify-center bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 transition-colors mt-2">
+          <button 
+            type="submit" 
+            disabled={loading || Boolean(houseCheck?.isTaken)} 
+            className="w-full h-12 flex items-center justify-center bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
             {loading ? (
               <div className="flex items-center justify-center space-x-1">
                 <motion.div className="w-2 h-2 bg-white rounded-full" animate={{ y: [0, -5, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: 0 }} />
                 <motion.div className="w-2 h-2 bg-white rounded-full" animate={{ y: [0, -5, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: 0.1 }} />
                 <motion.div className="w-2 h-2 bg-white rounded-full" animate={{ y: [0, -5, 0] }} transition={{ duration: 0.5, repeat: Infinity, delay: 0.2 }} />
               </div>
-            ) : 'Daftar Sekarang'}
+            ) : (houseCheck?.isTaken ? 'Alamat Sudah Terdaftar' : 'Daftar Sekarang')}
           </button>
         </form>
         <p className="mt-6 text-center text-xs text-gray-500">Sudah punya akun? <button type="button" onClick={onNavLogin} className="text-teal-600 font-bold hover:underline">Masuk</button></p>

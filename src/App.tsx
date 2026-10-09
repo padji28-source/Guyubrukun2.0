@@ -2747,6 +2747,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [profileError, setProfileError] = useState('');
   const [savingPass, setSavingPass] = useState(false);
 
   // Photo preview state (staged before saving)
@@ -2856,6 +2857,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const handleSave = async () => {
     setSaving(true);
     setSuccessMsg('');
+    setProfileError('');
     const finalPhoto = photoPreview !== null ? photoPreview : profile.photo;
     try {
       const res = await apiFetch('/api/profile', {
@@ -2872,7 +2874,9 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
           tglLahir: profile.tglLahir
         })
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        setProfileError('');
         setProfile(prev => ({ ...prev, photo: finalPhoto }));
         setPhotoPreview(null);
         setPhotoMeta(null);
@@ -2889,9 +2893,12 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
         setIsEditing(false);
         setSuccessMsg('✅ Profil berhasil diperbarui!');
         setTimeout(() => setSuccessMsg(''), 3000);
+      } else {
+        setProfileError(data.error || 'Gagal memperbarui profil.');
       }
-    } catch(e) {
+    } catch(e: any) {
       console.error(e);
+      setProfileError(e?.message || 'Terjadi kesalahan sistem saat memperbarui profil.');
     }
     setSaving(false);
   };
@@ -3119,6 +3126,12 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
         </div>
 
         <div className="bg-white p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 space-y-4">
+            {profileError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-start gap-2">
+                <span className="text-base leading-none">⚠️</span>
+                <span>{profileError}</span>
+              </div>
+            )}
             <div>
                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1 mb-1.5">Nama Lengkap</label>
                <input type="text" value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} className="w-full p-3.5 bg-slate-50 border border-slate-100 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl text-sm font-bold text-slate-800 outline-none transition-all" />

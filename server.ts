@@ -142,6 +142,12 @@ export function resolveRtFromBlock(blockLetter: string | null): string | null {
   if (['A', 'C', 'D', 'E', 'F'].includes(b)) {
     return 'rt01';
   }
+  if (b === 'B') {
+    return 'rt02';
+  }
+  if (['G', 'H', 'I', 'J'].includes(b)) {
+    return 'rt03';
+  }
   return null;
 }
 
@@ -190,6 +196,8 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     "/api/public/rt-list",
     "/api/public/beranda-summary",
     "/api/dashboard/summary",
+    "/api/public/check-house-availability",
+    "/api/public/registered-houses",
   ];
   
   const pathName = req.path;
@@ -1534,37 +1542,143 @@ async function extractNoKkViaOcrAsync(kkDoc: string, username?: string, nama?: s
 }
 
 // Helper function to extract and normalize Blok and House Number
-function parseBlokAndNo(inputStr: string): { blok: string; no: string; display: string } | null {
+export function parseBlokAndNo(inputStr: string): { blok: string; no: string; display: string } | null {
   if (!inputStr || typeof inputStr !== 'string') return null;
   const s = inputStr.trim();
   if (!s) return null;
 
-  // Pattern 1: standard "Blok <Blok> No. <Nomor>" or "Blok <Blok> Nomor <Nomor>" or "Blok <Blok>/<Nomor>"
-  const match1 = s.match(/Blok\s*([a-zA-Z0-9]+)\s*(?:No\.?|Nomor|\/|-|,)?\s*([a-zA-Z0-9]+)?/i);
+  // Clean common prefixes (e.g. "rt01_", "rt02_") and suffixes (e.g. "_w", "_warga")
+  const clean = s.replace(/^rt0?[1-9]_/i, '').replace(/_(?:w|warga)$/i, '');
+
+  // Pattern 1: standard "Blok <Blok> No. <Nomor>" / "Blok <Blok> Nomor <Nomor>" / "Blok <Blok>, No. <Nomor>" / "Blok <Blok>/<Nomor>"
+  const match1 = clean.match(/Blok\s*([a-zA-Z0-9]+)[\s,./-]*(?:(?:Nomor|No\.?|Rumah)[\s,.:/-]*)?([0-9]+[a-zA-Z]?)\b/i);
   if (match1 && match1[1] && match1[2]) {
     const blok = match1[1].toUpperCase();
     const rawNo = match1[2].toUpperCase();
     const isPureNum = /^\d+$/.test(rawNo);
     const no = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
-    return { blok, no, display: `Blok ${blok} No. ${rawNo}` };
+    const formattedRawNo = isPureNum ? rawNo.padStart(2, '0') : rawNo;
+    return { blok, no, display: `Blok ${blok} No. ${formattedRawNo}` };
   }
 
-  // Pattern 2: short code e.g. "A01", "C04", "D11A", "A-1", "B_02"
-  const match2 = s.match(/^([a-zA-Z])\s*[-_/\s]?\s*([0-9]+[a-zA-Z]?)$/i);
+  // Pattern 2: short code e.g. "A01", "C04", "D11A", "A-1", "B_02", "A-01", "F.22", "F/22"
+  const match2 = clean.match(/^([a-zA-Z])\s*[-_./\s]?\s*([0-9]+[a-zA-Z]?)$/i);
   if (match2 && match2[1] && match2[2]) {
     const blok = match2[1].toUpperCase();
     const rawNo = match2[2].toUpperCase();
     const isPureNum = /^\d+$/.test(rawNo);
     const no = isPureNum ? String(parseInt(rawNo, 10)) : rawNo;
-    return { blok, no, display: `Blok ${blok} No. ${rawNo}` };
+    const formattedRawNo = isPureNum ? rawNo.padStart(2, '0') : rawNo;
+    return { blok, no, display: `Blok ${blok} No. ${formattedRawNo}` };
   }
 
   return null;
 }
 
+// Universal duplicate house check helper across all users in an RT
+export async function findDuplicateHouseInRt(
+  targetAddressOrUsername: string,
+  rtId: string,
+  excludeUserId?: string
+): Promise<{ isDuplicate: boolean; parsed: { blok: string; no: string; display: string } | null; existingUser?: any }> {
+  const parsedTarget = parseBlokAndNo(targetAddressOrUsername);
+  if (!parsedTarget) {
+    return { isDuplicate: false, parsed: null };
+  }
+
+  await connectDB();
+  const query: any = { rtId, role: { $ne: 'developer' } };
+  if (excludeUserId) {
+    query.$and = [
+      { id: { $ne: excludeUserId } },
+      { _id: { $ne: excludeUserId } }
+    ];
+  }
+
+  const users = await UserModel.find(query).select('id username nama alamat role isApproved').lean();
+
+  for (const u of users) {
+    const pAlamat = parseBlokAndNo(u.alamat || '');
+    if (pAlamat && pAlamat.blok === parsedTarget.blok && pAlamat.no === parsedTarget.no) {
+      return { isDuplicate: true, parsed: parsedTarget, existingUser: u };
+    }
+
+    const pUsername = parseBlokAndNo(u.username || '');
+    if (pUsername && pUsername.blok === parsedTarget.blok && pUsername.no === parsedTarget.no) {
+      return { isDuplicate: true, parsed: parsedTarget, existingUser: u };
+    }
+  }
+
+  return { isDuplicate: false, parsed: parsedTarget };
+}
+
 // ==========================================
 // API REST ROUTES GROUPINGS (POINT 5)
 // ==========================================
+
+// --- PUBLIC HOUSE VALIDATION APIS ---
+app.get("/api/public/check-house-availability", async (req, res) => {
+  try {
+    const rtId = (req.query.rtId as string) || (req.headers['x-rt-id'] as string) || 'rt01';
+    const blok = (req.query.blok as string) || '';
+    const nomor = (req.query.nomor as string) || (req.query.nomorRumah as string) || (req.query.no as string) || '';
+    const query = (req.query.query as string) || (blok && nomor ? `Blok ${blok} No. ${nomor}` : '');
+
+    if (!query) {
+      return res.json({ available: true, message: "Alamat belum ditentukan" });
+    }
+
+    const check = await findDuplicateHouseInRt(query, rtId);
+    if (check.isDuplicate && check.parsed) {
+      const dup = check.existingUser;
+      return res.json({
+        available: false,
+        isRegistered: true,
+        blok: check.parsed.blok,
+        no: check.parsed.no,
+        display: check.parsed.display,
+        existingUser: dup?.nama || dup?.username || 'Warga',
+        message: `${check.parsed.display} sudah terdaftar atas nama ${dup?.nama || dup?.username || 'Warga'}. Blok dan nomor rumah ini tidak bisa didaftarkan kembali.`
+      });
+    }
+
+    return res.json({
+      available: true,
+      isRegistered: false,
+      parsed: check.parsed,
+      message: check.parsed ? `${check.parsed.display} tersedia untuk pendaftaran baru` : 'Format alamat valid'
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/public/registered-houses", async (req, res) => {
+  try {
+    const rtId = (req.query.rtId as string) || (req.headers['x-rt-id'] as string) || 'rt01';
+    await connectDB();
+    const users = await UserModel.find({ rtId, role: { $ne: 'developer' } }).select('id username nama alamat').lean();
+    
+    const registeredMap = new Map<string, { blok: string; no: string; display: string; nama?: string; username: string }>();
+    users.forEach((u: any) => {
+      const p = parseBlokAndNo(u.alamat || '') || parseBlokAndNo(u.username || '');
+      if (p) {
+        const key = `${p.blok}-${p.no}`;
+        if (!registeredMap.has(key)) {
+          registeredMap.set(key, { blok: p.blok, no: p.no, display: p.display, nama: u.nama, username: u.username });
+        }
+      }
+    });
+
+    res.json({
+      rtId,
+      totalRegistered: registeredMap.size,
+      registeredHouses: Array.from(registeredMap.values())
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- AUTH & SIGNUP ---
 app.post("/api/register", validateRequest(RegisterValidator), async (req, res) => {
@@ -1596,29 +1710,21 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
     resolvedNoKk = (await extractNoKkViaOcrAsync(String(dokumenKk), username, nama)) || '';
   }
 
-  // VALIDASI KETAT: Cek apakah Blok dan Nomor Rumah sudah pernah terdaftar di RT ini
-  if (alamat) {
-    const parsedTarget = parseBlokAndNo(alamat);
-    if (parsedTarget) {
-      const allUsers = await UserModel.find({ rtId, role: { $ne: 'developer' } }).lean();
-      const duplicate = allUsers.find((u: any) => {
-        const parsedAlamat = parseBlokAndNo(u.alamat || '');
-        const parsedUsername = parseBlokAndNo(u.username || '');
-        
-        if (parsedAlamat && parsedAlamat.blok === parsedTarget.blok && parsedAlamat.no === parsedTarget.no) {
-          return true;
-        }
-        if (parsedUsername && parsedUsername.blok === parsedTarget.blok && parsedUsername.no === parsedTarget.no) {
-          return true;
-        }
-        return false;
-      });
+  // VALIDASI KETAT: Blok dan nomor rumah yang sudah terdaftar TIDAK BISA didaftarkan kembali
+  const candidatesToCheck = [
+    alamat,
+    req.body.blok && req.body.nomorRumah ? `Blok ${req.body.blok} No. ${req.body.nomorRumah}` : null,
+    username
+  ].filter(Boolean);
 
-      if (duplicate) {
-        return res.status(400).json({
-          error: `Blok ${parsedTarget.blok} No. ${parsedTarget.no} sudah terdaftar atas nama ${duplicate.nama || duplicate.username}. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.`
-        });
-      }
+  for (const cand of candidatesToCheck) {
+    const duplicateHouse = await findDuplicateHouseInRt(String(cand), rtId);
+    if (duplicateHouse.isDuplicate && duplicateHouse.parsed && duplicateHouse.existingUser) {
+      const dup = duplicateHouse.existingUser;
+      const houseDisplay = duplicateHouse.parsed.display;
+      return res.status(400).json({
+        error: `${houseDisplay} sudah terdaftar atas nama "${dup.nama || dup.username}". Blok dan nomor rumah yang sudah terdaftar tidak dapat didaftarkan kembali. Setiap rumah hanya dapat didaftarkan satu akun kepala keluarga.`
+      });
     }
   }
 
@@ -1901,27 +2007,12 @@ app.put("/api/profile", async (req, res) => {
     
     if (nama !== undefined && nama !== '') user.nama = nama;
     if (alamat !== undefined && alamat !== user.alamat) {
-      const parsedTarget = parseBlokAndNo(alamat);
-      if (parsedTarget) {
-        const allUsers = await UserModel.find({ rtId: user.rtId || rtId, id: { $ne: user.id }, role: { $ne: 'developer' } }).lean();
-        const duplicate = allUsers.find((u: any) => {
-          const parsedAlamat = parseBlokAndNo(u.alamat || '');
-          const parsedUsername = parseBlokAndNo(u.username || '');
-          
-          if (parsedAlamat && parsedAlamat.blok === parsedTarget.blok && parsedAlamat.no === parsedTarget.no) {
-            return true;
-          }
-          if (parsedUsername && parsedUsername.blok === parsedTarget.blok && parsedUsername.no === parsedTarget.no) {
-            return true;
-          }
-          return false;
+      const duplicateCheck = await findDuplicateHouseInRt(alamat, user.rtId || rtId, user.id);
+      if (duplicateCheck.isDuplicate && duplicateCheck.parsed && duplicateCheck.existingUser) {
+        const dup = duplicateCheck.existingUser;
+        return res.status(400).json({
+          error: `${duplicateCheck.parsed.display} sudah terdaftar atas nama "${dup.nama || dup.username}". Blok dan nomor rumah yang sudah terdaftar tidak dapat digunakan kembali.`
         });
-
-        if (duplicate) {
-          return res.status(400).json({
-            error: `Blok ${parsedTarget.blok} No. ${parsedTarget.no} sudah digunakan oleh warga lain (${duplicate.nama || duplicate.username}). Silakan gunakan nomor rumah yang berbeda.`
-          });
-        }
       }
       user.alamat = alamat;
     }
@@ -2935,7 +3026,19 @@ app.put("/api/warga/:id", async (req, res) => {
     if (tglLahir !== undefined) user.tglLahir = tglLahir;
     if (jenisKelamin !== undefined) user.jenisKelamin = jenisKelamin;
     if (noKk !== undefined) user.noKk = noKk.trim();
-    if (alamat !== undefined) user.alamat = alamat.trim();
+    if (alamat !== undefined) {
+      const cleanAlamat = alamat.trim();
+      if (cleanAlamat !== '' && cleanAlamat !== user.alamat) {
+        const dupCheck = await findDuplicateHouseInRt(cleanAlamat, user.rtId || rtId, user.id);
+        if (dupCheck.isDuplicate && dupCheck.parsed && dupCheck.existingUser) {
+          const dup = dupCheck.existingUser;
+          return res.status(400).json({
+            error: `${dupCheck.parsed.display} sudah terdaftar atas nama "${dup.nama || dup.username}". Blok dan nomor rumah yang sudah terdaftar tidak dapat digunakan kembali.`
+          });
+        }
+      }
+      user.alamat = cleanAlamat;
+    }
 
     await user.save();
     const afterData = user.toObject();

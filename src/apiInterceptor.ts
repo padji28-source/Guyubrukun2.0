@@ -112,7 +112,6 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
       url.includes('/api/notifications/read') ||
       url.includes('/api/logout') ||
       url.includes('/api/login') ||
-      url.includes('/api/register') ||
       url.includes('/api/gemini') ||
       url.includes('/api/ai') ||
       url.includes('/api/chat') ||
