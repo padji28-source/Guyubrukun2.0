@@ -2750,6 +2750,13 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
   const [profileError, setProfileError] = useState('');
   const [savingPass, setSavingPass] = useState(false);
 
+  // Username change state & modal
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [newUsernameInput, setNewUsernameInput] = useState('');
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameSuccess, setUsernameSuccess] = useState('');
+
   // Photo preview state (staged before saving)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoMeta, setPhotoMeta] = useState<{ name: string; sizeText: string } | null>(null);
@@ -2757,13 +2764,32 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
 
   const [profile, setProfile] = useState({
     name: user?.nama || 'Admin RT',
+    username: user?.username || '',
     address: user?.alamat || '',
     phone: user?.noHp || '0812-1400-7871',
     role: user?.role === 'admin' ? 'Ketua RT 01 / RW 21' : (user?.status || 'Warga Tetap'),
     photo: user?.photo || null as string | null,
     umur: user?.umur || '',
-    tglLahir: user?.tglLahir || ''
+    tglLahir: user?.tglLahir || '',
+    hasChangedUsername: !!user?.hasChangedUsername
   });
+
+  useEffect(() => {
+    if (user) {
+      setProfile(prev => ({
+        ...prev,
+        name: user.nama || prev.name,
+        username: user.username || prev.username,
+        address: user.alamat || prev.address,
+        phone: user.noHp || prev.phone,
+        role: user.role === 'admin' ? 'Ketua RT 01 / RW 21' : (user.status || prev.role),
+        photo: user.photo !== undefined ? user.photo : prev.photo,
+        umur: user.umur !== undefined ? user.umur : prev.umur,
+        tglLahir: user.tglLahir || prev.tglLahir,
+        hasChangedUsername: !!user.hasChangedUsername
+      }));
+    }
+  }, [user]);
 
   const parsedBlokMatch = (user?.alamat || '').match(/Blok\s+([a-zA-Z0-9]+)/i);
   const parsedNoMatch = (user?.alamat || '').match(/No\.\s+([a-zA-Z0-9]+)/i);
@@ -2854,6 +2880,66 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
     setIsEditing(false);
   };
 
+  const handleChangeUsername = async () => {
+    setUsernameError('');
+    setUsernameSuccess('');
+    const clean = newUsernameInput.trim();
+    if (!clean) {
+      setUsernameError('Username baru tidak boleh kosong.');
+      return;
+    }
+    if (clean.toLowerCase() === (user?.username || '').toLowerCase()) {
+      setUsernameError('Username baru sama dengan username saat ini. Tidak ada perubahan.');
+      return;
+    }
+    if (clean.length < 3) {
+      setUsernameError('Username baru minimal harus 3 karakter.');
+      return;
+    }
+    if (clean.length > 30) {
+      setUsernameError('Username baru maksimal 30 karakter.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(clean)) {
+      setUsernameError('Username hanya boleh mengandung huruf, angka, titik (.), strip (-), dan garis bawah (_).');
+      return;
+    }
+
+    setUsernameSaving(true);
+    try {
+      const res = await apiFetch('/api/change-username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newUsername: clean })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const updated = {
+          ...user,
+          username: clean,
+          hasChangedUsername: true,
+          token: data.token || user?.token
+        };
+        onUpdateUser(updated);
+        setProfile(prev => ({ ...prev, username: clean, hasChangedUsername: true }));
+        setUsernameSuccess(data.message || `Username berhasil diubah menjadi @${clean}!`);
+        setSuccessMsg(`✅ Username berhasil diubah menjadi @${clean}!`);
+        setTimeout(() => {
+          setShowUsernameModal(false);
+          setUsernameSuccess('');
+          setSuccessMsg('');
+        }, 1200);
+      } else {
+        setUsernameError(data.error || 'Gagal mengubah username.');
+      }
+    } catch (e: any) {
+      console.error(e);
+      setUsernameError(e?.message || 'Terjadi kesalahan sistem saat mengubah username.');
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSuccessMsg('');
@@ -2865,6 +2951,7 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: user?.id,
+          username: profile.username,
           nama: profile.name,
           alamat: profile.address,
           noHp: profile.phone,
@@ -2877,19 +2964,31 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setProfileError('');
-        setProfile(prev => ({ ...prev, photo: finalPhoto }));
-        setPhotoPreview(null);
-        setPhotoMeta(null);
-        setShowPhotoPreviewModal(false);
-        onUpdateUser({
+        const updatedUsername = (data.user?.username || profile.username);
+        const updatedHasChanged = (data.user?.hasChangedUsername ?? (profile.username !== user?.username ? true : user?.hasChangedUsername));
+        const updatedUserData = {
+           ...user,
            nama: profile.name,
+           username: updatedUsername,
+           hasChangedUsername: updatedHasChanged,
            alamat: profile.address,
            noHp: profile.phone,
            status: profile.role,
            photo: finalPhoto,
            umur: profile.umur,
-           tglLahir: profile.tglLahir
-        });
+           tglLahir: profile.tglLahir,
+           token: data.token || user?.token
+        };
+        setProfile(prev => ({
+          ...prev,
+          photo: finalPhoto,
+          username: updatedUsername,
+          hasChangedUsername: !!updatedHasChanged
+        }));
+        setPhotoPreview(null);
+        setPhotoMeta(null);
+        setShowPhotoPreviewModal(false);
+        onUpdateUser(updatedUserData);
         setIsEditing(false);
         setSuccessMsg('✅ Profil berhasil diperbarui!');
         setTimeout(() => setSuccessMsg(''), 3000);
@@ -3136,6 +3235,66 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1 mb-1.5">Nama Lengkap</label>
                <input type="text" value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} className="w-full p-3.5 bg-slate-50 border border-slate-100 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl text-sm font-bold text-slate-800 outline-none transition-all" />
             </div>
+
+            {/* Field Username dengan Kebijakan 1 Kali Ubah */}
+            <div>
+               <div className="flex items-center justify-between ml-1 mb-1.5">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Username Akun</label>
+                 {user?.hasChangedUsername ? (
+                   <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
+                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                     Terkunci (Sudah Diubah 1x)
+                   </span>
+                 ) : (
+                   <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                     Kesempatan: 1 Kali Saja
+                   </span>
+                 )}
+               </div>
+
+               {user?.hasChangedUsername ? (
+                 <>
+                   <div className="relative">
+                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
+                     <input 
+                       type="text" 
+                       value={profile.username} 
+                       readOnly 
+                       disabled 
+                       className="w-full pl-8 pr-10 p-3.5 bg-slate-100/90 border border-slate-200 rounded-xl text-sm font-bold text-slate-500 outline-none cursor-not-allowed" 
+                     />
+                     <svg className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                   </div>
+                   <p className="text-[11px] text-slate-400 mt-1.5 ml-1 font-medium">
+                     🔒 Anda telah menggunakan 1 kali kesempatan ubah username. Username akun tidak dapat diubah kembali.
+                   </p>
+                 </>
+               ) : (
+                 <>
+                   <div className="relative">
+                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
+                     <input 
+                       type="text" 
+                       value={profile.username} 
+                       onChange={e => setProfile({...profile, username: e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, '')})} 
+                       placeholder="username_anda"
+                       className="w-full pl-8 p-3.5 bg-slate-50 border border-slate-100 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl text-sm font-bold text-slate-800 outline-none transition-all" 
+                     />
+                   </div>
+                   {profile.username && profile.username !== (user?.username || '') ? (
+                     <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200/80 text-[11px] font-bold text-amber-800 flex items-start gap-1.5 leading-snug">
+                       <span>⚠️</span>
+                       <span>Username akan diubah dari <strong>@{user?.username}</strong> ke <strong>@{profile.username}</strong>. Perubahan ini hanya dapat dilakukan 1 kali dan langsung terkunci permanen!</span>
+                     </div>
+                   ) : (
+                     <p className="text-[11px] text-teal-700 mt-1.5 ml-1 font-medium">
+                       💡 Kesempatan ubah username hanya 1 kali seumur hidup. Huruf kecil, angka, titik, strip, atau underscore.
+                     </p>
+                   )}
+                 </>
+               )}
+            </div>
+
             <div>
                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1 mb-1.5">Peran / Status</label>
                <select value={profile.role} onChange={e => setProfile({...profile, role: e.target.value})} className="w-full p-3.5 bg-slate-50 border border-slate-100 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl text-sm font-bold text-slate-800 outline-none appearance-none transition-all">
@@ -3396,6 +3555,54 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
 
         {/* Kartu Informasi Lengkap */}
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden divide-y divide-slate-50">
+          {/* Row Username dengan Status 1x Ubah */}
+          <div className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center shrink-0">
+                <span className="text-base font-black leading-none">@</span>
+              </div>
+              <div className="flex-grow min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Username Akun</p>
+                  {user?.hasChangedUsername ? (
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                      Terkunci (Sudah Diubah 1x)
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                      Bisa Diubah (1x Kesempatan)
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-extrabold text-slate-800 truncate mt-0.5">
+                  @{user?.username || profile.username}
+                </p>
+              </div>
+            </div>
+
+            {/* Tombol Ubah Username */}
+            {!user?.hasChangedUsername ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewUsernameInput(user?.username || profile.username);
+                  setUsernameError('');
+                  setUsernameSuccess('');
+                  setShowUsernameModal(true);
+                }}
+                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black shadow-xs transition-all flex items-center gap-1 shrink-0 active:scale-95"
+              >
+                <icons.edit className="w-3.5 h-3.5" />
+                Ubah (1x)
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400 font-bold flex items-center gap-1 shrink-0 px-2.5 py-1 bg-slate-100 rounded-lg">
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                Terkunci
+              </span>
+            )}
+          </div>
+
           <div className="p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors">
             <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center shrink-0">
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
@@ -3470,6 +3677,120 @@ const MobileProfilPage = ({ user, onLogout, onUpdateUser }: { user: any; onLogou
                 <p className="text-[11px] text-slate-500 font-medium mt-8 text-center max-w-[220px] leading-relaxed">
                   Tunjukkan QR Code ini kepada pengurus RT untuk kemudahan verifikasi data secara instan.
                 </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Ubah Username (Hanya 1 Kali Kesempatan) */}
+      <AnimatePresence>
+        {showUsernameModal && (
+          <div 
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+            onClick={() => { if (!usernameSaving) setShowUsernameModal(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 16 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 border border-slate-100 overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center font-black text-lg">
+                    @
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800">Ubah Username Akun</h3>
+                    <p className="text-[10px] text-teal-700 font-bold uppercase tracking-wider">Kesempatan: 1 Kali Saja</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={usernameSaving}
+                  onClick={() => setShowUsernameModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 flex items-center justify-center font-bold text-xs transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Warning Alert Banner */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl mb-4">
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none">⚠️</span>
+                  <div className="text-[11px] text-amber-900 font-semibold leading-relaxed">
+                    <strong className="font-extrabold text-amber-950 block mb-0.5">PENTING DIBACA:</strong>
+                    Setiap akun hanya diperbolehkan mengubah username <strong>1 KALI SEUMUR HIDUP</strong>. Setelah disimpan, username akan <strong>terkunci permanen</strong> dan tidak bisa diubah kembali.
+                  </div>
+                </div>
+              </div>
+
+              {usernameError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-start gap-2">
+                  <span className="text-base leading-none">❌</span>
+                  <span>{usernameError}</span>
+                </div>
+              )}
+
+              {usernameSuccess && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-start gap-2">
+                  <span className="text-base leading-none">✅</span>
+                  <span>{usernameSuccess}</span>
+                </div>
+              )}
+
+              <div className="space-y-3.5 mb-5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+                    Username Saat Ini
+                  </label>
+                  <div className="p-3 bg-slate-100 rounded-xl text-xs font-extrabold text-slate-600 border border-slate-200">
+                    @{user?.username || profile.username}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+                    Username Baru Pilihan Anda
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
+                    <input
+                      type="text"
+                      autoFocus
+                      disabled={usernameSaving}
+                      value={newUsernameInput}
+                      onChange={e => setNewUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, ''))}
+                      placeholder="username_baru"
+                      className="w-full pl-8 pr-3.5 py-3 bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl text-sm font-bold text-slate-800 outline-none transition-all"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                    Gunakan huruf kecil, angka, titik (.), strip (-), atau underscore (_). Minimal 3 karakter.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  disabled={usernameSaving}
+                  onClick={() => setShowUsernameModal(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-extrabold transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={usernameSaving || !newUsernameInput.trim() || newUsernameInput.trim().toLowerCase() === (user?.username || '').toLowerCase()}
+                  onClick={handleChangeUsername}
+                  className="flex-[2] py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 active:scale-95"
+                >
+                  {usernameSaving ? 'Menyimpan...' : 'Konfirmasi & Kunci Username'}
+                </button>
               </div>
             </motion.div>
           </div>
