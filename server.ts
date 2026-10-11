@@ -276,6 +276,8 @@ const UserSchema = new mongoose.Schema({
   noKk: { type: String },
   dokumenKk: mongoose.Schema.Types.Mixed,
   dokumenKtp: mongoose.Schema.Types.Mixed,
+  hasChangedUsername: { type: Boolean, default: false },
+  usernameChangedAt: { type: Date },
 }, { timestamps: true, strict: false });
 if (mongoose.models.User) {
   delete mongoose.models.User;
@@ -2050,6 +2052,46 @@ app.put("/api/profile", async (req, res) => {
       user.markModified('dokumenKtp');
     }
     
+    // Handle username update (Only 1 time allowed per user)
+    const newUsernameCandidate = (req.body.newUsername !== undefined ? req.body.newUsername : username);
+    if (newUsernameCandidate !== undefined) {
+      const cleanTargetUser = String(newUsernameCandidate).trim();
+      if (cleanTargetUser !== '' && cleanTargetUser.toLowerCase() !== user.username.toLowerCase()) {
+        if (user.hasChangedUsername) {
+          return res.status(400).json({
+            error: "Username hanya dapat diubah 1 kali seumur hidup. Akun ini sudah pernah mengubah username sebelumnya."
+          });
+        }
+        if (cleanTargetUser.length < 3) {
+          return res.status(400).json({ error: "Username baru minimal harus 3 karakter." });
+        }
+        if (cleanTargetUser.length > 30) {
+          return res.status(400).json({ error: "Username baru maksimal 30 karakter." });
+        }
+        if (!/^[a-zA-Z0-9_.-]+$/.test(cleanTargetUser)) {
+          return res.status(400).json({ error: "Username hanya boleh mengandung huruf, angka, titik (.), strip (-), atau underscore (_)." });
+        }
+
+        // Check uniqueness across all users
+        const duplicateUsername = await UserModel.findOne({
+          id: { $ne: user.id },
+          username: new RegExp(`^${cleanTargetUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+        });
+        if (duplicateUsername) {
+          return res.status(400).json({
+            error: `Username "${cleanTargetUser}" sudah digunakan oleh pengguna lain. Silakan pilih username lain.`
+          });
+        }
+
+        const oldUsername = user.username;
+        user.username = cleanTargetUser;
+        user.hasChangedUsername = true;
+        user.usernameChangedAt = new Date();
+
+        await logAudit(user.rtId || rtId, user.nama, "USERNAME_UPDATE", `Mengubah username dari @${oldUsername} menjadi @${cleanTargetUser}`, { username: oldUsername }, { username: cleanTargetUser });
+      }
+    }
+
     // Ensure rtId remains bound to authorizedRtId
     user.rtId = rtId;
     const updatedUser = await user.save();
@@ -2059,9 +2101,126 @@ app.put("/api/profile", async (req, res) => {
     await addNotification(user.rtId || rtId, "Profil & Dokumen Diperbarui", `Dokumen/profil ${user.nama} diperbarui oleh ${updater}.`, updater, "warga", user.id);
     broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
     
-    res.json({ message: "Profile updated successfully", user: updatedUser });
+    const token = jwt.sign(
+      { id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, nama: updatedUser.nama, rtId: updatedUser.rtId },
+      JWT_SECRET,
+      { expiresIn: "365d" }
+    );
+    const userJson = updatedUser.toObject();
+    userJson.token = token;
+
+    res.json({ message: "Profile updated successfully", user: userJson, token });
   } else {
     res.status(404).json({ error: "User tidak ditemukan" });
+  }
+});
+
+// Dedicated endpoint to change username (Strictly 1-time per user)
+app.post("/api/change-username", async (req, res) => {
+  try {
+    await connectDB();
+    const rtId = getAuthorizedRtId(req);
+    const userAuth = getAuthUser(req);
+    const requesterId = userAuth?.id || (req.headers['x-user-id'] as string) || '';
+    const { newUsername } = req.body;
+
+    if (!requesterId) {
+      return res.status(401).json({ error: "Unauthorized: Silakan login terlebih dahulu." });
+    }
+
+    const user = await UserModel.findOne({ id: requesterId, rtId });
+    if (!user) {
+      return res.status(404).json({ error: "Akun user tidak ditemukan." });
+    }
+
+    if (user.hasChangedUsername) {
+      return res.status(400).json({
+        error: "Kesempatan ubah username sudah habis. Setiap akun hanya diperbolehkan mengubah username sebanyak 1 kali seumur hidup."
+      });
+    }
+
+    const cleanUsername = (newUsername || '').trim();
+    if (!cleanUsername) {
+      return res.status(400).json({ error: "Username baru tidak boleh kosong." });
+    }
+
+    if (cleanUsername.toLowerCase() === user.username.toLowerCase()) {
+      return res.status(400).json({ error: "Username baru sama dengan username saat ini. Tidak ada perubahan." });
+    }
+
+    if (cleanUsername.length < 3) {
+      return res.status(400).json({ error: "Username baru minimal harus 3 karakter." });
+    }
+
+    if (cleanUsername.length > 30) {
+      return res.status(400).json({ error: "Username baru maksimal 30 karakter." });
+    }
+
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      return res.status(400).json({ error: "Username hanya boleh mengandung huruf, angka, titik (.), strip (-), dan garis bawah (_)." });
+    }
+
+    // Check uniqueness across system
+    const existing = await UserModel.findOne({
+      id: { $ne: user.id },
+      username: new RegExp(`^${cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        error: `Username "${cleanUsername}" sudah digunakan oleh akun lain. Silakan pilih username lain.`
+      });
+    }
+
+    const oldUsername = user.username;
+    user.username = cleanUsername;
+    user.hasChangedUsername = true;
+    user.usernameChangedAt = new Date();
+
+    const savedUser = await user.save();
+
+    // Create fresh JWT token
+    const token = jwt.sign(
+      { id: savedUser.id, username: savedUser.username, role: savedUser.role, nama: savedUser.nama, rtId: savedUser.rtId },
+      JWT_SECRET,
+      { expiresIn: "365d" }
+    );
+
+    const userObj = savedUser.toObject();
+    userObj.token = token;
+
+    await logAudit(user.rtId || rtId, user.nama, "USERNAME_UPDATE", `Mengubah username dari @${oldUsername} menjadi @${cleanUsername}`, { username: oldUsername }, { username: cleanUsername });
+
+    await addNotification(user.rtId || rtId, "Username Diperbarui", `Akun ${user.nama} berhasil mengubah username menjadi @${cleanUsername}. Kesempatan ubah username telah digunakan.`, user.nama, "warga", user.id);
+
+    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+
+    return res.json({
+      message: `Username berhasil diubah menjadi @${cleanUsername}!`,
+      user: userObj,
+      token
+    });
+  } catch (err: any) {
+    console.error("Error in /api/change-username:", err);
+    return res.status(500).json({ error: err.message || "Gagal mengubah username." });
+  }
+});
+
+// GET current authenticated user profile
+app.get("/api/me", async (req, res) => {
+  try {
+    await connectDB();
+    const rtId = getAuthorizedRtId(req);
+    const userAuth = getAuthUser(req);
+    const requesterId = userAuth?.id || (req.headers['x-user-id'] as string) || '';
+    if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+
+    const user = await UserModel.findOne({ id: requesterId, rtId }).lean();
+    if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
+
+    res.json({ user });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
