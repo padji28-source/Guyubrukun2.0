@@ -1294,7 +1294,17 @@ export async function addNotification(rtId: string = '', title: string, message:
     rtId: rtId || 'rt01'
   };
   await NotificationModel.create(newNotif);
-  broadcastEvent('update', { type: 'notifications', rtId });
+  broadcastEvent('update', { 
+    type: 'notifications', 
+    rtId: rtId || 'rt01',
+    title: newNotif.title,
+    message: newNotif.message,
+    updaterName: newNotif.updaterName,
+    resource: newNotif.resource,
+    resourceId: newNotif.resourceId,
+    id: newNotif.id,
+    time: newNotif.time
+  });
 }
 
 // ==========================================
@@ -1755,7 +1765,15 @@ app.post("/api/register", validateRequest(RegisterValidator), async (req, res) =
 
   await logAudit(rtId, nama, "REGISTER_WARGA", `Warga/Pengurus baru ${nama} didaftarkan dengan role ${assignedRole}`, null, newUser);
   await addNotification(rtId, "Warga Baru Terdaftar", `${nama} telah didaftarkan sebagai ${assignedRole}.`, nama, "warga", newUser.id);
-  broadcastEvent('update', { type: 'users', rtId });
+  broadcastEvent('update', { 
+    type: 'users', 
+    rtId, 
+    action: 'create', 
+    title: 'Warga Baru Ditambahkan', 
+    message: `${nama} (${assignedRole}) telah berhasil didaftarkan ke data warga.`,
+    updaterName: nama,
+    time: new Date().toISOString()
+  });
 
   res.json({ message: "Registrasi sukses", user: newUser });
 });
@@ -1939,17 +1957,18 @@ app.get("/api/tangerang-logo-proxy", async (req, res) => {
 
 app.get("/api/stream", (req, res) => {
   const token = (req.query.token as string) || (req.headers['authorization'] as string)?.replace("Bearer ", "") || "";
-  let userRtId = "rt01";
+  const queryRt = (req.query.rtId as string) || (req.headers['x-rt-id'] as string) || "";
+  let userRtId = queryRt || "rt01";
   let isDev = false;
 
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      userRtId = decoded.rtId || "rt01";
+      userRtId = decoded.rtId || queryRt || "rt01";
       isDev = decoded.role === "developer";
     } catch {}
   } else if ((req as any).user) {
-    userRtId = (req as any).user.rtId || "rt01";
+    userRtId = (req as any).user.rtId || queryRt || "rt01";
     isDev = (req as any).user.role === "developer";
   }
 
@@ -1962,6 +1981,8 @@ app.get("/api/stream", (req, res) => {
   res.flushHeaders();
 
   clients.add(res);
+
+  res.write(`event: ping\ndata: ${JSON.stringify({ connected: true, rtId: userRtId, time: Date.now() })}\n\n`);
 
   req.on('close', () => {
     clients.delete(res);
@@ -2099,7 +2120,15 @@ app.put("/api/profile", async (req, res) => {
     
     const updater = req.body.updaterName || userAuth?.nama || user.nama || 'Ketua RT';
     await addNotification(user.rtId || rtId, "Profil & Dokumen Diperbarui", `Dokumen/profil ${user.nama} diperbarui oleh ${updater}.`, updater, "warga", user.id);
-    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId: user.rtId || rtId, 
+      action: 'update', 
+      title: 'Profil Warga Diperbarui', 
+      message: `Profil/dokumen warga ${user.nama} telah diperbarui oleh ${updater}.`,
+      updaterName: updater,
+      time: new Date().toISOString()
+    });
     
     const token = jwt.sign(
       { id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, nama: updatedUser.nama, rtId: updatedUser.rtId },
@@ -2193,7 +2222,15 @@ app.post("/api/change-username", async (req, res) => {
 
     await addNotification(user.rtId || rtId, "Username Diperbarui", `Akun ${user.nama} berhasil mengubah username menjadi @${cleanUsername}. Kesempatan ubah username telah digunakan.`, user.nama, "warga", user.id);
 
-    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId: user.rtId || rtId, 
+      action: 'update', 
+      title: 'Username Diperbarui', 
+      message: `Akun ${user.nama} telah mengubah username menjadi @${cleanUsername}.`,
+      updaterName: user.nama,
+      time: new Date().toISOString()
+    });
 
     return res.json({
       message: `Username berhasil diubah menjadi @${cleanUsername}!`,
@@ -2280,7 +2317,15 @@ app.put("/api/warga/:id/dokumen", async (req, res) => {
   const actorName = userAuth?.nama || 'Ketua RT';
   await logAudit(user.rtId || rtId, actorName, "UPLOAD_DOKUMEN_WARGA", `Mengunggah/memperbarui dokumen untuk ${user.nama} (${user.role})`, beforeObj, updatedUser);
   await addNotification(user.rtId || rtId, "Dokumen Diperbarui", `Dokumen ${user.nama} telah diperbarui oleh ${actorName}.`, actorName, "warga", user.id);
-  broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+  broadcastEvent('update', { 
+    type: 'users', 
+    rtId: user.rtId || rtId, 
+    action: 'document', 
+    title: 'Dokumen Warga Diperbarui', 
+    message: `Dokumen Kartu Keluarga / KTP milik ${user.nama} telah diperbarui oleh ${actorName}.`,
+    updaterName: actorName,
+    time: new Date().toISOString()
+  });
 
   res.json({ message: "Dokumen berhasil disimpan", user: updatedUser });
 });
@@ -2983,7 +3028,15 @@ Kembalikan hasil dalam bentuk JSON Array.`;
         user.id
       );
     }
-    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId: user.rtId || rtId, 
+      action: 'family', 
+      title: 'Ekstraksi KK Selesai', 
+      message: `${addedCount} anggota keluarga berhasil ditambahkan otomatis dari KK ${user.nama}.`,
+      updaterName: actorName,
+      time: new Date().toISOString()
+    });
 
     res.json({
       success: true,
@@ -3144,7 +3197,15 @@ app.delete("/api/warga/:id", enforceRoles(['admin']), async (req, res) => {
     const actorName = userAuth?.nama || 'Admin';
     await logAudit(rtId, actorName, "DELETE_WARGA", `Menghapus data warga ${user.nama}`, beforeData, null);
     await addNotification(rtId, "Warga Dihapus", `Data warga ${user.nama} telah dihapus oleh ${actorName}.`, actorName, "warga", req.params.id);
-    broadcastEvent('update', { type: 'users', rtId, action: 'delete' });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId, 
+      action: 'delete', 
+      title: 'Data Warga Dihapus', 
+      message: `Data warga ${user.nama} telah dihapus oleh ${actorName}.`,
+      updaterName: actorName,
+      time: new Date().toISOString()
+    });
     res.json({ message: "User deleted" });
   } else {
     res.status(404).json({ error: "Warga tidak ditemukan" });
@@ -3205,7 +3266,15 @@ app.put("/api/warga/:id", async (req, res) => {
     const actorName = userAuth?.nama || 'Sistem';
     await logAudit(rtId, actorName, "UPDATE_WARGA", `Memperbarui data warga ${user.nama}`, beforeData, afterData);
     await addNotification(rtId, "Data Warga Diperbarui", `Data warga ${user.nama} berhasil diperbarui oleh ${actorName}.`, actorName, "warga", user.id);
-    broadcastEvent('update', { type: 'users', rtId });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId, 
+      action: 'update', 
+      title: 'Data Warga Diperbarui', 
+      message: `Data warga ${user.nama} berhasil diperbarui oleh ${actorName}.`,
+      updaterName: actorName,
+      time: new Date().toISOString()
+    });
 
     res.json({ message: "Data warga berhasil diperbarui", user: afterData });
   } catch (error: any) {
@@ -3256,7 +3325,15 @@ app.post("/api/warga/:id/members", async (req, res) => {
     const afterObj = user.members.map((m: any) => ({ id: m.id || m._id?.toString() || '', name: m.name || '', role: m.role || '', age: m.age || 0, tglLahir: m.tglLahir || '', jenisKelamin: m.jenisKelamin || '' }));
     await logAudit(user.rtId || rtId, user.nama, "ADD_FAMILY_MEMBER", `Menambahkan anggota keluarga baru ${newMember.name} ke KK`, beforeObj, afterObj);
     await addNotification(user.rtId || rtId, "Anggota Keluarga Bertambah", `Anggota baru ${newMember.name} ditambahkan ke KK ${user.nama}.`, user.nama, "warga", user.id);
-    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId: user.rtId || rtId, 
+      action: 'family', 
+      title: 'Anggota Keluarga Bertambah', 
+      message: `Anggota baru ${newMember.name} ditambahkan ke KK ${user.nama}.`,
+      updaterName: user.nama,
+      time: new Date().toISOString()
+    });
 
     res.json({ message: "Anggota keluarga berhasil ditambahkan", member: newMember, user: user.toObject() });
   } catch (error: any) {
@@ -3335,7 +3412,15 @@ app.put("/api/warga/:id/members/:memberId", async (req, res) => {
 
       await logAudit(user.rtId || rtId, user.nama, "UPDATE_FAMILY_MEMBER", `Memperbarui rincian keluarga ${cleanName}`, beforeObj, afterObj);
       await addNotification(user.rtId || rtId, "Anggota Keluarga Diperbarui", `Data anggota ${cleanName} di KK ${user.nama} diperbarui.`, user.nama || 'Sistem', "warga", user.id);
-      broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+      broadcastEvent('update', { 
+        type: 'users', 
+        rtId: user.rtId || rtId, 
+        action: 'family', 
+        title: 'Anggota Keluarga Diperbarui', 
+        message: `Data anggota ${cleanName} di KK ${user.nama} diperbarui.`,
+        updaterName: user.nama || 'Sistem',
+        time: new Date().toISOString()
+      });
 
       res.json({ message: "Data anggota keluarga berhasil diperbarui", user: user.toObject() });
     } else {
@@ -3399,7 +3484,15 @@ app.delete("/api/warga/:id/members/:memberId", async (req, res) => {
       await logAudit(user.rtId || rtId, user.nama, "DELETE_FAMILY_MEMBER", `Menghapus anggota keluarga ${member.name}`, beforeObj, afterObj);
       await addNotification(user.rtId || rtId, "Anggota Keluarga Dihapus", `Anggota ${member.name} dihapus dari KK ${user.nama}.`, user.nama, "warga", user.id);
     }
-    broadcastEvent('update', { type: 'users', rtId: user.rtId || rtId });
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId: user.rtId || rtId, 
+      action: 'family', 
+      title: 'Anggota Keluarga Dihapus', 
+      message: `Anggota keluarga di KK ${user.nama} telah dihapus.`,
+      updaterName: user.nama,
+      time: new Date().toISOString()
+    });
 
     res.json({ message: "Anggota keluarga berhasil dihapus", user: user.toObject() });
   } catch (error: any) {
@@ -3420,6 +3513,15 @@ app.put("/api/warga/:id/role", enforceRoles(['admin']), async (req, res) => {
 
     await logAudit(rtId, "Admin", "PROMOTED_ROLE", `Mengubah peran warga ${user.nama} dari ${beforeRole} ke ${role}`, { role: beforeRole }, { role });
     await addNotification(rtId, "Peran Warga Diperbarui", `Peran warga ${user.nama} diubah menjadi ${role}.`, 'Admin', "warga", user.id);
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId, 
+      action: 'role', 
+      title: 'Peran Warga Diperbarui', 
+      message: `Peran warga ${user.nama} diubah menjadi ${role}.`,
+      updaterName: 'Admin',
+      time: new Date().toISOString()
+    });
     res.json({ message: "Role updated successfully", user });
   } else {
     res.status(400).json({ error: "Gagal update role" });
@@ -3440,6 +3542,15 @@ app.put("/api/warga/:id/approval", enforceRoles(['admin']), async (req, res) => 
     
     const statusText = isApproved ? 'disetujui' : 'dibatalkan';
     await addNotification(rtId, "Status Warga Diperbarui", `Status warga ${user.nama} ${statusText}.`, 'Admin', "warga", user.id);
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId, 
+      action: 'approval', 
+      title: 'Status Warga Diperbarui', 
+      message: `Status warga ${user.nama} telah ${statusText}.`,
+      updaterName: 'Admin',
+      time: new Date().toISOString()
+    });
     res.json({ message: "Status approval updated successfully", user });
   } else {
     res.status(400).json({ error: "Gagal update status approval" });
@@ -3457,6 +3568,15 @@ app.put("/api/warga/:id/vip", enforceRoles(['developer', 'admin']), async (req, 
     
     const statusText = isVip ? 'diaktifkan' : 'dinonaktifkan';
     await addNotification(rtId, "Status VIP Diperbarui", `Akses VIP warga ${user.nama} ${statusText}.`, 'Developer', "warga", user.id);
+    broadcastEvent('update', { 
+      type: 'users', 
+      rtId, 
+      action: 'vip', 
+      title: 'Status VIP Diperbarui', 
+      message: `Akses VIP warga ${user.nama} ${statusText}.`,
+      updaterName: 'Developer',
+      time: new Date().toISOString()
+    });
     res.json({ message: "VIP status updated successfully", user });
   } else {
     res.status(404).json({ error: "User not found" });
