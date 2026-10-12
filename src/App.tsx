@@ -4751,22 +4751,21 @@ function MainApp({ user: originalUser, onLogout, onUpdateUser }: { user: any; on
     fetchMenuPermissions();
     fetchDeveloperStats();
     
-    const source = new EventSource('/api/stream');
-    source.addEventListener('update', (e) => {
-      const data = JSON.parse(e.data);
-      if (data.type === 'notifications') {
+    const handleUpdate = (e: any) => {
+      const type = typeof e.detail === 'string' ? e.detail : e.detail?.type;
+      if (type === 'notifications') {
         fetchNotifications();
       }
-      if (data.type === 'menu_permissions') {
+      if (type === 'menu_permissions') {
         fetchMenuPermissions();
       }
-      if (data.type === 'online_status' || data.type === 'rt_list_update') {
+      if (type === 'online_status' || type === 'rt_list_update') {
         fetchDeveloperStats();
       }
-      window.dispatchEvent(new CustomEvent('app_data_update', { detail: data.type }));
-    });
+    };
+    window.addEventListener('app_data_update', handleUpdate);
     
-    return () => source.close();
+    return () => window.removeEventListener('app_data_update', handleUpdate);
   }, []);
 
   const handleShowNotifications = async () => {
@@ -5350,6 +5349,10 @@ export default function App() {
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('auth_user', JSON.stringify(userData));
+    if (userData?.token) {
+      localStorage.setItem('auth_token', userData.token);
+      localStorage.setItem('token', userData.token);
+    }
     if (userData?.rtId) {
       setSelectedRt(userData.rtId);
       localStorage.setItem('selected_rt', userData.rtId);
@@ -5380,11 +5383,32 @@ export default function App() {
   const [globalEvents, setGlobalEvents] = useState<any[]>([]);
   const [activeToast, setActiveToast] = useState<{ id: string; title: string; time: string; customText?: string; category?: string } | null>(null);
 
+  // Auto-dismiss real-time toast after 5 seconds
+  useEffect(() => {
+    if (!activeToast) return;
+    const timer = setTimeout(() => {
+      setActiveToast(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [activeToast]);
+
   // Instant SSE Real-Time Updates (Zero Delay)
   useEffect(() => {
     if (!user?.id) return;
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || '';
-    const eventSource = new EventSource(`/api/stream?token=${encodeURIComponent(token)}`);
+    let token = user?.token || '';
+    let rtId = user?.rtId || '';
+    try {
+      const saved = localStorage.getItem('auth_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!token) token = parsed.token || '';
+        if (!rtId) rtId = parsed.rtId || '';
+      }
+    } catch {}
+    if (!token) token = localStorage.getItem('auth_token') || localStorage.getItem('token') || '';
+    if (!rtId) rtId = localStorage.getItem('selected_rt') || 'rt01';
+
+    const eventSource = new EventSource(`/api/stream?token=${encodeURIComponent(token)}&rtId=${encodeURIComponent(rtId)}`);
 
     eventSource.addEventListener('update', (e: MessageEvent) => {
       try {
@@ -5392,18 +5416,67 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('app_data_update', { detail: payload }));
 
         if (payload.type) {
-          const typeName = String(payload.type).toUpperCase();
-          const actionText = payload.action === 'delete' ? 'dihapus' : payload.action === 'update' ? 'diperbarui' : 'ditambahkan';
-          const title = payload.title || `🔔 Data ${typeName} ${actionText.toUpperCase()}`;
-          const customText = payload.message || `Terdapat pembaruan data pada modul ${typeName}. Tampilan otomatis disinkronkan.`;
+          const typeName = String(payload.type).toLowerCase();
+          let category = 'Pembaruan Real-Time';
+          let title = payload.title || '';
+          let customText = payload.message || '';
+
+          if (typeName === 'users' || typeName === 'warga') {
+            category = 'Pembaruan Data Warga';
+            if (!title) {
+              const actionText = payload.action === 'delete' ? 'Dihapus' : payload.action === 'create' ? 'Ditambahkan' : 'Diperbarui';
+              title = `Data Warga ${actionText}`;
+            }
+            if (!customText) {
+              customText = 'Terdapat pembaruan data warga pada sistem. Data telah disinkronkan.';
+            }
+          } else if (typeName === 'notifications') {
+            category = 'Notifikasi RT';
+            title = payload.title || 'Pemberitahuan Baru';
+            customText = payload.message || 'Terdapat pemberitahuan baru di lingkungan RT.';
+          } else if (typeName === 'surat') {
+            category = 'Surat Online';
+            title = payload.title || 'Pembaruan Surat Online';
+            customText = payload.message || 'Terdapat permohonan atau perubahan status surat.';
+          } else if (typeName === 'laporan') {
+            category = 'Laporan Warga';
+            title = payload.title || 'Pembaruan Laporan';
+            customText = payload.message || 'Terdapat laporan warga baru atau perubahan status penanganan.';
+          } else if (typeName === 'kas' || typeName === 'iuran') {
+            category = 'Keuangan RT';
+            title = payload.title || `Pembaruan ${typeName.toUpperCase()}`;
+            customText = payload.message || `Terdapat transaksi baru pada modul ${typeName.toUpperCase()}.`;
+          } else if (typeName === 'acara') {
+            category = 'Agenda Acara RT';
+            title = payload.title || 'Acara Baru RT';
+            customText = payload.message || 'Terdapat agenda kegiatan baru di lingkungan RT.';
+          } else if (typeName === 'voting') {
+            category = 'Voting Warga';
+            title = payload.title || 'Pembaruan Voting';
+            customText = payload.message || 'Terdapat pemungutan suara baru atau suara masuk.';
+          } else {
+            const displayMod = typeName.charAt(0).toUpperCase() + typeName.slice(1);
+            title = payload.title || `Data ${displayMod} Diperbarui`;
+            customText = payload.message || `Terdapat pembaruan pada modul ${displayMod}.`;
+          }
 
           setActiveToast({
             id: Date.now().toString(),
             title,
             time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
             customText,
-            category: 'Pembaruan Real-Time'
+            category
           });
+
+          // Web Notification API (Browser push toast)
+          if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification(title, {
+                body: customText,
+                icon: '/icon-192.png'
+              });
+            } catch {}
+          }
         }
       } catch (err) {
         window.dispatchEvent(new Event('app_data_update'));
@@ -5413,7 +5486,7 @@ export default function App() {
     return () => {
       eventSource.close();
     };
-  }, [user?.id]);
+  }, [user?.id, user?.token, user?.rtId]);
 
   useEffect(() => {
     if (!user?.id) return;
